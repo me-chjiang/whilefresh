@@ -35,9 +35,11 @@
 构建脚本 `tools/whilefresh_tools/shelf_life/`（命令见仓库 README）按以下规则取值，规则以代码和测试为准：
 
 1. 对冷藏、冷冻、常温分别取值。优先 `DOP_<存放方式>_Min`（从购买日起的最短值，偏保守）。
-2. 该存放方式没有任何 `DOP_` 数据时，退到无前缀的 `<存放方式>_Min`，并在生成物 `basis` 中记录实际字段。以下情况不退：冷藏 `Refrigerate_tips` 注明"烹饪后 / 开封后 / 饮用前"的期限；"速冻购买食品"类（`Category_ID` = 8）的冷藏期限（指解冻或烹饪后）。
-3. `_Metric` 不是数值单位（`When Ripe`、`Package use-by date`、`Indefinitely`、`Not Recommended`、`Hours`）或缺 `_Min` 时，该存放方式留空。
-4. 开封后、解冻后的字段不使用。
-5. 换算为天：Days × 1，Weeks × 7，Months × 30，Years × 365。
+2. 短下限改取最大值：`_Min` 换算后不超过 2 天、且同字段的 `_Max` 存在并更长时，改取 `DOP_<存放方式>_Max`（`basis` 记录实际字段）。理由：USDA 对生鲜禽肉、鱼虾、叶菜、鲜面条的 1 到 2 天是保守下限，配合"剩余天数 ≤ max(1, 总天数 × 25%) 为临期"的规则，这些食材一入库就会显示临期；取最大值更接近用户感知的正常期限，仍然偏保守。其他条目保持最短值。
+3. 该存放方式没有任何 `DOP_` 数据时，退到无前缀字段（同样适用第 2 条），并在 `basis` 中记录实际字段。以下情况不退：对应存放方式的 tips（`Pantry_tips`、`Refrigerate_tips`、`Freeze_Tips`）含 cooked / mashed / sliced / balled / not recommended / after cooking / after opening / prepared for drinking（不区分大小写），说明数字针对的是另一种状态的食物；"速冻购买食品"类（`Category_ID` = 8）的冷藏期限（指解冻或烹饪后）。tips 含 ripe 的数字（针对成熟果）保留，`basis` 加后缀 `(ripe)`，如 `Refrigerate_Min(ripe)`。
+4. `_Metric` 不是数值单位（`When Ripe`、`Package use-by date`、`Indefinitely`、`Not Recommended`、`Hours`）或缺 `_Min` 时，该存放方式留空；不用 `_Max` 猜。
+5. 开封后、解冻后的字段不使用。
+6. 换算为天：Days × 1，Weeks × 7，Months × 30，Years × 365，四舍五入取整。
+7. 人工修正值：映射条目可带 `override`（如 `{"room": 365}`）和必填的 `reason`，生成物中该存放方式的 `basis` 记为 `manual`；`source` 仍为 `foodkeeper`。`skip` 去掉某个存放方式。`reason` 汇总在复核报告里。
 
 美式条目与中国食材的对应关系由人工维护的 `foodkeeper-map.json` 决定，快照本身不含中文。

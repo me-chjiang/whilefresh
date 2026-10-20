@@ -46,7 +46,7 @@ def vitem(name, category="vegetable", parent=None, pantry=False):
         (2.0, "Weeks", 14),
         (6.0, "Months", 180),
         (2.0, "Years", 730),
-        (1.0, "Year", 365),
+        (1.0, "Year", None),
         (1.5, "Weeks", 11),
         (None, "Days", None),
         (3.0, None, None),
@@ -71,8 +71,8 @@ def test_dop_wins_over_generic_field():
 
 
 def test_generic_field_used_when_no_dop_data():
-    p = product(Refrigerate_Min=2.0, Refrigerate_Max=5.0, Refrigerate_Metric="Days")
-    assert mode_days(p, "Refrigerate") == (2, "Refrigerate_Min")
+    p = product(Refrigerate_Min=3.0, Refrigerate_Max=5.0, Refrigerate_Metric="Days")
+    assert mode_days(p, "Refrigerate") == (3, "Refrigerate_Min")
 
 
 def test_non_numeric_dop_blocks_the_generic_fallback():
@@ -88,9 +88,52 @@ def test_non_duration_metrics_leave_the_mode_empty(metric):
 def test_generic_refrigerate_after_cooking_is_not_used():
     p = product(Refrigerate_Min=3.0, Refrigerate_Metric="Days", Refrigerate_tips="Recommendation is for storage after cooking.")
     assert mode_days(p, "Refrigerate") == (None, None)
-    # the same tip text does not matter for freezing
     q = product(Freeze_Min=3.0, Freeze_Metric="Months", Freeze_Tips="Freezing guidance applies after cooking.")
-    assert mode_days(q, "Freeze") == (90, "Freeze_Min")
+    assert mode_days(q, "Freeze") == (None, None)
+
+
+@pytest.mark.parametrize("mode,tips_key", [("Refrigerate", "Refrigerate_tips"), ("Freeze", "Freeze_Tips"), ("Pantry", "Pantry_tips")])
+@pytest.mark.parametrize("tip", ["Applies to cooked product.", "For MASHED potatoes", "Only sliced", "melon balled", "Freezing Not Recommended here"])
+def test_generic_figure_for_another_state_of_the_food_is_excluded(mode, tips_key, tip):
+    p = product(**{mode + "_Min": 3.0, mode + "_Metric": "Months", tips_key: tip})
+    assert mode_days(p, mode) == (None, None)
+    clean = product(**{mode + "_Min": 3.0, mode + "_Metric": "Months", tips_key: "Keep dry."})
+    assert mode_days(clean, mode) == (90, mode + "_Min")
+
+
+def test_dop_figure_ignores_the_other_state_tips():
+    p = product(DOP_Freeze_Min=3.0, DOP_Freeze_Metric="Months", Freeze_Tips="cooked only")
+    assert mode_days(p, "Freeze") == (90, "DOP_Freeze_Min")
+
+
+def test_ripe_fruit_keeps_its_value_with_a_marker():
+    p = product(Refrigerate_Min=3.0, Refrigerate_Metric="Days", Refrigerate_tips="Timeline for refrigerator applies to ripe fruit.")
+    assert mode_days(p, "Refrigerate") == (3, "Refrigerate_Min(ripe)")
+    assert mode_days(product(Refrigerate_Min=3.0, Refrigerate_Metric="Days", Refrigerate_tips="unripe is not this"), "Refrigerate") == (3, "Refrigerate_Min")
+
+
+@pytest.mark.parametrize(
+    "cols,expected",
+    [
+        # fresh greens: DOP 1-4 days -> 4
+        (dict(DOP_Refrigerate_Min=1.0, DOP_Refrigerate_Max=4.0, DOP_Refrigerate_Metric="Days"), (4, "DOP_Refrigerate_Max")),
+        # chicken: 1-2 days -> 2
+        (dict(DOP_Refrigerate_Min=1.0, DOP_Refrigerate_Max=2.0, DOP_Refrigerate_Metric="Days"), (2, "DOP_Refrigerate_Max")),
+        # a 2 day minimum still counts as a floor
+        (dict(DOP_Refrigerate_Min=2.0, DOP_Refrigerate_Max=3.0, DOP_Refrigerate_Metric="Days"), (3, "DOP_Refrigerate_Max")),
+        # 3 days is no floor: keep the shortest value
+        (dict(DOP_Refrigerate_Min=3.0, DOP_Refrigerate_Max=5.0, DOP_Refrigerate_Metric="Days"), (3, "DOP_Refrigerate_Min")),
+        # no maximum, or one that is not longer: keep the minimum
+        (dict(DOP_Refrigerate_Min=1.0, DOP_Refrigerate_Metric="Days"), (1, "DOP_Refrigerate_Min")),
+        (dict(DOP_Refrigerate_Min=1.0, DOP_Refrigerate_Max=1.0, DOP_Refrigerate_Metric="Days"), (1, "DOP_Refrigerate_Min")),
+        # the rule judges the minimum in days: 1 week is long enough
+        (dict(DOP_Refrigerate_Min=1.0, DOP_Refrigerate_Max=2.0, DOP_Refrigerate_Metric="Weeks"), (7, "DOP_Refrigerate_Min")),
+        # the generic fallback follows the same rule
+        (dict(Refrigerate_Min=2.0, Refrigerate_Max=5.0, Refrigerate_Metric="Days"), (5, "Refrigerate_Max")),
+    ],
+)
+def test_short_minimum_is_replaced_by_the_maximum(cols, expected):
+    assert mode_days(product(**cols), "Refrigerate") == expected
 
 
 def test_frozen_purchase_category_refrigerate_is_after_thawing():
@@ -197,6 +240,55 @@ def test_freezer_shorter_than_fridge_warns_until_confirmed():
     assert shelf_life_warnings(doc, m) == []
 
 
+def test_room_longer_than_fridge_warns_until_confirmed():
+    m = good_map(甲={"id": 1, "note": "n", "override": {"room": 30}, "reason": "r"})
+    doc = build_shelf_life(m, PRODUCTS, VOCAB)
+    warnings = shelf_life_warnings(doc, m)
+    assert len(warnings) == 1 and "room_days 30 is longer than fridge_days 7" in warnings[0]
+    m["map"]["甲"]["confirmed"] = ["room_gt_fridge"]
+    assert shelf_life_warnings(doc, m) == []
+
+
+def test_manual_override_replaces_the_value_and_marks_the_basis():
+    m = good_map(甲={"id": 1, "note": "n", "override": {"room": 5, "fridge": 9}, "reason": "为什么"})
+    names = {v["name"] for v in VOCAB}
+    assert validate_map(m, names, PRODUCTS) == []
+    item = build_shelf_life(m, PRODUCTS, VOCAB)["items"]["甲"]
+    assert (item["fridge_days"], item["freezer_days"], item["room_days"]) == (9, 60, 5)
+    assert item["source"] == "foodkeeper" and item["foodkeeper_id"] == 1
+    assert item["basis"] == {"fridge": "manual", "freezer": "DOP_Freeze_Min", "room": "manual"}
+
+
+def test_override_can_supply_a_value_when_foodkeeper_has_none():
+    m = good_map(丙={"id": 3, "note": "n", "override": {"fridge": 5}, "reason": "借用"})
+    item = build_shelf_life(m, PRODUCTS, VOCAB)["items"]["丙"]
+    assert item["fridge_days"] == 5 and item["basis"] == {"fridge": "manual"}
+
+
+def test_override_validation():
+    names = {v["name"] for v in VOCAB}
+
+    def errors(**entry):
+        return "\n".join(validate_map(good_map(甲={"id": 1, "note": "n", **entry}), names, PRODUCTS))
+
+    assert "needs a reason" in errors(override={"room": 5})
+    assert "needs a reason" in errors(override={"room": 5}, reason=" ")
+    assert "reason without override" in errors(reason="x")
+    assert "override must be an object" in errors(override={"attic": 5}, reason="x")
+    assert "override must be an object" in errors(override=[5], reason="x")
+    assert "1..3650" in errors(override={"room": 0}, reason="x")
+    assert "1..3650" in errors(override={"room": 99999}, reason="x")
+    assert "1..3650" in errors(override={"room": 2.5}, reason="x")
+    assert "both skipped and overridden" in errors(override={"room": 5}, skip=["room"], reason="x")
+
+
+def test_basis_values_must_be_strings():
+    names = {v["name"] for v in VOCAB}
+    doc = build_shelf_life(good_map(甲={"id": 1, "note": "n"}), PRODUCTS, VOCAB)
+    doc["items"]["甲"]["basis"]["fridge"] = ""
+    assert "basis values" in "\n".join(validate_shelf_life(doc, names, PRODUCTS))
+
+
 # --- the committed data ------------------------------------------------------------------
 
 def test_committed_map_and_table_are_consistent():
@@ -210,6 +302,47 @@ def test_committed_map_and_table_are_consistent():
     assert shelf_life_warnings(built, map_doc) == []
     assert SHELF_LIFE_OUT.read_text(encoding="utf-8") == dump_shelf_life(built)
     assert MAP_PATH.read_text(encoding="utf-8") == dump_map(map_doc)
+
+
+FRESH_CATEGORIES = {"vegetable", "fruit", "meat", "seafood"}
+
+
+def test_committed_table_has_no_extreme_values():
+    items = load_json(SHELF_LIFE_OUT)["items"]
+    category = {v["name"]: v["category"] for v in load_json(VOCABULARY_OUT)["items"]}
+    for name, it in items.items():
+        if it["room_days"] is not None:
+            assert it["room_days"] <= 1095, f"{name}: room_days {it['room_days']} is over three years"
+        if category[name] in FRESH_CATEGORIES and it["fridge_days"] is not None:
+            assert it["fridge_days"] >= 2, f"{name}: fresh food shown as near expiry on arrival"
+    assert items["土豆"]["fridge_days"] is None and items["土豆"]["room_days"] == 30
+    assert items["芋头"]["fridge_days"] is None and items["芋头"]["room_days"] == 7
+
+
+def test_manual_values_are_marked_and_explained():
+    map_doc = load_json(MAP_PATH)["map"]
+    items = load_json(SHELF_LIFE_OUT)["items"]
+    for name, entry in map_doc.items():
+        manual = {m for m, c in items[name]["basis"].items() if c == "manual"}
+        assert manual == set(entry.get("override", {})), name
+        assert bool(entry.get("override")) == bool(entry.get("reason")), name
+
+
+# Names that look like dried / powdered / canned / pickled / sauce / juice / oil products and are
+# covered only through their parent. Anything new in this list needs a human look at the parent's number.
+PARENT_FALLBACK_WHITELIST = {"土豆淀粉", "红薯淀粉", "木薯粉", "蒸鱼豉油"}
+PROCESSED_MARKERS = "干粉罐腌酱汁油"
+
+
+def test_processed_looking_names_reach_a_value_through_parent_only_if_whitelisted():
+    vocab = load_json(VOCABULARY_OUT)["items"]
+    by_name = {v["name"]: v for v in vocab}
+    covered = set(load_json(SHELF_LIFE_OUT)["items"])
+    via_parent = {
+        n for n in by_name
+        if n not in covered and covering_ancestor(n, by_name, covered) and any(ch in n for ch in PROCESSED_MARKERS)
+    }
+    assert via_parent == PARENT_FALLBACK_WHITELIST
 
 
 def test_committed_map_keeps_chinese_specialities_blank():
@@ -229,7 +362,7 @@ def test_build_twice_is_byte_identical(tmp_path):
 
 def test_validate_command_detects_a_stale_table(tmp_path, capsys):
     stale = tmp_path / "stale.json"
-    stale.write_text(SHELF_LIFE_OUT.read_text(encoding="utf-8").replace('"fridge_days": 2,', '"fridge_days": 3,', 1), encoding="utf-8")
+    stale.write_text(SHELF_LIFE_OUT.read_text(encoding="utf-8").replace('"foodkeeper_id"', '"foodkeeper_id" ', 1), encoding="utf-8")
     assert shelf_main(["validate", "--out", str(stale)]) == 1
     assert "stale" in capsys.readouterr().err
     assert shelf_main(["validate"]) == 0

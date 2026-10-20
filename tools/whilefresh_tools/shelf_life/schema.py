@@ -12,10 +12,11 @@ SHELF_LIFE_OUT = REPO_ROOT / "app" / "assets" / "data" / "shelf-life.json"
 FOODKEEPER_VERSION = "v128"
 
 MAX_DAYS = 3650  # ten years: longer than any sane shelf life for the foods listed
-MAP_ENTRY_KEYS = ("id", "note", "skip", "confirmed")
+MAP_ENTRY_KEYS = ("id", "note", "skip", "override", "reason", "confirmed")
 MODE_NAMES = ("fridge", "freezer", "room")
 DAYS_KEYS = ("fridge_days", "freezer_days", "room_days")
-WARNING_CODES = ("freezer_lt_fridge",)
+WARNING_CODES = ("freezer_lt_fridge", "room_gt_fridge")
+MANUAL = "manual"
 
 
 def _line(obj) -> str:
@@ -66,6 +67,19 @@ def validate_map(map_doc: dict, vocab_names: set[str], products: dict[int, dict]
         skip = entry.get("skip", [])
         if not isinstance(skip, list) or not set(skip) <= set(MODE_NAMES):
             errors.append(f"map[{name!r}]: skip must be a list drawn from {list(MODE_NAMES)}")
+        override = entry.get("override", {})
+        if not isinstance(override, dict) or not set(override) <= set(MODE_NAMES):
+            errors.append(f"map[{name!r}]: override must be an object keyed by {list(MODE_NAMES)}")
+        else:
+            for mode, days in override.items():
+                if not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= MAX_DAYS:
+                    errors.append(f"map[{name!r}]: override {mode} must be an integer in 1..{MAX_DAYS}, got {days!r}")
+            if set(override) & set(skip if isinstance(skip, list) else []):
+                errors.append(f"map[{name!r}]: a mode cannot be both skipped and overridden")
+            if override and (not isinstance(entry.get("reason"), str) or not entry["reason"].strip()):
+                errors.append(f"map[{name!r}]: override needs a reason")
+            if not override and "reason" in entry:
+                errors.append(f"map[{name!r}]: reason without override")
         confirmed = entry.get("confirmed", [])
         if not isinstance(confirmed, list) or not set(confirmed) <= set(WARNING_CODES):
             errors.append(f"map[{name!r}]: confirmed must be a list drawn from {list(WARNING_CODES)}")
@@ -86,6 +100,9 @@ def build_shelf_life(map_doc: dict, products: dict[int, dict], vocab_items: list
         for mode in entry.get("skip", []):
             life[DAYS_KEY[mode]] = None
             life["basis"].pop(mode, None)
+        for mode, days in entry.get("override", {}).items():
+            life[DAYS_KEY[mode]] = days
+            life["basis"][mode] = MANUAL
         if all(life[k] is None for k in DAYS_KEYS):
             continue
         items[name] = {
@@ -126,6 +143,8 @@ def validate_shelf_life(doc: dict, vocab_names: set[str], products: dict[int, di
                 errors.append(f"{name!r}: {key} must be an integer in 1..{MAX_DAYS}, got {days!r}")
         if not present:
             errors.append(f"{name!r}: has no day count at all; leave it out instead")
+        if not all(isinstance(c, str) and c for c in it.get("basis", {}).values()):
+            errors.append(f"{name!r}: basis values must be non-empty strings")
         if sorted(it.get("basis", {})) != sorted(present):
             errors.append(f"{name!r}: basis modes {sorted(it.get('basis', {}))} do not match day counts {sorted(present)}")
     return errors
@@ -136,9 +155,11 @@ def shelf_life_warnings(doc: dict, map_doc: dict) -> list[str]:
     out: list[str] = []
     for name, it in doc["items"].items():
         confirmed = map_doc["map"].get(name, {}).get("confirmed", [])
-        fridge, freezer = it.get("fridge_days"), it.get("freezer_days")
+        fridge, freezer, room = it.get("fridge_days"), it.get("freezer_days"), it.get("room_days")
         if fridge and freezer and freezer < fridge and "freezer_lt_fridge" not in confirmed:
             out.append(f"{name!r}: freezer_days {freezer} is shorter than fridge_days {fridge}")
+        if fridge and room and room > fridge and "room_gt_fridge" not in confirmed:
+            out.append(f"{name!r}: room_days {room} is longer than fridge_days {fridge}")
     return out
 
 
