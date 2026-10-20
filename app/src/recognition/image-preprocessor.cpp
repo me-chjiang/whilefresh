@@ -21,10 +21,31 @@ QImage loadImage(const QString &path, QString *error)
 {
     QImageReader reader(path);
     reader.setAutoTransform(true);
+
+    // The scaled size is applied to the stored (unrotated) pixels, while the width limit is
+    // about the image as displayed: a 90-degree EXIF rotation swaps the two.
+    const QSize stored = reader.size();
+    if (stored.isValid()) {
+        const bool rotated = reader.transformation().testFlag(QImageIOHandler::TransformationRotate90);
+        const int displayedWidth = rotated ? stored.height() : stored.width();
+        if (displayedWidth > kMaxImageWidth) {
+            const double scale = double(kMaxImageWidth) / displayedWidth;
+            reader.setScaledSize(QSize(qMax(1, qRound(stored.width() * scale)), qMax(1, qRound(stored.height() * scale))));
+        }
+    }
+
     const QImage image = reader.read();
-    if (image.isNull() && error)
-        *error = QStringLiteral("cannot read image: %1").arg(reader.errorString());
-    return image;
+    if (image.isNull()) {
+        if (error)
+            *error = QStringLiteral("cannot read image: %1").arg(reader.errorString());
+        return {};
+    }
+    return limitWidth(image); // for formats that ignore the scaled size
+}
+
+bool jpegEncodingAvailable()
+{
+    return QImageWriter::supportedImageFormats().contains("jpeg");
 }
 
 QImage limitWidth(const QImage &image)
@@ -35,18 +56,25 @@ QImage limitWidth(const QImage &image)
     return image.scaled(kMaxImageWidth, height, Qt::IgnoreAspectRatio, Qt::SmoothTransformation);
 }
 
-QList<ImageSlice> sliceImage(const QImage &image)
+QList<int> sliceTops(int height)
 {
-    QList<ImageSlice> slices;
-    const int height = image.height();
+    QList<int> tops;
     int top = 0;
     while (true) {
+        tops.append(top);
         const int bottom = qMin(top + kSliceHeight, height);
-        slices.append({ image.copy(0, top, image.width(), bottom - top), top });
-        if (bottom == height)
+        if (bottom >= height)
             break;
         top = bottom - kSliceOverlap;
     }
+    return tops;
+}
+
+QList<ImageSlice> sliceImage(const QImage &image)
+{
+    QList<ImageSlice> slices;
+    for (const int top : sliceTops(image.height()))
+        slices.append({ image.copy(0, top, image.width(), qMin(kSliceHeight, image.height() - top)), top });
     return slices;
 }
 
@@ -69,10 +97,16 @@ QByteArray encodeJpeg(const QImage &image)
     return bytes;
 }
 
-bool prepareImages(const QList<ImageInput> &inputs, QList<PreparedImage> *out, QString *error)
+bool prepareImages(const QList<ImageInput> &inputs, QList<PreparedImage> *out, QString *error,
+                   const std::function<bool()> &isCanceled)
 {
     out->clear();
+    const auto canceled = [&] { return isCanceled && isCanceled(); };
+
     for (int index = 0; index < inputs.size(); ++index) {
+        if (canceled())
+            return false;
+
         QString loadError;
         const QImage image = loadImage(inputs.at(index).path, &loadError);
         if (image.isNull()) {
@@ -82,14 +116,18 @@ bool prepareImages(const QList<ImageInput> &inputs, QList<PreparedImage> *out, Q
             return false;
         }
 
-        const QList<ImageSlice> slices = sliceImage(limitWidth(image));
-        for (int s = 0; s < slices.size(); ++s) {
+        // One slice is cropped and encoded at a time; only the JPEG bytes are kept.
+        const QList<int> tops = sliceTops(image.height());
+        for (int s = 0; s < tops.size(); ++s) {
+            if (canceled())
+                return false;
+
             PreparedImage prepared;
             prepared.imageIndex = index;
             prepared.sliceIndex = s;
-            prepared.sliceCount = int(slices.size());
+            prepared.sliceCount = int(tops.size());
             prepared.captureDate = inputs.at(index).captureDate;
-            prepared.jpeg = encodeJpeg(slices.at(s).image);
+            prepared.jpeg = encodeJpeg(image.copy(0, tops.at(s), image.width(), qMin(kSliceHeight, image.height() - tops.at(s))));
             if (prepared.jpeg.isEmpty()) {
                 if (error)
                     *error = QStringLiteral("image #%1: JPEG encoding failed").arg(index + 1);

@@ -449,6 +449,35 @@ private slots:
         QCOMPARE(body.value("thinking").toObject().value("type").toString(), QStringLiteral("disabled"));
     }
 
+    void missingJpegPluginIsReportedAsAnInternalError()
+    {
+        Fixture f;
+        f.recognizer.setJpegProbe([] { return false; });
+        f.recognizer.recognize(imageRequest());
+        f.waitForAnswer();
+        QCOMPARE(f.error().kind, ErrorKind::Internal);
+        QCOMPARE(f.error().userMessage, QStringLiteral("图片处理组件缺失，请更新应用。"));
+        QVERIFY(f.error().detail.contains(QStringLiteral("qjpeg")));
+        QCOMPARE(f.server.received().size(), 0);
+
+        // Text input needs no image plugin.
+        f.server.enqueue({ 200, okBody({ itemJson(QStringLiteral("鸡蛋"), QStringLiteral("鸡蛋")) }) });
+        f.recognizer.recognize(textRequest(QStringLiteral("x")));
+        QTRY_COMPARE_WITH_TIMEOUT(f.succeeded.count(), 1, 10000);
+    }
+
+    void cancellingWhileImagesAreBeingPreparedSendsNothing()
+    {
+        Fixture f;
+        RecognitionRequest request = imageRequest();
+        request.images = QList<ImageInput>(12, request.images.first());
+        const quint64 id = f.recognizer.recognize(request);
+        f.recognizer.cancel(id);
+        QTest::qWait(500);
+        QCOMPARE(f.succeeded.count() + f.failed.count(), 0);
+        QCOMPARE(f.server.received().size(), 0);
+    }
+
     void aFailingLaterBatchFailsTheWholeImport()
     {
         Fixture f;

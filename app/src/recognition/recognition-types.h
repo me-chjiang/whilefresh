@@ -90,6 +90,7 @@ enum class ErrorKind {
     RequestRejected, // any other 4xx
     BadResponse,
     InvalidInput,
+    Internal, // a part of the app is broken (e.g. a missing image plugin), not the user or the network
 };
 
 struct RecognitionError {

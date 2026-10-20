@@ -166,6 +166,89 @@ private slots:
         QCOMPARE(loadImage(rotatedPath).size(), QSize(100, 300));
     }
 
+    void hugeJpegIsShrunkWhileDecoding()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QImage big(12000, 9000, QImage::Format_Grayscale8);
+        big.fill(Qt::gray);
+        const QString path = dir.filePath(QStringLiteral("huge.jpg"));
+        QVERIFY(big.save(path, "JPEG"));
+        big = QImage();
+
+        QString error;
+        const QImage loaded = loadImage(path, &error);
+        QVERIFY2(!loaded.isNull(), qPrintable(error));
+        QCOMPARE(loaded.size(), QSize(1300, 975));
+    }
+
+    void rotatedHugeJpegIsScaledByItsDisplayedWidth()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        // Stored 12000x4000; EXIF "rotate 90" displays it as 4000x12000, so 1300 wide after scaling.
+        QImage big(12000, 4000, QImage::Format_Grayscale8);
+        big.fill(Qt::gray);
+        const QString path = dir.filePath(QStringLiteral("huge-rotated.jpg"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(withExifOrientation(jpegBytes(big), 6));
+        file.close();
+        big = QImage();
+
+        const QImage loaded = loadImage(path);
+        QVERIFY(!loaded.isNull());
+        QCOMPARE(loaded.width(), 1300);
+        QVERIFY(qAbs(loaded.height() - 3900) <= 2);
+    }
+
+    void rotatedImageNarrowWhenDisplayedIsNotShrunk()
+    {
+        // Stored 2000 wide, but displayed 600 wide after rotation: already within the limit.
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("rotated.jpg"));
+        QFile file(path);
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write(withExifOrientation(jpegBytes(gradient(2000, 600)), 6));
+        file.close();
+        QCOMPARE(loadImage(path).size(), QSize(600, 2000));
+    }
+
+    void pngIsShrunkToo()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("wide.png"));
+        QVERIFY(gradient(2600, 400).save(path));
+        QCOMPARE(loadImage(path).size(), QSize(1300, 200));
+    }
+
+    void slicesAreEncodedLazilyAndCanBeCanceled()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("tall.png"));
+        QVERIFY(gradient(600, 6000).save(path));
+
+        QList<PreparedImage> prepared;
+        QString error;
+        int polls = 0;
+        const bool completed = prepareImages({ { path, {} }, { path, {} } }, &prepared, &error,
+                                             [&polls] { return ++polls > 3; });
+        QVERIFY(!completed);
+        QVERIFY(error.isEmpty()); // cancellation is not an error
+        QVERIFY(prepared.size() < 8); // stopped early; the full job would be 2 x 5 slices
+
+        QVERIFY(prepareImages({ { path, {} } }, &prepared, &error, [] { return false; }));
+        QCOMPARE(prepared.size(), sliceTops(6000).size());
+    }
+
+    void jpegEncodingIsAvailableHere()
+    {
+        QVERIFY(jpegEncodingAvailable());
+    }
+
     void unreadableFileReportsError()
     {
         QString error;

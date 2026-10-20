@@ -45,6 +45,8 @@ public:
     // The key defaults to the one compiled in by the build script (ADR-5).
     explicit DeepSeekRecognizer(QObject *parent = nullptr);
 
+    ~DeepSeekRecognizer() override;
+
     quint64 recognize(const RecognitionRequest &request) override;
     void cancel(quint64 requestId) override;
 
@@ -56,6 +58,8 @@ public:
     void setRetryDelayMs(int ms) { m_retryDelayMs = ms; }
     void setBatchLimits(const BatchLimits &limits) { m_limits = limits; }
     void setRequestOptions(const RequestOptions &options) { m_options = options; }
+    // Replaces the check for the JPEG image plugin; for tests.
+    void setJpegProbe(std::function<bool()> probe) { m_jpegProbe = std::move(probe); }
 
 private:
     struct Job {
@@ -89,6 +93,7 @@ private:
     int m_retryDelayMs = 1000;
     BatchLimits m_limits;
     RequestOptions m_options;
+    std::function<bool()> m_jpegProbe = jpegEncodingAvailable;
 };
 
 }

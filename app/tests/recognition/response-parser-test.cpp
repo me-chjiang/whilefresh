@@ -267,7 +267,8 @@ private slots:
     {
         for (ErrorKind kind : { ErrorKind::NotConfigured, ErrorKind::NoNetwork, ErrorKind::Timeout,
                                 ErrorKind::AuthFailed, ErrorKind::QuotaOrRateLimit, ErrorKind::ServerError,
-                                ErrorKind::RequestRejected, ErrorKind::BadResponse, ErrorKind::InvalidInput }) {
+                                ErrorKind::RequestRejected, ErrorKind::BadResponse, ErrorKind::InvalidInput,
+                                ErrorKind::Internal }) {
             const QString message = userMessageFor(kind);
             QVERIFY(!message.isEmpty());
             QVERIFY(!message.contains(QStringLiteral("HTTP")));

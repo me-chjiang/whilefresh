@@ -5,6 +5,7 @@
 #include "recognition/request-builder.h"
 #include "recognition/response-parser.h"
 
+#include <QImageWriter>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLoggingCategory>
@@ -63,7 +64,7 @@ RecognitionError classifyFailure(QNetworkReply *reply, int status, const QByteAr
 
 // Runs on a worker thread: decoding and encoding tall screenshots takes noticeable time.
 PrepareOutcome prepareJob(const RecognitionRequest &request, const BatchLimits &limits,
-                          const RequestOptions &options)
+                          const RequestOptions &options, const std::function<bool()> &isCanceled)
 {
     PrepareOutcome outcome;
     const auto addBatch = [&](const QList<PreparedImage> &images, const QString &text) {
@@ -78,7 +79,9 @@ PrepareOutcome prepareJob(const RecognitionRequest &request, const BatchLimits &
 
     QList<PreparedImage> prepared;
     QString detail;
-    if (!prepareImages(request.images, &prepared, &detail)) {
+    if (!prepareImages(request.images, &prepared, &detail, isCanceled)) {
+        if (detail.isEmpty())
+            return outcome; // canceled: nobody is waiting for the answer
         RecognitionError error = makeError(ErrorKind::InvalidInput, detail);
         error.userMessage = QStringLiteral("有图片无法读取，请重新选择图片。");
         outcome.error = error;
@@ -102,6 +105,14 @@ DeepSeekRecognizer::DeepSeekRecognizer(QObject *parent)
     , m_apiKey(deepSeekApiKey())
     , m_endpoint(defaultEndpoint())
 {
+}
+
+DeepSeekRecognizer::~DeepSeekRecognizer()
+{
+    for (const Job &job : std::as_const(m_jobs)) {
+        if (job.watcher)
+            job.watcher->cancel();
+    }
 }
 
 quint64 DeepSeekRecognizer::recognize(const RecognitionRequest &request)
@@ -134,6 +145,13 @@ quint64 DeepSeekRecognizer::recognize(const RecognitionRequest &request)
         return id;
     }
 
+    if (request.kind != InputKind::OrderText && !m_jpegProbe()) {
+        failLater(id, makeError(ErrorKind::Internal,
+                                QStringLiteral("JPEG image plugin (qjpeg) is not available; writer formats: %1")
+                                    .arg(QString::fromLatin1(QImageWriter::supportedImageFormats().join(',')))));
+        return id;
+    }
+
     Job &job = m_jobs[id];
     job.request = request;
     job.total.start();
@@ -145,7 +163,7 @@ quint64 DeepSeekRecognizer::recognize(const RecognitionRequest &request)
     job.watcher->setFuture(promise->future());
 
     QThreadPool::globalInstance()->start([promise, request, limits = m_limits, options = m_options] {
-        promise->addResult(prepareJob(request, limits, options));
+        promise->addResult(prepareJob(request, limits, options, [&promise] { return promise->isCanceled(); }));
         promise->finish();
     });
     return id;
@@ -160,8 +178,10 @@ void DeepSeekRecognizer::cancel(quint64 requestId)
     QFutureWatcher<PrepareOutcome> *watcher = it->watcher;
     stopDeadline(*it);
     m_jobs.erase(it);
-    if (watcher)
+    if (watcher) {
+        watcher->cancel(); // lets the worker stop between images
         watcher->deleteLater();
+    }
     if (reply)
         reply->abort(); // its finished handler finds no job and discards the reply
     qCInfo(lcRecognition, "request %llu cancelled", requestId);
