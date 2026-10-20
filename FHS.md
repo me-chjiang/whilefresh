@@ -33,7 +33,7 @@
 │   ├── pyproject.toml
 │   ├── whilefresh_tools/      # 包源码：菜谱转换、词表、参考表、合成数据、识别回归
 │   ├── sources/               # 需要存档的第三方原始数据快照及来源说明（如 FoodKeeper）
-│   └── tests/
+│   └── tests/                 # pytest；fixtures/ 放少量第三方原文样例（须许可允许）
 ├── design/                    # HTML 视觉稿与手机尺寸截图
 ├── test-data/                 # 合成样本（PNG / 文本）、标准答案 JSON、合成样本的 DeepSeek 录制回放
 ├── scripts/                   # 构建、安装、取密钥、模拟器启动等 shell 脚本
@@ -70,4 +70,5 @@
 
 ## Change log
 
+- 2026-10-21 — 注明 `tools/tests/fixtures/` 存放测试用第三方原文样例。
 - 2026-10-20 — 初版：依据 MVP 工程规划建立 `app/`、`tools/`、`design/`、`test-data/`、`scripts/` 的布局与放置规则。
