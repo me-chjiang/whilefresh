@@ -7310,7 +7310,9 @@
      "name": "草寇",
      "optional": true,
      "kind": "ingredient",
-     "canonical": []
+     "canonical": [
+      "白豆蔻"
+     ]
     },
     {
      "raw": "小葱 （可选）",
