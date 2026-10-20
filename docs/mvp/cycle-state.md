@@ -34,7 +34,7 @@ Phase 0：需求对齐，等待用户确认 `mvp-requirements.md`。
 | 2026-10-20 | 菜谱使用 HowToCook 全量，仅文本 | 用户选择；许可证为 Unlicense，图片版权未核清 | 精选家常子集 |
 | 2026-10-20 | `git init`；每个功能一个分支，审阅通过后再合并到 main | 用户要求 | — |
 | 2026-10-20 | 真实测试样例存放于 `private/bill/`，不进 Git | 用户指定 | — |
-| 2026-10-20 | 产品名「趁鲜」，英文名 WhileFresh，仓库名 `whilefresh` | 用户请我命名；中文两个字好记，英文是"趁鲜"的直译 | 冰箱有数、清冰箱；拼音 Chenxian |
+| 2026-10-20 | 产品名「趁鲜」，英文名 UseBy，口号 "Cook before it’s gone."，仓库名 `useby` | 用户敲定；英文名取自食品包装上的 "Use By" 标识，双关"到期前用掉它" | WhileFresh、BestBefore、FreshRescue、EatFirst、FridgeFork、SavorSoon |
 | 2026-10-20 | 用户同意 DeepSeek 调用计费；网页检索默认用内置工具，Lexmount 仅作后备 | 用户指定 | — |
 
 ## Agent 分工
