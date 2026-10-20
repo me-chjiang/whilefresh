@@ -11,6 +11,7 @@ AI 产品探索与 Landing Project 材料库。产品名「趁鲜」：帮助家
 - [菜谱与买菜接入能力速查](docs/domestic-integration-brief.md)：独立精简核查，列出可调用 API、凭证要求及实际可用状态。
 - [MVP 需求确认稿](docs/mvp/mvp-requirements.md)：Android MVP 的功能范围、对 PRD v4 的修订与验收标准。
 - [MVP 循环状态](docs/mvp/cycle-state.md)：loop-dev-cycle 当前阶段、决策日志、分工与待解决问题；新会话先读此文件。
+- [视觉稿](design/README.md)：两版 HTML 视觉稿与截图；已选定 B「厨房手账」，含设计参数表。
 
 个人或敏感资料放在 `private/`，不应提交到 Git。项目协作规则统一维护在 [AGENTS.md](AGENTS.md)；Claude Code 通过根目录的 `CLAUDE.md` 导入同一份规则。
 
