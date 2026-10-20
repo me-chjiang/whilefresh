@@ -7,6 +7,7 @@ import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ProviderInfo;
 import android.database.Cursor;
 import android.graphics.BitmapFactory;
 import android.media.ExifInterface;
@@ -31,8 +32,14 @@ import java.io.OutputStream;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.UUID;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 // Native import / export for the C++ PlatformServices (app/src/platform/android/). Every result is
 // a JSON message handed to nativeOnMessage; see app/src/platform/bridge-event.cpp for the format.
@@ -42,7 +49,11 @@ public final class WhileFreshBridge
     private static final String TAG = "WhileFresh";
     static final int REQUEST_PICK_IMAGES = 0x5701;
     static final int REQUEST_CAPTURE_RECEIPT = 0x5702;
+    private static final int MAX_IMAGES_PER_IMPORT = 30;
     private static final long MAX_IMAGE_BYTES = 50L * 1024 * 1024;
+    private static final long MAX_IMPORT_BYTES = 200L * 1024 * 1024;
+    private static final int MAX_TEXT_CHARS = 20000;
+    private static final long READ_TIMEOUT_SECONDS = 60;
     private static final String STATE_CAPTURE_PATH = "whilefresh.capturePath";
     private static final String IMPORTS_DIR = "imports";
     private static final String CAPTURES_DIR = "captures"; // the only directory exposed by FileProvider
@@ -54,6 +65,10 @@ public final class WhileFreshBridge
     private static final ArrayList<String> pending = new ArrayList<>();
     // One thread keeps results in request order; copying large images must stay off the UI thread.
     private static final ExecutorService worker = Executors.newSingleThreadExecutor();
+    // Provider reads run here so a provider that never answers can be abandoned after a timeout.
+    private static final ExecutorService readers = Executors.newCachedThreadPool();
+    // A gallery or camera request is open from launch until its terminal message is posted.
+    private static final AtomicBoolean requestInFlight = new AtomicBoolean(false);
     private static WeakReference<Activity> activityRef = new WeakReference<>(null);
     private static String capturePath; // UI thread only
 
@@ -90,6 +105,8 @@ public final class WhileFreshBridge
 
     public static void pickImages()
     {
+        if (!beginRequest("gallery"))
+            return;
         runOnUi("gallery", new ActivityTask() {
             @Override
             public void run(Activity activity)
@@ -101,6 +118,8 @@ public final class WhileFreshBridge
 
     public static void captureReceipt()
     {
+        if (!beginRequest("camera"))
+            return;
         runOnUi("camera", new ActivityTask() {
             @Override
             public void run(Activity activity)
@@ -125,8 +144,8 @@ public final class WhileFreshBridge
                                  new ComponentName[] { new ComponentName(activity, WhileFreshActivity.class) });
                 try {
                     activity.startActivity(chooser);
-                } catch (ActivityNotFoundException e) {
-                    Log.w(TAG, "no activity can share text", e);
+                } catch (RuntimeException e) {
+                    Log.w(TAG, "could not open the share sheet: " + e.getClass().getSimpleName());
                 }
             }
         });
@@ -172,20 +191,23 @@ public final class WhileFreshBridge
                 @Override
                 public void run()
                 {
-                    importUris(context, "share", uris, type);
+                    importUris(context, "share", uris, type, false);
                 }
             });
             return;
         }
-
         if (text != null) {
+            if (text.length() > MAX_TEXT_CHARS) {
+                postFailed("share", "文字过长", false);
+                return;
+            }
             JSONObject message = message("import", "share");
             put(message, "kind", "text");
             put(message, "text", text);
-            post(message);
+            post(message, false);
             return;
         }
-        postFailed("share", "分享的内容为空或格式不支持");
+        postFailed("share", "分享的内容为空或格式不支持", false);
     }
 
     static void handleActivityResult(Activity activity, int requestCode, int resultCode, Intent data)
@@ -193,7 +215,7 @@ public final class WhileFreshBridge
         final Context context = activity.getApplicationContext();
         if (requestCode == REQUEST_PICK_IMAGES) {
             if (resultCode != Activity.RESULT_OK || data == null) {
-                post(message("cancelled", "gallery"));
+                post(message("cancelled", "gallery"), true);
                 return;
             }
             final ArrayList<Uri> uris = new ArrayList<>();
@@ -207,27 +229,28 @@ public final class WhileFreshBridge
                 uris.add(data.getData());
             }
             if (uris.isEmpty()) {
-                post(message("cancelled", "gallery"));
+                post(message("cancelled", "gallery"), true);
                 return;
             }
             worker.execute(new Runnable() {
                 @Override
                 public void run()
                 {
-                    importUris(context, "gallery", uris, null);
+                    importUris(context, "gallery", uris, null, true);
                 }
             });
         } else if (requestCode == REQUEST_CAPTURE_RECEIPT) {
             final String path = capturePath;
             capturePath = null;
             if (path == null) {
-                postFailed("camera", "找不到相机照片");
+                postFailed("camera", "找不到相机照片", true);
                 return;
             }
             final File file = new File(path);
+            revokeCaptureGrant(activity, file);
             if (resultCode != Activity.RESULT_OK) {
                 file.delete();
-                post(message("cancelled", "camera"));
+                post(message("cancelled", "camera"), true);
                 return;
             }
             final long capturedAt = System.currentTimeMillis();
@@ -243,23 +266,42 @@ public final class WhileFreshBridge
 
     // ---- Starting system UI ----
 
+    // Duplicate requests get an immediate failure so the caller always sees a terminal signal.
+    private static boolean beginRequest(String origin)
+    {
+        if (requestInFlight.compareAndSet(false, true))
+            return true;
+        postFailed(origin, "正在处理上一次导入", false);
+        return false;
+    }
+
     private static void startPicker(Activity activity)
     {
-        Intent intent;
         if (Build.VERSION.SDK_INT >= 33) {
-            intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
+            Intent intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
             intent.setType("image/*");
-            intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, MediaStore.getPickImagesMaxLimit());
-        } else {
-            intent = new Intent(Intent.ACTION_GET_CONTENT);
-            intent.setType("image/*");
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX,
+                            Math.min(MediaStore.getPickImagesMaxLimit(), MAX_IMAGES_PER_IMPORT));
+            try {
+                activity.startActivityForResult(intent, REQUEST_PICK_IMAGES);
+                return;
+            } catch (ActivityNotFoundException e) {
+                Log.w(TAG, "photo picker unavailable, falling back to GET_CONTENT");
+            } catch (RuntimeException e) {
+                Log.w(TAG, "photo picker failed: " + e.getClass().getSimpleName());
+            }
         }
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.setType("image/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         try {
             activity.startActivityForResult(intent, REQUEST_PICK_IMAGES);
         } catch (ActivityNotFoundException e) {
-            postFailed("gallery", "没有可用的相册");
+            postFailed("gallery", "没有可用的相册", true);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not open the gallery: " + e.getClass().getSimpleName());
+            postFailed("gallery", "无法打开相册", true);
         }
     }
 
@@ -267,7 +309,7 @@ public final class WhileFreshBridge
     {
         File dir = new File(activity.getFilesDir(), CAPTURES_DIR);
         if (!dir.isDirectory() && !dir.mkdirs()) {
-            postFailed("camera", "无法准备照片文件");
+            postFailed("camera", "无法准备照片文件", true);
             return;
         }
         // Leftovers from a camera session that never returned.
@@ -280,41 +322,105 @@ public final class WhileFreshBridge
         File file = new File(dir, UUID.randomUUID() + ".jpg");
         Uri uri;
         try {
-            uri = FileProvider.getUriForFile(activity, activity.getPackageName() + ".fileprovider", file);
+            uri = captureUri(activity, file);
         } catch (IllegalArgumentException e) {
-            Log.w(TAG, "FileProvider is not configured for captures", e);
-            postFailed("camera", "无法准备照片文件");
+            Log.w(TAG, "FileProvider is not configured for captures");
+            postFailed("camera", "无法准备照片文件", true);
             return;
         }
         Intent intent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
         intent.putExtra(MediaStore.EXTRA_OUTPUT, uri);
         intent.setClipData(ClipData.newRawUri("", uri));
-        intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        // The camera only writes the photo; we read it back through the file path, not the URI.
+        intent.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
         try {
             activity.startActivityForResult(intent, REQUEST_CAPTURE_RECEIPT);
             capturePath = file.getPath();
         } catch (ActivityNotFoundException e) {
-            postFailed("camera", "没有可用的相机");
+            revokeCaptureGrant(activity, file);
+            postFailed("camera", "没有可用的相机", true);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not open the camera: " + e.getClass().getSimpleName());
+            revokeCaptureGrant(activity, file);
+            postFailed("camera", "无法打开相机", true);
+        }
+    }
+
+    private static Uri captureUri(Context context, File file)
+    {
+        return FileProvider.getUriForFile(context, context.getPackageName() + ".fileprovider", file);
+    }
+
+    private static void revokeCaptureGrant(Context context, File file)
+    {
+        try {
+            context.revokeUriPermission(captureUri(context, file),
+                                        Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_READ_URI_PERMISSION);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "could not revoke the camera grant: " + e.getClass().getSimpleName());
         }
     }
 
     // ---- Importing (worker thread) ----
 
-    private static void importUris(Context context, String origin, ArrayList<Uri> uris, String fallbackType)
+    private static void importUris(Context context, String origin, ArrayList<Uri> uris, String fallbackType,
+                                   boolean endsRequest)
     {
         JSONArray images = new JSONArray();
         JSONArray failures = new JSONArray();
-        for (Uri uri : uris) {
+        long budget = MAX_IMPORT_BYTES;
+        for (int i = 0; i < uris.size(); ++i) {
+            if (i >= MAX_IMAGES_PER_IMPORT) {
+                failures.put("单次最多导入 " + MAX_IMAGES_PER_IMPORT + " 张");
+                continue;
+            }
+            if (budget <= 0) {
+                failures.put("本次导入超过 200 MB");
+                continue;
+            }
             try {
-                images.put(copyImage(context, uri, fallbackType));
+                File target = newImportFile(context);
+                images.put(copyWithTimeout(context, uris.get(i), fallbackType, target, budget));
+                budget -= target.length();
             } catch (ImportException e) {
                 failures.put(e.getMessage());
-            } catch (IOException | RuntimeException e) {
-                Log.w(TAG, "could not import an image", e);
-                failures.put("无法读取图片");
+            } catch (IOException e) {
+                Log.w(TAG, "could not prepare an import file: " + e.getClass().getSimpleName());
+                failures.put("无法保存图片");
             }
         }
-        postImages(origin, images, failures);
+        postImages(origin, images, failures, endsRequest);
+    }
+
+    private static JSONObject copyWithTimeout(final Context context, final Uri uri, final String fallbackType,
+                                              final File target, final long budget) throws ImportException
+    {
+        Future<JSONObject> future = readers.submit(new Callable<JSONObject>() {
+            @Override
+            public JSONObject call() throws Exception
+            {
+                return copyImage(context, uri, fallbackType, target, budget);
+            }
+        });
+        try {
+            return future.get(READ_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+        } catch (TimeoutException e) {
+            // A stuck reader may still recreate the .part file later; startup cleanup removes it.
+            future.cancel(true);
+            target.delete();
+            throw new ImportException("读取图片超时");
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            future.cancel(true);
+            target.delete();
+            throw new ImportException("导入被中断");
+        } catch (ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof ImportException)
+                throw (ImportException) cause;
+            Log.w(TAG, "could not import an image: " + (cause == null ? "unknown" : cause.getClass().getSimpleName()));
+            throw new ImportException("无法读取图片");
+        }
     }
 
     private static void importCapture(Context context, File file, long capturedAt)
@@ -328,10 +434,10 @@ public final class WhileFreshBridge
             target = newImportFile(context);
             if (!file.renameTo(target))
                 throw new ImportException("无法保存照片");
-            requireImage(target);
+            String mimeType = requireImage(target);
             JSONObject item = new JSONObject();
             put(item, "path", target.getPath());
-            put(item, "mimeType", "image/jpeg");
+            put(item, "mimeType", mimeType != null ? mimeType : "image/jpeg");
             put(item, "cameraCaptureMs", capturedAt);
             readExif(target, item);
             images.put(item);
@@ -345,19 +451,13 @@ public final class WhileFreshBridge
                 target.delete();
             file.delete();
         }
-        postImages("camera", images, failures);
+        postImages("camera", images, failures, true);
     }
 
-    private static JSONObject copyImage(Context context, Uri uri, String fallbackType)
+    private static JSONObject copyImage(Context context, Uri uri, String fallbackType, File target, long budget)
             throws ImportException, IOException
     {
-        // Only content:// from other apps. file:// could point into our private storage, and so
-        // could a URI of our own provider (a malicious share would make us upload our own files).
-        if (!ContentResolver.SCHEME_CONTENT.equals(uri.getScheme()))
-            throw new ImportException("只能导入 content:// 图片");
-        String authority = uri.getAuthority();
-        if (authority == null || authority.startsWith(context.getPackageName()))
-            throw new ImportException("拒绝读取本应用自身的文件");
+        requireForeignContentUri(context, uri);
 
         ContentResolver resolver = context.getContentResolver();
         String mimeType = resolver.getType(uri);
@@ -366,35 +466,57 @@ public final class WhileFreshBridge
         if (mimeType != null && !mimeType.startsWith("image/"))
             throw new ImportException("不是图片");
 
+        long limit = Math.min(MAX_IMAGE_BYTES, budget);
+        String tooLarge = limit < MAX_IMAGE_BYTES ? "本次导入超过 200 MB" : "图片超过 50 MB";
         JSONObject item = new JSONObject();
         long size = queryMetadata(resolver, uri, item);
-        if (size > MAX_IMAGE_BYTES)
-            throw new ImportException("图片超过 50 MB");
+        if (size > limit)
+            throw new ImportException(tooLarge);
 
-        File target = newImportFile(context);
-        copy(resolver, uri, target);
+        copy(resolver, uri, target, limit, tooLarge);
+        String decodedType;
         try {
-            requireImage(target);
+            decodedType = requireImage(target);
         } catch (ImportException e) {
             target.delete();
             throw e;
         }
+        if (decodedType != null && (mimeType == null || mimeType.endsWith("/*")))
+            mimeType = decodedType;
         readExif(target, item);
         put(item, "path", target.getPath());
         put(item, "mimeType", mimeType == null ? "" : mimeType);
         return item;
     }
 
+    // Only content:// from other apps. file:// could point into our private storage, and so could
+    // any provider of our own package (a malicious share would make us upload our own files).
+    // "content://0@<authority>/" addresses another user's provider; getAuthority() keeps the
+    // "0@" prefix, so the provider is resolved from the bare host and anything else is refused.
+    private static void requireForeignContentUri(Context context, Uri uri) throws ImportException
+    {
+        if (!ContentResolver.SCHEME_CONTENT.equals(uri.getScheme()))
+            throw new ImportException("只能导入 content:// 图片");
+        String authority = uri.getAuthority();
+        String host = uri.getHost();
+        if (authority == null || host == null || !authority.equals(host) || authority.indexOf('@') >= 0)
+            throw new ImportException("无效的图片地址");
+        ProviderInfo provider = context.getPackageManager().resolveContentProvider(host, 0);
+        if (provider != null && context.getPackageName().equals(provider.packageName))
+            throw new ImportException("拒绝读取本应用自身的文件");
+    }
+
     private static File newImportFile(Context context) throws IOException
     {
         File dir = new File(context.getFilesDir(), IMPORTS_DIR);
         if (!dir.isDirectory() && !dir.mkdirs())
-            throw new IOException("cannot create " + dir);
+            throw new IOException("cannot create the imports directory");
         // C++ renames it to <uuid>.<ext> once the MIME type is settled (import-files.cpp).
         return new File(dir, UUID.randomUUID() + ".part");
     }
 
-    private static void copy(ContentResolver resolver, Uri uri, File target) throws ImportException, IOException
+    private static void copy(ContentResolver resolver, Uri uri, File target, long limit, String tooLarge)
+            throws ImportException, IOException
     {
         long total = 0;
         try (InputStream in = resolver.openInputStream(uri);
@@ -404,9 +526,11 @@ public final class WhileFreshBridge
             byte[] buffer = new byte[64 * 1024];
             int read;
             while ((read = in.read(buffer)) != -1) {
+                if (Thread.currentThread().isInterrupted())
+                    throw new ImportException("读取图片超时");
                 total += read;
-                if (total > MAX_IMAGE_BYTES)
-                    throw new ImportException("图片超过 50 MB");
+                if (total > limit)
+                    throw new ImportException(tooLarge);
                 out.write(buffer, 0, read);
             }
             if (total == 0)
@@ -417,13 +541,15 @@ public final class WhileFreshBridge
         }
     }
 
-    private static void requireImage(File file) throws ImportException
+    // Returns the decoded MIME type (may be null); throws if the file is not a decodable image.
+    private static String requireImage(File file) throws ImportException
     {
         BitmapFactory.Options options = new BitmapFactory.Options();
         options.inJustDecodeBounds = true;
         BitmapFactory.decodeFile(file.getPath(), options);
         if (options.outWidth <= 0 || options.outHeight <= 0)
             throw new ImportException("无法识别的图片格式");
+        return options.outMimeType;
     }
 
     // Returns the reported size in bytes, or -1.
@@ -448,7 +574,7 @@ public final class WhileFreshBridge
                 put(item, "fileModifiedMs", modified);
             return longColumn(cursor, OpenableColumns.SIZE);
         } catch (RuntimeException e) {
-            Log.w(TAG, "could not query image metadata", e);
+            Log.w(TAG, "could not query image metadata: " + e.getClass().getSimpleName());
             return -1;
         }
     }
@@ -499,7 +625,7 @@ public final class WhileFreshBridge
                     uris.add(uri);
             }
         } catch (RuntimeException e) {
-            Log.w(TAG, "malformed EXTRA_STREAM", e);
+            Log.w(TAG, "malformed EXTRA_STREAM: " + e.getClass().getSimpleName());
         }
         ClipData clip = intent.getClipData();
         if (uris.isEmpty() && clip != null) {
@@ -531,7 +657,7 @@ public final class WhileFreshBridge
         final Activity activity = activityRef.get();
         if (activity == null) {
             if (origin != null)
-                postFailed(origin, "界面尚未就绪");
+                postFailed(origin, "界面尚未就绪", true);
             return;
         }
         activity.runOnUiThread(new Runnable() {
@@ -551,24 +677,27 @@ public final class WhileFreshBridge
         return message;
     }
 
-    private static void postImages(String origin, JSONArray images, JSONArray failures)
+    private static void postImages(String origin, JSONArray images, JSONArray failures, boolean endsRequest)
     {
         JSONObject message = message("import", origin);
         put(message, "kind", "images");
         put(message, "images", images);
         put(message, "failures", failures);
-        post(message);
+        post(message, endsRequest);
     }
 
-    private static void postFailed(String origin, String reason)
+    private static void postFailed(String origin, String reason, boolean endsRequest)
     {
         JSONObject message = message("failed", origin);
         put(message, "message", reason);
-        post(message);
+        post(message, endsRequest);
     }
 
-    private static void post(JSONObject message)
+    // endsRequest: this is the terminal message of the open gallery / camera request.
+    private static void post(JSONObject message, boolean endsRequest)
     {
+        if (endsRequest)
+            requestInFlight.set(false);
         String json = message.toString();
         synchronized (lock) {
             if (nativeReady)
