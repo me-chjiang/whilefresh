@@ -10,6 +10,7 @@ whilefresh_add_test(app-version-test core/app-version-test.cpp)
 target_link_libraries(app-version-test PRIVATE whilefresh-core)
 target_compile_definitions(app-version-test PRIVATE WHILEFRESH_EXPECTED_VERSION="${PROJECT_VERSION}")
 
+add_subdirectory(core)
 add_subdirectory(recognition)
 
 whilefresh_add_test(captured-at-test platform/captured-at-test.cpp)

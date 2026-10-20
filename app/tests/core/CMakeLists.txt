@@ -1,0 +1,11 @@
+function(whilefresh_add_core_test name)
+    whilefresh_add_test(${name} ${ARGN} core-test-support.h)
+    target_link_libraries(${name} PRIVATE whilefresh-core)
+    target_include_directories(${name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+endfunction()
+
+whilefresh_add_core_test(date-text-test date-text-test.cpp)
+whilefresh_add_core_test(shelf-life-test shelf-life-test.cpp)
+whilefresh_add_core_test(freshness-test freshness-test.cpp)
+whilefresh_add_core_test(recipe-matcher-test recipe-matcher-test.cpp)
+whilefresh_add_core_test(household-rules-test household-rules-test.cpp)
