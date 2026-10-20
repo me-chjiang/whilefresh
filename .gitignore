@@ -1,0 +1,26 @@
+# Local operating system metadata
+.DS_Store
+
+# Personal, sensitive and test-sample material (AGENTS.md: never commit private/)
+/private/
+
+# Secrets
+.env
+.env.*
+*.key
+*.pem
+*secret*
+*credential*
+lexmount-config.yaml
+
+# Local tool state
+/.playwright-mcp/
+/.claude/settings.local.json
+
+# Build output
+build/
+build-*/
+*.apk
+*.aab
+__pycache__/
+.venv/
