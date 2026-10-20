@@ -85,8 +85,8 @@ build/desktop/whilefresh
 ```sh
 scripts/build-desktop.sh --with-key
 build/desktop/tools/recognize-cli --vocab test-data/vocabulary/synthetic-vocabulary.json \
-    [--kind screenshot|receipt] [--date YYYY-MM-DD] [--record <文件>] <图片>...
+    [--kind screenshot|receipt] [--date YYYY-MM-DD] [--no-thinking] [--record <文件>] <图片>...
 build/desktop/tools/recognize-cli --vocab <词表> --text <订单文字文件>
 ```
 
-只在终端打印结果摘要（耗时、token、商品清单）。`--record` 保存录制（请求摘要 + 原始响应）：合成样本的录制放 `test-data/recordings/`；真实样例（`private/bill/`）的录制只能放 `private/recordings/`，不进仓库。在线识别是手动验证，不属于 ctest。
+只在终端打印结果摘要（耗时、token、商品清单；回复被截断时有警告）。默认保持 deepseek-flash 的思考开启（已验证的识别效果基于此），`--no-thinking` 用于对比。`--record` 保存录制（请求摘要 + 原始响应，文件权限 0600）：仓库内除 `private/` 外的路径会被拒绝；合成样本的录制放 `test-data/recordings/`；真实样例（`private/bill/`）的录制只能放 `private/recordings/`，不进仓库。在线识别是手动验证，不属于 ctest。
