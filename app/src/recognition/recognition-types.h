@@ -75,6 +75,9 @@ struct RecognitionResult {
     TokenUsage usage;
     qint64 elapsedMs = 0;
     bool isDemo = false;
+    // The model ran out of output budget and the answer was cut off; the items are those that
+    // arrived complete, so the list may be missing some.
+    bool truncated = false;
 };
 
 enum class ErrorKind {

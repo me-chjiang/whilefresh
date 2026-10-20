@@ -93,6 +93,25 @@ private slots:
         }
     }
 
+    void requestCarriesTokenBudgetAndTemperature()
+    {
+        const QJsonObject body = buildChatRequest(InputKind::OrderText, *syntheticVocabulary(), {}, QStringLiteral("x"));
+        QCOMPARE(body.value("max_tokens").toInt(), 131072);
+        QVERIFY(body.value("max_tokens").toInt() <= 393216); // documented maximum
+        QCOMPARE(body.value("temperature").toInt(), 0);
+        QVERIFY(!body.contains("thinking")); // thinking stays at the API default (on)
+    }
+
+    void thinkingCanBeSwitchedOffAndBudgetChanged()
+    {
+        RequestOptions options;
+        options.thinking = false;
+        options.maxTokens = 4000;
+        const QJsonObject body = buildChatRequest(InputKind::OrderText, *syntheticVocabulary(), {}, QStringLiteral("x"), options);
+        QCOMPARE(body.value("thinking").toObject().value("type").toString(), QStringLiteral("disabled"));
+        QCOMPARE(body.value("max_tokens").toInt(), 4000);
+    }
+
     void orderTextRequestDelimitsTheText()
     {
         const QJsonObject body = buildChatRequest(InputKind::OrderText, *syntheticVocabulary(), {},

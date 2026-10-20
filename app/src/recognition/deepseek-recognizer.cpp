@@ -62,11 +62,12 @@ RecognitionError classifyFailure(QNetworkReply *reply, int status, const QByteAr
 }
 
 // Runs on a worker thread: decoding and encoding tall screenshots takes noticeable time.
-PrepareOutcome prepareJob(const RecognitionRequest &request, const BatchLimits &limits)
+PrepareOutcome prepareJob(const RecognitionRequest &request, const BatchLimits &limits,
+                          const RequestOptions &options)
 {
     PrepareOutcome outcome;
     const auto addBatch = [&](const QList<PreparedImage> &images, const QString &text) {
-        const QJsonObject body = buildChatRequest(request.kind, *request.vocabulary, images, text);
+        const QJsonObject body = buildChatRequest(request.kind, *request.vocabulary, images, text, options);
         outcome.batches.append({ QJsonDocument(body).toJson(QJsonDocument::Compact), int(images.size()) });
     };
 
@@ -143,8 +144,8 @@ quint64 DeepSeekRecognizer::recognize(const RecognitionRequest &request)
     promise->start();
     job.watcher->setFuture(promise->future());
 
-    QThreadPool::globalInstance()->start([promise, request, limits = m_limits] {
-        promise->addResult(prepareJob(request, limits));
+    QThreadPool::globalInstance()->start([promise, request, limits = m_limits, options = m_options] {
+        promise->addResult(prepareJob(request, limits, options));
         promise->finish();
     });
     return id;

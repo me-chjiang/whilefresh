@@ -69,7 +69,8 @@ QString buildPrompt(InputKind kind, const Vocabulary &vocabulary)
 }
 
 QJsonObject buildChatRequest(InputKind kind, const Vocabulary &vocabulary,
-                             const QList<PreparedImage> &images, const QString &text)
+                             const QList<PreparedImage> &images, const QString &text,
+                             const RequestOptions &options)
 {
     QJsonArray content;
     content.append(textBlock(buildPrompt(kind, vocabulary)));
@@ -85,10 +86,15 @@ QJsonObject buildChatRequest(InputKind kind, const Vocabulary &vocabulary,
 
     const QJsonObject message{ { QStringLiteral("role"), QStringLiteral("user") },
                                { QStringLiteral("content"), content } };
-    return { { QStringLiteral("model"), QString::fromLatin1(kDeepSeekModel) },
-             { QStringLiteral("messages"), QJsonArray{ message } },
-             { QStringLiteral("response_format"),
-               QJsonObject{ { QStringLiteral("type"), QStringLiteral("json_object") } } } };
+    QJsonObject body{ { QStringLiteral("model"), QString::fromLatin1(kDeepSeekModel) },
+                      { QStringLiteral("messages"), QJsonArray{ message } },
+                      { QStringLiteral("response_format"),
+                        QJsonObject{ { QStringLiteral("type"), QStringLiteral("json_object") } } },
+                      { QStringLiteral("max_tokens"), options.maxTokens },
+                      { QStringLiteral("temperature"), 0 } };
+    if (!options.thinking)
+        body.insert(QStringLiteral("thinking"), QJsonObject{ { QStringLiteral("type"), QStringLiteral("disabled") } });
+    return body;
 }
 
 }

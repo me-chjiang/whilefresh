@@ -196,9 +196,12 @@ private slots:
         QTest::newRow("empty content") << chatCompletion(QString());
         QTest::newRow("object without items") << chatCompletion(QStringLiteral(R"({"error":"x"})"));
         QTest::newRow("items not an array") << chatCompletion(QStringLiteral(R"({"items":"none"})"));
-        QTest::newRow("cut off by length")
-            << chatCompletion(modelJson({ itemJson(QStringLiteral("a"), QStringLiteral("鸡蛋")) }), 10, 4096,
-                              QStringLiteral("length"));
+        QTest::newRow("no choices at all") << QByteArray(R"({"choices":[]})");
+        QTest::newRow("empty and cut off") << chatCompletion(QString(), 10, 8000, QStringLiteral("length"));
+        QTest::newRow("cut off before the first item completes")
+            << chatCompletion(QStringLiteral("{\"source_type\":\"cart\",\"items\":[{\"raw_name\":\"鸡蛋\",\"count"),
+                              10, 8000, QStringLiteral("length"));
+        QTest::newRow("cut off without items key") << chatCompletion(QStringLiteral("{\"source_ty"), 10, 8000, QStringLiteral("length"));
     }
 
     void unusableResponsesAreBadResponse()
@@ -209,6 +212,55 @@ private slots:
         QCOMPARE(outcome.error.kind, ErrorKind::BadResponse);
         QVERIFY(!outcome.error.userMessage.isEmpty());
         QVERIFY(!outcome.error.detail.isEmpty());
+    }
+
+    void cutOffRepliesKeepTheItemsThatArrivedWhole()
+    {
+        const QString whole1 = itemJson(QStringLiteral("鲜鸡蛋"), QStringLiteral("鸡蛋"), QStringLiteral("\"count\":2"));
+        const QString whole2 = itemJson(QStringLiteral("a}{b \\\"x\\\""), QStringLiteral("洋葱")); // braces and quotes inside strings
+        const QString cut = QStringLiteral("{\"source_type\":\"order\",\"items\":[%1,\n %2,\n {\"raw_name\":\"牛奶\",\"canonical_na").arg(whole1, whole2);
+        for (const QString &content : { cut, QStringLiteral("```json\n") + cut }) {
+            const ParseOutcome outcome = parseChatCompletion(
+                chatCompletion(content, 700, 8000, QStringLiteral("length")), syntheticVocabulary().get(),
+                InputKind::Screenshot);
+            QVERIFY(outcome.result);
+            QVERIFY(outcome.result->truncated);
+            QCOMPARE(outcome.result->items.size(), 2);
+            QCOMPARE(outcome.result->items.at(0).count, 2);
+            QCOMPARE(outcome.result->items.at(1).canonicalName, QStringLiteral("洋葱"));
+            QCOMPARE(outcome.result->sourceType, SourceType::Order);
+            QCOMPARE(outcome.result->usage.totalTokens, 8700);
+            QCOMPARE(outcome.result->rawResponses.size(), 1);
+        }
+    }
+
+    void aCompleteReplyThatEndedOnTheLimitIsStillFlagged()
+    {
+        const ParseOutcome outcome = parseChatCompletion(
+            chatCompletion(modelJson({ itemJson(QStringLiteral("a"), QStringLiteral("鸡蛋")) }), 10, 4096, QStringLiteral("length")),
+            syntheticVocabulary().get(), InputKind::Screenshot);
+        QVERIFY(outcome.result);
+        QVERIFY(outcome.result->truncated);
+        QCOMPARE(outcome.result->items.size(), 1);
+    }
+
+    void normalRepliesAreNotFlaggedAndEmptyOnesAreNotZeroItems()
+    {
+        QVERIFY(!parseContent(modelJson({ itemJson(QStringLiteral("a"), QStringLiteral("鸡蛋")) })).result->truncated);
+        QVERIFY(!parseChatCompletion(chatCompletion(QString()), nullptr, InputKind::Screenshot).result);
+    }
+
+    void hugeNumbersSaturateInsteadOfBecomingZero()
+    {
+        const ParseOutcome outcome = parseContent(modelJson({
+            QStringLiteral("{\"raw_name\":\"a\",\"count\":\"99999999999999999999\"}"),
+            QStringLiteral("{\"raw_name\":\"b\",\"count\":1e300}"),
+            QStringLiteral("{\"raw_name\":\"c\",\"count\":3.6,\"shelf_life_days\":{\"fridge\":\"99999999999\"}}") }));
+        QVERIFY(outcome.result);
+        QCOMPARE(outcome.result->items.at(0).count, 999);
+        QCOMPARE(outcome.result->items.at(1).count, 999);
+        QCOMPARE(outcome.result->items.at(2).count, 4);
+        QVERIFY(!outcome.result->items.at(2).shelfLifeDays.fridge); // beyond any plausible shelf life
     }
 
     void userMessagesAreChineseAndFreeOfDetail()

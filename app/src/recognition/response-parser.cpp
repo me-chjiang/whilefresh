@@ -6,6 +6,9 @@
 #include <QRegularExpression>
 #include <QSet>
 
+#include <cmath>
+#include <limits>
+
 namespace whilefresh::recognition {
 
 namespace {
@@ -43,15 +46,26 @@ QString requiredText(const QJsonValue &value)
     return value.isString() ? value.toString().trimmed() : optionalText(value);
 }
 
+// Out-of-range numbers saturate instead of wrapping, so a huge count stays huge (and is then
+// clamped by the caller) rather than turning into 0 or a negative number.
 std::optional<int> integerOf(const QJsonValue &value)
 {
-    if (value.isDouble())
-        return qRound(value.toDouble());
+    constexpr double kIntMax = std::numeric_limits<int>::max();
+    constexpr double kIntMin = std::numeric_limits<int>::min();
+    if (value.isDouble()) {
+        const double number = value.toDouble();
+        if (!qIsFinite(number))
+            return std::nullopt;
+        return int(qBound(kIntMin, std::round(number), kIntMax));
+    }
     if (value.isString()) {
         static const QRegularExpression digits(QStringLiteral("\\d+"));
         const auto match = digits.match(value.toString());
-        if (match.hasMatch())
-            return match.captured().toInt();
+        if (match.hasMatch()) {
+            bool ok = false;
+            const qlonglong parsed = match.captured().toLongLong(&ok);
+            return (ok && parsed <= std::numeric_limits<int>::max()) ? int(parsed) : std::numeric_limits<int>::max();
+        }
     }
     return std::nullopt;
 }
@@ -164,6 +178,88 @@ QString itemKey(const RecognizedItem &item)
 
 }
 
+namespace {
+
+RecognitionResult buildResult(const QJsonObject &root, const QJsonArray &items, const Vocabulary *vocabulary,
+                              InputKind kind)
+{
+    RecognitionResult result;
+    for (const QJsonValue &value : items) {
+        if (const auto item = parseItem(value, vocabulary))
+            result.items.append(*item);
+    }
+    result.ignoredSummary = optionalText(root.value(QStringLiteral("ignored_summary")));
+
+    const auto declared = sourceTypeFromString(requiredText(root.value(QStringLiteral("source_type"))));
+    if (declared) {
+        result.sourceType = *declared;
+    } else {
+        switch (kind) {
+        case InputKind::Receipt: result.sourceType = SourceType::Receipt; break;
+        case InputKind::OrderText: result.sourceType = SourceType::Text; break;
+        case InputKind::Screenshot: result.sourceType = SourceType::Other; break;
+        }
+    }
+    return result;
+}
+
+// Index just past the '}' closing the object that opens at `open`, or -1 if it never closes.
+qsizetype objectEnd(const QString &text, qsizetype open)
+{
+    int depth = 0;
+    bool inString = false;
+    for (qsizetype i = open; i < text.size(); ++i) {
+        const QChar c = text.at(i);
+        if (inString) {
+            if (c == QLatin1Char('\\'))
+                ++i;
+            else if (c == QLatin1Char('"'))
+                inString = false;
+        } else if (c == QLatin1Char('"')) {
+            inString = true;
+        } else if (c == QLatin1Char('{')) {
+            ++depth;
+        } else if (c == QLatin1Char('}') && --depth == 0) {
+            return i + 1;
+        }
+    }
+    return -1;
+}
+
+// The items of a reply that was cut off mid-way: every object of the "items" array that
+// arrived complete, in order. The unfinished last one is dropped.
+QJsonArray completeItemsOfCutOffText(const QString &text)
+{
+    QJsonArray items;
+    const qsizetype key = text.indexOf(QLatin1String("\"items\""));
+    if (key < 0)
+        return items;
+    qsizetype i = text.indexOf(QLatin1Char('['), key);
+    if (i < 0)
+        return items;
+    ++i;
+    while (i < text.size()) {
+        const QChar c = text.at(i);
+        if (c.isSpace() || c == QLatin1Char(',')) {
+            ++i;
+        } else if (c == QLatin1Char('{')) {
+            const qsizetype end = objectEnd(text, i);
+            if (end < 0)
+                break;
+            const QJsonDocument doc = QJsonDocument::fromJson(text.mid(i, end - i).toUtf8());
+            if (!doc.isObject())
+                break;
+            items.append(doc.object());
+            i = end;
+        } else {
+            break;
+        }
+    }
+    return items;
+}
+
+}
+
 ParseOutcome parseModelContent(const QString &content, const Vocabulary *vocabulary, InputKind kind)
 {
     const QJsonDocument doc = parseJsonLoosely(content);
@@ -181,24 +277,39 @@ ParseOutcome parseModelContent(const QString &content, const Vocabulary *vocabul
     if (!itemsValue.isArray())
         return fail(QStringLiteral("JSON has no \"items\" array"));
 
-    RecognitionResult result;
-    for (const QJsonValue &value : itemsValue.toArray()) {
-        if (const auto item = parseItem(value, vocabulary))
-            result.items.append(*item);
-    }
-    result.ignoredSummary = optionalText(root.value(QStringLiteral("ignored_summary")));
+    return { buildResult(root, itemsValue.toArray(), vocabulary, kind), {} };
+}
 
-    const auto declared = sourceTypeFromString(requiredText(root.value(QStringLiteral("source_type"))));
-    if (declared) {
-        result.sourceType = *declared;
-    } else {
-        switch (kind) {
-        case InputKind::Receipt: result.sourceType = SourceType::Receipt; break;
-        case InputKind::OrderText: result.sourceType = SourceType::Text; break;
-        case InputKind::Screenshot: result.sourceType = SourceType::Other; break;
-        }
+namespace {
+
+ParseOutcome parseCutOffContent(const QString &content, const Vocabulary *vocabulary, InputKind kind)
+{
+    const QString text = stripCodeFence(content);
+    if (text.isEmpty())
+        return fail(QStringLiteral("model reply was cut off before any output (finish_reason=length)"));
+
+    // Cut off exactly at the end: still complete JSON, but unverifiable, so flagged anyway.
+    ParseOutcome whole = parseModelContent(content, vocabulary, kind);
+    if (whole.result) {
+        whole.result->truncated = true;
+        return whole;
     }
+
+    const QJsonArray items = completeItemsOfCutOffText(text);
+    if (items.isEmpty())
+        return fail(QStringLiteral("model reply was cut off and holds no complete item (finish_reason=length)"));
+
+    static const QRegularExpression sourceType(QStringLiteral("\"source_type\"\\s*:\\s*\"([^\"]*)\""));
+    QJsonObject root;
+    const auto match = sourceType.match(text);
+    if (match.hasMatch())
+        root.insert(QStringLiteral("source_type"), match.captured(1));
+
+    RecognitionResult result = buildResult(root, items, vocabulary, kind);
+    result.truncated = true;
     return { result, {} };
+}
+
 }
 
 ParseOutcome parseChatCompletion(const QByteArray &body, const Vocabulary *vocabulary, InputKind kind)
@@ -208,15 +319,18 @@ ParseOutcome parseChatCompletion(const QByteArray &body, const Vocabulary *vocab
     if (!doc.isObject())
         return fail(QStringLiteral("HTTP body is not a JSON object: %1").arg(parseError.errorString()));
 
-    const QJsonObject choice = doc.object().value(QStringLiteral("choices")).toArray().first().toObject();
+    const QJsonArray choices = doc.object().value(QStringLiteral("choices")).toArray();
+    const QJsonObject choice = choices.isEmpty() ? QJsonObject() : choices.at(0).toObject();
     const QJsonObject message = choice.value(QStringLiteral("message")).toObject();
     const QString finishReason = choice.value(QStringLiteral("finish_reason")).toString();
-    if (finishReason == QLatin1String("length"))
-        return fail(QStringLiteral("model reply was cut off (finish_reason=length)"));
     if (!message.value(QStringLiteral("content")).isString())
         return fail(QStringLiteral("response has no message content (finish_reason=%1)").arg(finishReason));
 
-    ParseOutcome outcome = parseModelContent(message.value(QStringLiteral("content")).toString(), vocabulary, kind);
+    const QString content = message.value(QStringLiteral("content")).toString();
+    // An empty answer is never "no items": with finish_reason=length it means the output
+    // budget was spent (thinking counts against it), otherwise the reply is unusable.
+    ParseOutcome outcome = finishReason == QLatin1String("length") ? parseCutOffContent(content, vocabulary, kind)
+                                                                   : parseModelContent(content, vocabulary, kind);
     if (!outcome.result)
         return outcome;
 
@@ -257,6 +371,7 @@ RecognitionResult mergeResults(const QList<RecognitionResult> &results)
         merged.usage.completionTokens += part.usage.completionTokens;
         merged.usage.totalTokens += part.usage.totalTokens;
         merged.isDemo = merged.isDemo || part.isDemo;
+        merged.truncated = merged.truncated || part.truncated;
     }
     merged.ignoredSummary = summaries.join(QStringLiteral("；"));
     return merged;

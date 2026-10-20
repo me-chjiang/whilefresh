@@ -1,7 +1,7 @@
 // Desktop-only command-line front end for the real recognition service.
 //
 //   recognize-cli --vocab <vocabulary.json> [--kind screenshot|receipt] [--date YYYY-MM-DD]
-//                 [--record <file>] <image>...
+//                 [--no-thinking] [--record <file>] <image>...
 //   recognize-cli --vocab <vocabulary.json> [--record <file>] --text <order-text-file>
 //
 // Calls the real DeepSeek API (billed) with the key compiled in by
@@ -11,6 +11,7 @@
 #include "recognition/api-key.h"
 #include "recognition/deepseek-recognizer.h"
 #include "recognition/recording.h"
+#include "recognition/request-builder.h"
 #include "recognition/vocabulary.h"
 
 #include <QCommandLineParser>
@@ -56,6 +57,8 @@ void printSummary(const RecognitionResult &result)
           << result.usage.completionTokens << ")  requests: " << result.rawResponses.size() << "\n";
     out() << "items: " << result.items.size() << "  selected: " << selected << "  gifts: " << gifts
           << "  irrelevant: " << irrelevant << "  uncategorized: " << uncategorized << "\n";
+    if (result.truncated)
+        out() << "WARNING: reply was cut off by the token limit; the list may be incomplete\n";
     out() << "ignored: " << result.ignoredSummary << "\n";
     for (const RecognizedItem &item : result.items) {
         out() << (item.selected ? "[x]" : "[ ]") << (item.isGift ? "[gift] " : " ") << item.canonicalName
@@ -87,6 +90,7 @@ int main(int argc, char *argv[])
     parser.addOption({ QStringLiteral("text"), QStringLiteral("Order text file; selects order-text input."), QStringLiteral("file") });
     parser.addOption({ QStringLiteral("kind"), QStringLiteral("Image input kind: screenshot (default) or receipt."), QStringLiteral("kind") });
     parser.addOption({ QStringLiteral("date"), QStringLiteral("Capture date of the images, YYYY-MM-DD."), QStringLiteral("date") });
+    parser.addOption({ QStringLiteral("no-thinking"), QStringLiteral("Send thinking disabled (default: thinking on, as validated).") });
     parser.addOption({ QStringLiteral("record"), QStringLiteral("Save the raw responses as a recording."), QStringLiteral("file") });
     parser.process(app);
 
@@ -142,6 +146,9 @@ int main(int argc, char *argv[])
     }
 
     DeepSeekRecognizer recognizer;
+    RequestOptions options;
+    options.thinking = !parser.isSet(QStringLiteral("no-thinking"));
+    recognizer.setRequestOptions(options);
     int exitCode = 1;
     QObject::connect(&recognizer, &RecognitionService::succeeded, &app,
                      [&](quint64, const RecognitionResult &result) {

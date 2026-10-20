@@ -2,6 +2,7 @@
 
 #include "recognition/image-preprocessor.h"
 #include "recognition/recognition-service.h"
+#include "recognition/request-builder.h"
 
 #include <QElapsedTimer>
 #include <QFutureWatcher>
@@ -54,6 +55,7 @@ public:
     void setDeadlineMs(int ms) { m_deadlineMs = ms; }
     void setRetryDelayMs(int ms) { m_retryDelayMs = ms; }
     void setBatchLimits(const BatchLimits &limits) { m_limits = limits; }
+    void setRequestOptions(const RequestOptions &options) { m_options = options; }
 
 private:
     struct Job {
@@ -86,6 +88,7 @@ private:
     int m_deadlineMs = 240000;    // per request, whatever the traffic
     int m_retryDelayMs = 1000;
     BatchLimits m_limits;
+    RequestOptions m_options;
 };
 
 }

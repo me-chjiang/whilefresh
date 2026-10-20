@@ -400,6 +400,55 @@ private slots:
         QCOMPARE(result.usage.totalTokens, 1980);
     }
 
+    void aCutOffAnswerYieldsAPartialFlaggedResult()
+    {
+        Fixture f;
+        const QString cut = QStringLiteral("{\"source_type\":\"cart\",\"items\":[%1,{\"raw_name\":\"牛奶\",\"cano")
+                                .arg(itemJson(QStringLiteral("鲜鸡蛋"), QStringLiteral("鸡蛋")));
+        f.server.enqueue({ 200, chatCompletion(cut, 900, 131072, QStringLiteral("length")) });
+        f.recognizer.recognize(textRequest(QStringLiteral("x")));
+        f.waitForAnswer();
+        QCOMPARE(f.failed.count(), 0);
+        QVERIFY(f.result().truncated);
+        QCOMPARE(f.result().items.size(), 1);
+        QCOMPARE(f.server.received().size(), 1); // no automatic second attempt
+    }
+
+    void anEmptyAnswerThatSpentTheBudgetIsAnErrorNotZeroItems()
+    {
+        Fixture f;
+        f.server.enqueue({ 200, chatCompletion(QString(), 900, 131072, QStringLiteral("length")) });
+        f.recognizer.recognize(textRequest(QStringLiteral("x")));
+        f.waitForAnswer();
+        QCOMPARE(f.succeeded.count(), 0);
+        QCOMPARE(f.error().kind, ErrorKind::BadResponse);
+        QCOMPARE(f.server.received().size(), 1);
+    }
+
+    void requestBodyCarriesTheConfiguredOptions()
+    {
+        Fixture f;
+        f.server.enqueue({ 200, okBody({ itemJson(QStringLiteral("鸡蛋"), QStringLiteral("鸡蛋")) }) });
+        f.server.enqueue({ 200, okBody({ itemJson(QStringLiteral("鸡蛋"), QStringLiteral("鸡蛋")) }) });
+
+        f.recognizer.recognize(textRequest(QStringLiteral("x")));
+        f.waitForAnswer();
+        QJsonObject body = QJsonDocument::fromJson(f.server.received().at(0).body).object();
+        QCOMPARE(body.value("max_tokens").toInt(), 131072);
+        QCOMPARE(body.value("temperature").toInt(), 0);
+        QVERIFY(!body.contains("thinking"));
+
+        RequestOptions options;
+        options.thinking = false;
+        options.maxTokens = 9000;
+        f.recognizer.setRequestOptions(options);
+        f.recognizer.recognize(textRequest(QStringLiteral("y")));
+        QTRY_COMPARE_WITH_TIMEOUT(f.server.received().size(), 2, 10000);
+        body = QJsonDocument::fromJson(f.server.received().at(1).body).object();
+        QCOMPARE(body.value("max_tokens").toInt(), 9000);
+        QCOMPARE(body.value("thinking").toObject().value("type").toString(), QStringLiteral("disabled"));
+    }
+
     void aFailingLaterBatchFailsTheWholeImport()
     {
         Fixture f;
