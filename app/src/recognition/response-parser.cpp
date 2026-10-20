@@ -1,0 +1,397 @@
+#include "recognition/response-parser.h"
+
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QRegularExpression>
+#include <QSet>
+
+#include <cmath>
+#include <limits>
+
+namespace whilefresh::recognition {
+
+namespace {
+
+constexpr int kMaxCount = 999;
+constexpr int kMaxShelfLifeDays = 3650;
+
+ParseOutcome fail(const QString &detail)
+{
+    return { std::nullopt, makeError(ErrorKind::BadResponse, detail) };
+}
+
+bool isNullLike(const QString &text)
+{
+    static const QSet<QString> kNullLike = { QStringLiteral(""), QStringLiteral("null"),
+                                             QStringLiteral("none"), QStringLiteral("n/a"),
+                                             QStringLiteral("无"), QStringLiteral("-"),
+                                             QStringLiteral("—"), QStringLiteral("未知") };
+    return kNullLike.contains(text.toLower());
+}
+
+// Optional free text; the model's placeholders for "nothing" become empty.
+QString optionalText(const QJsonValue &value)
+{
+    QString text;
+    if (value.isString())
+        text = value.toString().trimmed();
+    else if (value.isDouble())
+        text = QString::number(value.toDouble(), 'g', 12);
+    return isNullLike(text) ? QString() : text;
+}
+
+QString requiredText(const QJsonValue &value)
+{
+    return value.isString() ? value.toString().trimmed() : optionalText(value);
+}
+
+// Out-of-range numbers saturate instead of wrapping, so a huge count stays huge (and is then
+// clamped by the caller) rather than turning into 0 or a negative number.
+std::optional<int> integerOf(const QJsonValue &value)
+{
+    constexpr double kIntMax = std::numeric_limits<int>::max();
+    constexpr double kIntMin = std::numeric_limits<int>::min();
+    if (value.isDouble()) {
+        const double number = value.toDouble();
+        if (!qIsFinite(number))
+            return std::nullopt;
+        return int(qBound(kIntMin, std::round(number), kIntMax));
+    }
+    if (value.isString()) {
+        static const QRegularExpression digits(QStringLiteral("\\d+"));
+        const auto match = digits.match(value.toString());
+        if (match.hasMatch()) {
+            bool ok = false;
+            const qlonglong parsed = match.captured().toLongLong(&ok);
+            return (ok && parsed <= std::numeric_limits<int>::max()) ? int(parsed) : std::numeric_limits<int>::max();
+        }
+    }
+    return std::nullopt;
+}
+
+bool boolOf(const QJsonValue &value, bool fallback)
+{
+    if (value.isBool())
+        return value.toBool();
+    if (value.isDouble())
+        return value.toDouble() != 0;
+    if (value.isString()) {
+        const QString text = value.toString().trimmed().toLower();
+        if (text == QLatin1String("true") || text == QLatin1String("yes") || text == QStringLiteral("是")
+            || text == QLatin1String("1"))
+            return true;
+        if (text == QLatin1String("false") || text == QLatin1String("no") || text == QStringLiteral("否")
+            || text == QLatin1String("0"))
+            return false;
+    }
+    return fallback;
+}
+
+std::optional<int> shelfLifeOf(const QJsonValue &value)
+{
+    const std::optional<int> days = integerOf(value);
+    if (!days || *days <= 0 || *days > kMaxShelfLifeDays)
+        return std::nullopt;
+    return days;
+}
+
+QString canonicalOf(const QString &modelName, const Vocabulary *vocabulary)
+{
+    if (!vocabulary)
+        return modelName.isEmpty() ? uncategorizedName() : modelName;
+    const QString resolved = vocabulary->resolve(modelName);
+    return resolved.isEmpty() ? uncategorizedName() : resolved;
+}
+
+std::optional<RecognizedItem> parseItem(const QJsonValue &value, const Vocabulary *vocabulary)
+{
+    if (!value.isObject())
+        return std::nullopt;
+    const QJsonObject object = value.toObject();
+
+    RecognizedItem item;
+    item.rawName = requiredText(object.value(QStringLiteral("raw_name")));
+    const QString modelName = requiredText(object.value(QStringLiteral("canonical_name")));
+    if (item.rawName.isEmpty() && modelName.isEmpty())
+        return std::nullopt;
+    if (item.rawName.isEmpty())
+        item.rawName = modelName;
+    item.canonicalName = canonicalOf(modelName, vocabulary);
+
+    item.quantityText = optionalText(object.value(QStringLiteral("quantity_text")));
+    item.count = qBound(1, integerOf(object.value(QStringLiteral("count"))).value_or(1), kMaxCount);
+    item.category = itemCategoryFromString(requiredText(object.value(QStringLiteral("category"))))
+                        .value_or(ItemCategory::Food);
+    item.selected = boolOf(object.value(QStringLiteral("selected")), true);
+    item.isGift = boolOf(object.value(QStringLiteral("is_gift")), false);
+    item.productionDateText = optionalText(object.value(QStringLiteral("production_date_text")));
+    item.expiryDateText = optionalText(object.value(QStringLiteral("expiry_date_text")));
+    item.purchaseDateText = optionalText(object.value(QStringLiteral("purchase_date_text")));
+    item.storage = storageKindFromString(requiredText(object.value(QStringLiteral("storage"))))
+                       .value_or(StorageKind::Unknown);
+
+    const QJsonObject shelf = object.value(QStringLiteral("shelf_life_days")).toObject();
+    item.shelfLifeDays.fridge = shelfLifeOf(shelf.value(QStringLiteral("fridge")));
+    item.shelfLifeDays.freezer = shelfLifeOf(shelf.value(QStringLiteral("freezer")));
+    item.shelfLifeDays.room = shelfLifeOf(shelf.value(QStringLiteral("room")));
+
+    // The prompt numbers images from 1.
+    const std::optional<int> imageNumber = integerOf(object.value(QStringLiteral("image_index")));
+    item.imageIndex = (imageNumber && *imageNumber >= 1) ? *imageNumber - 1 : -1;
+    return item;
+}
+
+QString stripCodeFence(QString text)
+{
+    text = text.trimmed();
+    if (text.startsWith(QLatin1String("```"))) {
+        const qsizetype firstNewline = text.indexOf(QLatin1Char('\n'));
+        text = firstNewline < 0 ? QString() : text.mid(firstNewline + 1);
+        const qsizetype lastFence = text.lastIndexOf(QLatin1String("```"));
+        if (lastFence >= 0)
+            text.truncate(lastFence);
+    }
+    return text.trimmed();
+}
+
+// Falls back to the outermost braces when the model added prose around the JSON.
+QJsonDocument parseJsonLoosely(const QString &content)
+{
+    const QString text = stripCodeFence(content);
+    QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8());
+    if (!doc.isNull() && (doc.isObject() || doc.isArray()))
+        return doc;
+
+    const qsizetype open = text.indexOf(QLatin1Char('{'));
+    const qsizetype close = text.lastIndexOf(QLatin1Char('}'));
+    if (open >= 0 && close > open)
+        return QJsonDocument::fromJson(text.mid(open, close - open + 1).toUtf8());
+    return {};
+}
+
+QString itemKey(const RecognizedItem &item)
+{
+    return item.rawName + QLatin1Char('\x1f') + item.quantityText + QLatin1Char('\x1f')
+        + (item.isGift ? QLatin1Char('1') : QLatin1Char('0'));
+}
+
+}
+
+namespace {
+
+RecognitionResult buildResult(const QJsonObject &root, const QJsonArray &items, const Vocabulary *vocabulary,
+                              InputKind kind)
+{
+    RecognitionResult result;
+    for (const QJsonValue &value : items) {
+        if (const auto item = parseItem(value, vocabulary))
+            result.items.append(*item);
+    }
+    result.ignoredSummary = optionalText(root.value(QStringLiteral("ignored_summary")));
+
+    const auto declared = sourceTypeFromString(requiredText(root.value(QStringLiteral("source_type"))));
+    if (declared) {
+        result.sourceType = *declared;
+    } else {
+        switch (kind) {
+        case InputKind::Receipt: result.sourceType = SourceType::Receipt; break;
+        case InputKind::OrderText: result.sourceType = SourceType::Text; break;
+        case InputKind::Screenshot: result.sourceType = SourceType::Other; break;
+        }
+    }
+    return result;
+}
+
+// Index just past the '}' closing the object that opens at `open`, or -1 if it never closes.
+qsizetype objectEnd(const QString &text, qsizetype open)
+{
+    int depth = 0;
+    bool inString = false;
+    for (qsizetype i = open; i < text.size(); ++i) {
+        const QChar c = text.at(i);
+        if (inString) {
+            if (c == QLatin1Char('\\'))
+                ++i;
+            else if (c == QLatin1Char('"'))
+                inString = false;
+        } else if (c == QLatin1Char('"')) {
+            inString = true;
+        } else if (c == QLatin1Char('{')) {
+            ++depth;
+        } else if (c == QLatin1Char('}') && --depth == 0) {
+            return i + 1;
+        }
+    }
+    return -1;
+}
+
+// The items of a reply that was cut off mid-way: every object of the "items" array that
+// arrived complete, in order. The unfinished last one is dropped.
+QJsonArray completeItemsOfCutOffText(const QString &text)
+{
+    QJsonArray items;
+    const qsizetype key = text.indexOf(QLatin1String("\"items\""));
+    if (key < 0)
+        return items;
+    qsizetype i = text.indexOf(QLatin1Char('['), key);
+    if (i < 0)
+        return items;
+    ++i;
+    while (i < text.size()) {
+        const QChar c = text.at(i);
+        if (c.isSpace() || c == QLatin1Char(',')) {
+            ++i;
+        } else if (c == QLatin1Char('{')) {
+            const qsizetype end = objectEnd(text, i);
+            if (end < 0)
+                break;
+            const QJsonDocument doc = QJsonDocument::fromJson(text.mid(i, end - i).toUtf8());
+            if (!doc.isObject())
+                break;
+            items.append(doc.object());
+            i = end;
+        } else {
+            break;
+        }
+    }
+    return items;
+}
+
+}
+
+ParseOutcome parseModelContent(const QString &content, const Vocabulary *vocabulary, InputKind kind)
+{
+    const QJsonDocument doc = parseJsonLoosely(content);
+    if (doc.isNull())
+        return fail(QStringLiteral("model text is not JSON (%1 chars)").arg(content.size()));
+
+    QJsonObject root;
+    QJsonValue itemsValue;
+    if (doc.isArray()) {
+        itemsValue = doc.array();
+    } else {
+        root = doc.object();
+        itemsValue = root.value(QStringLiteral("items"));
+    }
+    if (!itemsValue.isArray())
+        return fail(QStringLiteral("JSON has no \"items\" array"));
+
+    return { buildResult(root, itemsValue.toArray(), vocabulary, kind), {} };
+}
+
+namespace {
+
+ParseOutcome parseCutOffContent(const QString &content, const Vocabulary *vocabulary, InputKind kind)
+{
+    const QString text = stripCodeFence(content);
+    if (text.isEmpty())
+        return fail(QStringLiteral("model reply was cut off before any output (finish_reason=length)"));
+
+    // Cut off exactly at the end: still complete JSON, but unverifiable, so flagged anyway.
+    ParseOutcome whole = parseModelContent(content, vocabulary, kind);
+    if (whole.result) {
+        whole.result->truncated = true;
+        return whole;
+    }
+
+    const QJsonArray items = completeItemsOfCutOffText(text);
+    if (items.isEmpty())
+        return fail(QStringLiteral("model reply was cut off and holds no complete item (finish_reason=length)"));
+
+    static const QRegularExpression sourceType(QStringLiteral("\"source_type\"\\s*:\\s*\"([^\"]*)\""));
+    QJsonObject root;
+    const auto match = sourceType.match(text);
+    if (match.hasMatch())
+        root.insert(QStringLiteral("source_type"), match.captured(1));
+
+    RecognitionResult result = buildResult(root, items, vocabulary, kind);
+    result.truncated = true;
+    return { result, {} };
+}
+
+}
+
+ParseOutcome parseChatCompletion(const QByteArray &body, const Vocabulary *vocabulary, InputKind kind)
+{
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
+    if (!doc.isObject())
+        return fail(QStringLiteral("HTTP body is not a JSON object: %1").arg(parseError.errorString()));
+
+    const QJsonArray choices = doc.object().value(QStringLiteral("choices")).toArray();
+    const QJsonObject choice = choices.isEmpty() ? QJsonObject() : choices.at(0).toObject();
+    const QJsonObject message = choice.value(QStringLiteral("message")).toObject();
+    const QString finishReason = choice.value(QStringLiteral("finish_reason")).toString();
+    if (!message.value(QStringLiteral("content")).isString())
+        return fail(QStringLiteral("response has no message content (finish_reason=%1)").arg(finishReason));
+
+    const QString content = message.value(QStringLiteral("content")).toString();
+    // An empty answer is never "no items": with finish_reason=length it means the output
+    // budget was spent (thinking counts against it), otherwise the reply is unusable.
+    ParseOutcome outcome = finishReason == QLatin1String("length") ? parseCutOffContent(content, vocabulary, kind)
+                                                                   : parseModelContent(content, vocabulary, kind);
+    if (!outcome.result)
+        return outcome;
+
+    const QJsonObject usage = doc.object().value(QStringLiteral("usage")).toObject();
+    outcome.result->usage.promptTokens = usage.value(QStringLiteral("prompt_tokens")).toInt();
+    outcome.result->usage.completionTokens = usage.value(QStringLiteral("completion_tokens")).toInt();
+    outcome.result->usage.totalTokens = usage.value(QStringLiteral("total_tokens")).toInt();
+    outcome.result->rawResponses.append(body);
+    return outcome;
+}
+
+RecognitionResult mergeResults(const QList<RecognitionResult> &results)
+{
+    RecognitionResult merged;
+    bool sourceTypeSet = false;
+    QStringList summaries;
+
+    for (qsizetype k = 0; k < results.size(); ++k) {
+        const RecognitionResult &part = results.at(k);
+
+        // The image shared with the previous request, if the split ran through one image.
+        int sharedImage = -1;
+        if (k > 0 && !part.batchSpans.isEmpty() && !results.at(k - 1).batchSpans.isEmpty()) {
+            const int previousLast = results.at(k - 1).batchSpans.last().lastImage;
+            if (previousLast >= 0 && part.batchSpans.first().firstImage == previousLast)
+                sharedImage = previousLast;
+        }
+        const auto fromSharedImage = [&](const RecognizedItem &item) {
+            return item.imageIndex == -1 || item.imageIndex == sharedImage;
+        };
+        QSet<QString> previousKeys;
+        if (sharedImage >= 0) {
+            for (const RecognizedItem &item : results.at(k - 1).items) {
+                if (fromSharedImage(item))
+                    previousKeys.insert(itemKey(item));
+            }
+        }
+
+        for (const RecognizedItem &item : part.items) {
+            if (sharedImage >= 0 && fromSharedImage(item) && previousKeys.contains(itemKey(item)))
+                continue;
+            merged.items.append(item);
+        }
+
+        if (!sourceTypeSet || (merged.sourceType == SourceType::Other && part.sourceType != SourceType::Other)) {
+            merged.sourceType = part.sourceType;
+            sourceTypeSet = true;
+        }
+        if (!part.ignoredSummary.isEmpty() && !summaries.contains(part.ignoredSummary))
+            summaries.append(part.ignoredSummary);
+
+        merged.rawResponses.append(part.rawResponses);
+        merged.batchSpans.append(part.batchSpans);
+        merged.usage.promptTokens += part.usage.promptTokens;
+        merged.usage.completionTokens += part.usage.completionTokens;
+        merged.usage.totalTokens += part.usage.totalTokens;
+        merged.isDemo = merged.isDemo || part.isDemo;
+        merged.truncated = merged.truncated || part.truncated;
+    }
+    merged.ignoredSummary = summaries.join(QStringLiteral("；"));
+    return merged;
+}
+
+}
