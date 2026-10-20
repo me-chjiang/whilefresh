@@ -1,6 +1,10 @@
 #include "recognition/recognition-types.h"
 
+#include "recognition/recognition-log.h"
+
 namespace whilefresh::recognition {
+
+Q_LOGGING_CATEGORY(lcRecognition, "whilefresh.recognition")
 
 namespace {
 

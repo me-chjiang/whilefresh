@@ -5,6 +5,7 @@
 
 #include "recognition-test-support.h"
 
+#include <QRegularExpression>
 #include <QSignalSpy>
 #include <QTemporaryDir>
 #include <QTest>
@@ -38,6 +39,7 @@ private slots:
     void vocabularyLoadsFromJson()
     {
         QString error;
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("vocabulary: ignored 2 entries"));
         const auto vocabulary = Vocabulary::fromJson(
             R"({"items":[{"name":"鸡蛋","category":"蛋奶","aliases":["土鸡蛋"],"staple":false},
                          {"name":"鸡蛋","category":"x"},

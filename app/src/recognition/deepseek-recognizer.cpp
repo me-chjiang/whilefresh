@@ -1,6 +1,7 @@
 #include "recognition/deepseek-recognizer.h"
 
 #include "recognition/api-key.h"
+#include "recognition/recognition-log.h"
 #include "recognition/request-builder.h"
 #include "recognition/response-parser.h"
 
@@ -14,8 +15,6 @@
 #include <QTimer>
 
 namespace whilefresh::recognition {
-
-Q_LOGGING_CATEGORY(lcRecognition, "whilefresh.recognition")
 
 namespace {
 

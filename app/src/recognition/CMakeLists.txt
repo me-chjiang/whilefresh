@@ -7,6 +7,7 @@ add_library(whilefresh-recognition STATIC
     image-preprocessor.cpp
     image-preprocessor.h
     prompt-templates.h
+    recognition-log.h
     recognition-service.h
     recognition-types.cpp
     recognition-types.h
