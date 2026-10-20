@@ -9,6 +9,8 @@ from pathlib import Path
 
 from .fetch import COMMIT, REPO_URL, FetchError, default_cache_dir, ensure_snapshot
 from .parse import parse_recipe
+from ..vocabulary.mapping import MissingMapping, annotate_recipes, load_map
+from ..vocabulary.schema import MAP_PATH
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUT = REPO_ROOT / "app" / "assets" / "data" / "recipes.json"
@@ -33,8 +35,13 @@ def collect_files(dishes_dir: Path) -> list[Path]:
     return sorted(files, key=lambda p: unicodedata.normalize("NFC", p.relative_to(dishes_dir).as_posix()))
 
 
-def build_document(dishes_dir: Path, commit: str = COMMIT):
-    """Return ``(document, report_data)``."""
+def build_document(dishes_dir: Path, commit: str = COMMIT, ingredient_map: dict | None = None):
+    """Return ``(document, report_data)``.
+
+    With ``ingredient_map`` every ingredient also gets ``canonical`` (standard
+    names; ``[]`` for tools and ignored items); a name missing from the map raises
+    ``MissingMapping``.
+    """
     recipes = []
     issues: dict[str, list[str]] = {}
     skipped: list[str] = []
@@ -54,6 +61,8 @@ def build_document(dishes_dir: Path, commit: str = COMMIT):
         recipes.append(record)
     recipes.sort(key=lambda r: r["id"])
     doc = {"source": {**SOURCE, "commit": commit}, "recipes": recipes}
+    if ingredient_map is not None:
+        annotate_recipes(doc, ingredient_map)
     return doc, {"issues": issues, "skipped": skipped}
 
 
@@ -95,6 +104,7 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--cache-dir", type=Path, default=None, help="snapshot cache directory")
     b.add_argument("--out", type=Path, default=DEFAULT_OUT)
     b.add_argument("--report", type=Path, default=DEFAULT_REPORT)
+    b.add_argument("--ingredient-map", type=Path, default=MAP_PATH, help="recipe ingredient -> standard names")
     args = parser.parse_args(argv)
 
     try:
@@ -102,7 +112,11 @@ def main(argv: list[str] | None = None) -> int:
     except FetchError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
-    doc, data = build_document(cache / "dishes")
+    try:
+        doc, data = build_document(cache / "dishes", ingredient_map=load_map(args.ingredient_map))
+    except (MissingMapping, OSError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
         fh.write(dump(doc))
