@@ -1,11 +1,12 @@
-# 趁鲜（UseBy）
+# 趁鲜（WhileFresh）
 
-AI 产品探索与 Landing Project 材料库。产品名「趁鲜」，英文名 UseBy，口号 "Cook before it’s gone."。它是帮助家庭趁食材新鲜时用掉已购食材的单人手机客户端，未来可扩展多人协作。仓库目前包含需求验证、产品定义和 MVP 需求，尚未包含应用实现。
+AI 产品探索与 Landing Project 材料库。产品名「趁鲜」：帮助家庭趁食材新鲜时用掉已购食材的单人手机客户端，未来可扩展多人协作。仓库目前包含需求验证、产品定义和 MVP 需求，尚未包含应用实现。
 
 ## 项目材料
 
 - [考核要求](docs/requirements.md)：Landing Project 任务要求与团队交付预期。
-- [厨房食材消耗助手 PRD v4](docs/prd-v4.md)：当前需求、主要矛盾、首版范围与待验证事项。
+- [趁鲜 PRD v5](docs/prd-v5.md)：当前产品定义，含冰箱视图、保质期与临期、MVP 交付形态。
+- [厨房食材消耗助手 PRD v4](docs/prd-v4.md)：上一版 PRD，作历史参考。
 - [国内菜谱与买菜平台接入调研报告](docs/domestic-recipe-grocery-integration-research.md)：菜谱数据来源、买菜平台订单与清单能力、附近补货可行性及验证计划。
 - [菜谱与买菜接入能力速查](docs/domestic-integration-brief.md)：独立精简核查，列出可调用 API、凭证要求及实际可用状态。
 - [MVP 需求确认稿](docs/mvp/mvp-requirements.md)：Android MVP 的功能范围、对 PRD v4 的修订与验收标准。
