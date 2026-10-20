@@ -20,6 +20,8 @@ lexmount-config.yaml
 # Build output
 build/
 build-*/
+/compile_commands.json
+.cache/
 *.apk
 *.aab
 __pycache__/
