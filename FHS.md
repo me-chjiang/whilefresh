@@ -32,6 +32,7 @@
 ├── tools/                     # Python 离线工具（uv 管理，pytest）
 │   ├── pyproject.toml
 │   ├── whilefresh_tools/      # 包源码：菜谱转换、词表、参考表、合成数据、识别回归
+│   │   └── vocabulary/        # 词表：源数据（vocabulary-source.json、ingredient-map.json，人工维护）与构建 / 校验 / AI 初稿代码
 │   ├── sources/               # 需要存档的第三方原始数据快照及来源说明（如 FoodKeeper）
 │   └── tests/                 # pytest；fixtures/ 放少量第三方原文样例（须许可允许）
 ├── design/                    # HTML 视觉稿与手机尺寸截图
@@ -50,6 +51,7 @@
 - **视图模型** 放 `app/src/ui/`；QML 不写业务逻辑，只做展示和交互。
 - **可复用 QML 组件** 放 `app/qml/components/`，页面放 `app/qml/pages/`，主题常量只在 `app/qml/Theme.qml` 定义。
 - **内置数据** 只能由 `tools/` 生成到 `app/assets/data/`，不手改；生成物与生成脚本同分支提交。
+- **词表源数据**：标准食材词表和菜谱原料映射的人工维护源数据放 `tools/whilefresh_tools/vocabulary/`，`app/assets/data/vocabulary.json` 与 `recipes.json` 的 `canonical` 由它生成。AI 只用于一次性生成初稿，草稿放缓存目录，审阅后才进入源数据；初稿的原始响应不入库。
 - **第三方原始数据**：难以重新获取或需固定版本的放 `tools/sources/<来源>/`，附 `SOURCE.md` 写明网址、版本、获取日期、许可；可按固定 commit 重新下载的（如 HowToCook）不入库，下载到被忽略的缓存目录。
 - **第三方构建依赖**（如 KDAB android_openssl）不入库：由 `scripts/fetch-deps.sh` 按脚本中记录的固定 commit 下载到 `~/.cache/whilefresh/<名称>/`，CMake 通过变量或环境变量引用。
 - **构建时生成的文件**（如含密钥的 `generated/api-config.h`）只写到 `build/<目标>/`；源码目录只放模板（`*.h.in`）。
@@ -76,3 +78,4 @@
 - 2026-10-21 — 注明 `tools/tests/fixtures/` 存放测试用第三方原文样例。
 - 2026-10-20 — 初版：依据 MVP 工程规划建立 `app/`、`tools/`、`design/`、`test-data/`、`scripts/` 的布局与放置规则。
 - 2026-10-21 — T0 工程骨架：新增被忽略的 `build/` 构建目录；规定第三方构建依赖下载到 `~/.cache/whilefresh/`、构建生成文件只写入构建目录。
+- 2026-10-21 — 新增 `tools/whilefresh_tools/vocabulary/`（词表源数据与工具）和 `docs/mvp/notes/`（模块复核记录）；放置规则补充词表源数据。

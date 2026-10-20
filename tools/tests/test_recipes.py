@@ -131,7 +131,13 @@ def test_cli_writes_lf_only(tmp_path, monkeypatch):
     shutil.copytree(DISHES, cache / "dishes")
     (cache / ".complete").write_text("x")
     out = tmp_path / "o.json"
-    assert main(["build", "--cache-dir", str(cache), "--out", str(out), "--report", str(tmp_path / "r.md")]) == 0
+    names = {i["name"] for r in build_document(DISHES)[0]["recipes"] for i in r["ingredients"]}
+    ingredient_map = tmp_path / "map.json"
+    ingredient_map.write_text(json.dumps({"version": 1, "map": {n: [] for n in names}}))
+    vocabulary = tmp_path / "vocabulary.json"
+    vocabulary.write_text(json.dumps({"items": [{"name": "占位", "aliases": []}]}))
+    args = ["build", "--cache-dir", str(cache), "--out", str(out), "--report", str(tmp_path / "r.md")]
+    assert main(args + ["--ingredient-map", str(ingredient_map), "--vocabulary-source", str(vocabulary)]) == 0
     assert b"\r" not in out.read_bytes() and b"\r" not in (tmp_path / "r.md").read_bytes()
 
 
