@@ -75,3 +75,18 @@ build/desktop/whilefresh
 ~/Library/Android/sdk/platform-tools/adb logcat -d | grep 'WhileFresh tls-smoke:'
 # 期望看到：WhileFresh tls-smoke: ok http-status=401
 ```
+
+### 识别层与录制工具
+
+识别层在 `app/src/recognition/`：`RecognitionService` 接口，`DeepSeekRecognizer`（真实服务）、`ReplayRecognizer`（回放录制）、`DemoRecognizer`（演示预置）三种实现。`ctest` 默认全部离线（假服务器 + 合成录制），不计费。
+
+`recognize-cli` 是仅桌面可用的命令行程序，**调用真实 DeepSeek（计费）**，需要带密钥构建，用完建议重新用无密钥方式构建：
+
+```sh
+scripts/build-desktop.sh --with-key
+build/desktop/tools/recognize-cli --vocab test-data/vocabulary/synthetic-vocabulary.json \
+    [--kind screenshot|receipt] [--date YYYY-MM-DD] [--record <文件>] <图片>...
+build/desktop/tools/recognize-cli --vocab <词表> --text <订单文字文件>
+```
+
+只在终端打印结果摘要（耗时、token、商品清单）。`--record` 保存录制（请求摘要 + 原始响应）：合成样本的录制放 `test-data/recordings/`；真实样例（`private/bill/`）的录制只能放 `private/recordings/`，不进仓库。在线识别是手动验证，不属于 ctest。

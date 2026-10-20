@@ -23,11 +23,12 @@
 │   │   └── ui/                # 暴露给 QML 的视图模型
 │   ├── qml/                   # QML 页面与组件；Theme 单例
 │   ├── android/               # AndroidManifest、Java 桥接、res、FileProvider 配置
+│   ├── tools/                 # 仅桌面可用的 C++ 开发工具（如 recognize-cli 真实识别与录制），不进 ctest、不进 APK
 │   ├── assets/
 │   │   ├── data/              # 内置只读数据（由 tools/ 生成并提交）：菜谱、词表、参考表
 │   │   ├── icons/             # Tabler 线条 SVG（附许可文件）
 │   │   ├── textures/          # 纸纹等拟物质感素材
-│   │   └── demo/              # 演示模式的合成截图与对应识别结果
+│   │   └── demo/              # 演示模式的合成截图与对应识别结果（<输入类型>.json，录制格式，嵌入 qrc）
 │   └── tests/                 # Qt Test 单元 / 集成测试
 ├── tools/                     # Python 离线工具（uv 管理，pytest）
 │   ├── pyproject.toml
@@ -36,16 +37,19 @@
 │   └── tests/                 # pytest；fixtures/ 放少量第三方原文样例（须许可允许）
 ├── design/                    # HTML 视觉稿与手机尺寸截图
 ├── test-data/                 # 合成样本（PNG / 文本）、标准答案 JSON、合成样本的 DeepSeek 录制回放
+│   ├── recordings/            # 识别录制（请求摘要 + 原始响应），仅限合成数据
+│   └── vocabulary/            # 测试用合成词表（正式词表见 app/assets/data/）
 ├── scripts/                   # 构建、安装、取密钥、模拟器启动等 shell 脚本
 ├── build/                     # 不进 Git：构建产物，按目标分子目录（desktop、android-x86_64、android-arm64-v8a）
-└── private/                   # 不进 Git：个人资料、真实测试样例（bill/）、真实样例的识别录制
+└── private/                   # 不进 Git：个人资料、真实测试样例（bill/）、真实样例的识别录制（recordings/）
 ```
 
 ## Placement rules
 
 - **业务规则**（新鲜度、来源优先级、匹配、常备规则）放 `app/src/core/`，不得依赖 QtGui / QtQuick / 网络，以便桌面上直接单测。
 - **持久化与 SQL** 只在 `app/src/data/`；数据库结构变更必须新增迁移，不改旧迁移。
-- **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口；换服务商只新增实现，不改调用方。
+- **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口（`RecognitionService`）；换服务商只新增实现，不改调用方。提示词文本集中在 `prompt-templates.h`，改动含义时同步改 `kPromptVersion`。
+- **桌面开发工具**（需要真实密钥或只在桌面有意义的命令行程序）放 `app/tools/`，仅在非 Android 构建中编译，不注册 ctest。
 - **Android 专有代码**：Java 放 `app/android/src/`，C++ 侧 JNI 胶水放 `app/src/platform/android/`；桌面替代实现放 `app/src/platform/desktop/`。
 - **视图模型** 放 `app/src/ui/`；QML 不写业务逻辑，只做展示和交互。
 - **可复用 QML 组件** 放 `app/qml/components/`，页面放 `app/qml/pages/`，主题常量只在 `app/qml/Theme.qml` 定义。
@@ -53,7 +57,7 @@
 - **第三方原始数据**：难以重新获取或需固定版本的放 `tools/sources/<来源>/`，附 `SOURCE.md` 写明网址、版本、获取日期、许可；可按固定 commit 重新下载的（如 HowToCook）不入库，下载到被忽略的缓存目录。
 - **第三方构建依赖**（如 KDAB android_openssl）不入库：由 `scripts/fetch-deps.sh` 按脚本中记录的固定 commit 下载到 `~/.cache/whilefresh/<名称>/`，CMake 通过变量或环境变量引用。
 - **构建时生成的文件**（如含密钥的 `generated/api-config.h`）只写到 `build/<目标>/`；源码目录只放模板（`*.h.in`）。
-- **测试样本**：合成样本及其标准答案、录制回放放 `test-data/`；真实样例及其识别录制只放 `private/`，任何内容都不得复制进仓库。
+- **测试样本**：合成样本及其标准答案、录制回放放 `test-data/`；真实样例及其识别录制只放 `private/`（录制放 `private/recordings/`），任何内容都不得复制进仓库。
 - **视觉稿** 放 `design/<版本或主题>/`，截图与 HTML 同目录。
 - **一次性探针或实验脚本** 放 `/tmp`，不进仓库；确需保留的转成 `tools/` 或 `scripts/` 中的正式工具。
 - **文档**：产品文档放 `docs/`，MVP 循环文档放 `docs/mvp/`；复杂模块的 `IMPLEMENTATION_NOTE` 写成 `docs/mvp/notes/<模块>.md`。
@@ -76,3 +80,4 @@
 - 2026-10-21 — 注明 `tools/tests/fixtures/` 存放测试用第三方原文样例。
 - 2026-10-20 — 初版：依据 MVP 工程规划建立 `app/`、`tools/`、`design/`、`test-data/`、`scripts/` 的布局与放置规则。
 - 2026-10-21 — T0 工程骨架：新增被忽略的 `build/` 构建目录；规定第三方构建依赖下载到 `~/.cache/whilefresh/`、构建生成文件只写入构建目录。
+- 2026-10-21 — 增加 `app/tools/`（桌面开发工具）、`test-data/recordings/`、`test-data/vocabulary/`、`private/recordings/`，并约定识别提示词与录制格式的放置（T6）。
