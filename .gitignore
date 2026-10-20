@@ -29,3 +29,8 @@ __pycache__/
 
 # Agent worktrees
 /.claude/worktrees/
+
+# Python / tools
+/tools/reports/
+.pytest_cache/
+*.egg-info/
