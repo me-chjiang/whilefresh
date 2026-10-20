@@ -24,3 +24,8 @@ build-*/
 *.aab
 __pycache__/
 .venv/
+
+# Python / tools
+/tools/reports/
+.pytest_cache/
+*.egg-info/
