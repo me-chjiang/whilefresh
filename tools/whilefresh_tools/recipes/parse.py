@@ -37,19 +37,29 @@ TOOL_CONTAINS = (
 )
 # Single characters that mark a tool when they end the name (e.g. 砂锅, 利口酒杯).
 TOOL_SUFFIX = "锅刀铲勺杯碗盘碟盆板筷叉笼箱炉机器秤签纸膜筛网袋瓶盒巾布刷盖具计壶罐杖模灶煲匙瓢锤称夹"
-# Names that end with a tool suffix but are food.
-TOOL_EXCLUDE = frozenset()
+# Foods whose names contain a tool keyword or end with a tool suffix.
+TOOL_EXCLUDE = (
+    "昆布", "糯米纸", "鱼板", "韭菜盒", "藕盒", "茄盒", "菜盒", "肉盒", "蛋盒",
+)
 
 _INGREDIENT_WORDS = ("原料", "食材", "配料", "材料", "调料", "调味", "主料", "辅料", "腌料", "馅料", "酱料", "香料")
 _TOOL_WORDS = ("工具", "用具", "器具", "设备", "厨具")
 
-_IMG_RE = re.compile(r"!\[[^\]]*\]\((?:[^()]|\([^()]*\))*\)")
+_IMG_RE = re.compile(
+    r"!\[[^\]]*\]\((?:[^()]|\([^()]*\))*\)"  # inline ![alt](src)
+    r"|!\[[^\]]*\]\[[^\]]*\]"  # reference ![alt][label]
+    r"|<img\b[^>]*>",
+    re.I,
+)
+_IMG_REF_RE = re.compile(r"!\[([^\]]*)\]\[([^\]]*)\]")
+_REF_DEF_RE = re.compile(r"^\s{0,3}\[([^\]]+)\]:\s*\S+")
 _LINK_RE = re.compile(r"\[([^\]]*)\]\((?:[^()]|\([^()]*\))*\)")
 _BRACKET_RE = re.compile(r"[（(][^（）()]*[）)]|【[^】]*】|\[[^\]]*\]")
 _BOILERPLATE_RE = re.compile(r"如果您遵循本指南的制作流程")
-_BULLET_RE = re.compile(r"^[-*+]\s+(.*)$")
+_BULLET_RE = re.compile(r"^(?:[-*+]|\d+[.、)])\s+(.*)$")
+_EMPTY_MARKER_RE = re.compile(r"^(?:>\s*)+$|^[-*+]$")
 _EXACT_HEADERS = frozenset(_INGREDIENT_WORDS + _TOOL_WORDS)
-_FENCE_RE = re.compile(r"^\s*```")
+_FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
 
 
 def category_zh(category: str) -> str:
@@ -69,8 +79,16 @@ def source_url(rel_path: str, commit: str = COMMIT) -> str:
 
 
 def _strip_images(lines: list[str]) -> list[str]:
+    used = {
+        (label or alt).strip().casefold()
+        for line in lines
+        for alt, label in _IMG_REF_RE.findall(line)
+    }
     out = []
     for line in lines:
+        m = _REF_DEF_RE.match(line)
+        if m and m.group(1).strip().casefold() in used:
+            continue
         cleaned = _IMG_RE.sub("", line)
         if cleaned != line and cleaned.strip() in ("", ">"):
             continue
@@ -113,7 +131,7 @@ def _split_items(lines: list[str]) -> list[str]:
             if is_fence:
                 in_fence = False
             continue
-        if not line.strip():
+        if not line.strip() or _EMPTY_MARKER_RE.match(line.strip()):
             continue
         indented = line[0] in " \t"
         if indented and items:
@@ -125,15 +143,16 @@ def _split_items(lines: list[str]) -> list[str]:
     return ["\n".join(item).rstrip() for item in items]
 
 
-def _split_top_level(text: str, sep: str) -> list[str]:
-    """Split on ``sep`` outside brackets."""
+def _split_top_level(text: str, seps: str) -> list[str]:
+    """Split on any character of ``seps`` outside brackets (not on 1,000)."""
     parts, depth, buf = [], 0, []
-    for ch in text:
+    for i, ch in enumerate(text):
         if ch in "（([【":
             depth += 1
         elif ch in "）)]】":
             depth = max(0, depth - 1)
-        if ch == sep and depth == 0:
+        thousands = ch == "," and text[i - 1 : i].isdigit() and text[i + 1 : i + 2].isdigit()
+        if ch in seps and depth == 0 and not thousands:
             parts.append("".join(buf))
             buf = []
         else:
@@ -147,6 +166,8 @@ def clean_name(raw: str) -> str:
     text = _LINK_RE.sub(r"\1", raw)
     text = re.sub(r"\*\*|__|`", "", text)
     text = _BRACKET_RE.sub("", text)
+    text = re.sub(r"[（(【\[].*$", "", text)  # unclosed opening bracket drops the rest
+    text = re.sub(r"[）)】\]]", "", text)
     text = text.replace("*", "")
     text = re.sub(r"^\s*可选\s*[：:]?", "", text)
     text = text.replace("可选", "")
@@ -154,10 +175,17 @@ def clean_name(raw: str) -> str:
     return text.strip(" \t，,；;：:。.")
 
 
+_QTY_TAIL_RE = re.compile(r"\s*(?:[\d.]+|[一二三四五六七八九十两])\s*[个只盒袋包瓶双把张块片根套副口]?\s*$")
+
+
 def _is_tool_name(name: str) -> bool:
+    """True when any ``或`` / ``/`` alternative is a tool and none is a known food."""
+    name = _QTY_TAIL_RE.sub("", name)
     for piece in re.split(r"[+、，,或/]", name):
         piece = piece.strip()
-        if not piece or piece in TOOL_EXCLUDE:
+        if not piece:
+            continue
+        if any(food in piece for food in TOOL_EXCLUDE):
             continue
         if any(k in piece for k in TOOL_CONTAINS) or piece[-1] in TOOL_SUFFIX:
             return True
@@ -192,6 +220,32 @@ def _bullet_is_header(body: str) -> tuple[str | None, bool] | None:
     return _group_header(plain) if core in _EXACT_HEADERS else None
 
 
+MAX_NAME_LEN = 22
+_FRAGMENT_RE = re.compile(r"^(?:需|其中|也可以|能够|例如|可以|建议|比如)")
+
+
+def _split_body(body: str) -> list[str]:
+    """Split one bullet into candidate items on ``、``, ``，``, ``；`` and ``+``.
+
+    Comma and plus splits are skipped when they would cut a sentence into
+    fragments or separate a quantity (``清水 720g + 600g``).
+    """
+    out: list[str] = []
+    for piece in _split_top_level(body, "、"):
+        parts = _split_top_level(piece, "，,；;")
+        if len(parts) < 2 or re.search(r"[：:]", piece) or not all(
+            len(clean_name(p)) <= 12 and not _FRAGMENT_RE.match(p) for p in parts
+        ):
+            parts = [piece]
+        for part in parts:
+            plus = _split_top_level(part, "+")
+            if len(plus) > 1 and not any(re.match(r"[\d.]", p) for p in plus):
+                out.extend(plus)
+            else:
+                out.append(part)
+    return out
+
+
 def _parse_ingredients(lines: list[str], quantity_names: list[str]):
     items: list[dict] = []
     notes: list[str] = []
@@ -201,7 +255,7 @@ def _parse_ingredients(lines: list[str], quantity_names: list[str]):
         if _FENCE_RE.match(line):
             continue
         text = line.strip()
-        if not text or set(text) <= {"-", "*", "_", " "} and not _BULLET_RE.match(text):
+        if not text or (set(text) <= {"-", "*", "_", " "} and not _BULLET_RE.match(text)):
             continue
         text = re.sub(r"^>\s*", "", text)
         m = _BULLET_RE.match(text)
@@ -217,13 +271,24 @@ def _parse_ingredients(lines: list[str], quantity_names: list[str]):
         if header is not None:
             ctx_kind, ctx_optional = header
             continue
-        if ctx_kind == "skip" or re.match(r"^注[：:意]", body):
+        if (
+            ctx_kind == "skip"
+            or re.match(r"^注[：:意]", body)
+            or re.search(r"[！!。？]", _BRACKET_RE.sub("", body).rstrip("。."))
+        ):
             notes.append(_plain(body))
             continue
-        for raw in _split_top_level(body, "、"):
+        prefix = ""
+        if mp := re.match(r"^可选\s*[：:]\s*", body):
+            prefix, body = mp.group(0), body[mp.end() :]
+        for piece in _split_body(body):
+            raw = prefix + piece
             name = clean_name(raw) or raw
             if ctx_kind == "tool" or _is_tool_name(name):
                 kind = "tool"
+            elif len(name) > MAX_NAME_LEN and not re.search(r"\d", name):
+                notes.append(_plain(raw))
+                continue
             elif ctx_kind == "ingredient" or _in_quantities(name, quantity_names):
                 kind = "ingredient"
             else:
@@ -232,7 +297,7 @@ def _parse_ingredients(lines: list[str], quantity_names: list[str]):
                 {
                     "raw": raw,
                     "name": name,
-                    "optional": ctx_optional or "可选" in raw,
+                    "optional": ctx_optional or bool(prefix) or "可选" in raw,
                     "kind": kind,
                 }
             )

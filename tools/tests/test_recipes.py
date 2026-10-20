@@ -1,12 +1,13 @@
 import json
+import shutil
 import unicodedata
 from pathlib import Path
 
 import pytest
 
-from whilefresh_tools.recipes.build import build_document, collect_files, dump, format_report
+from whilefresh_tools.recipes.build import build_document, collect_files, dump, format_report, main
 from whilefresh_tools.recipes.fetch import COMMIT
-from whilefresh_tools.recipes.parse import parse_recipe, recipe_id, source_url
+from whilefresh_tools.recipes.parse import clean_name, parse_recipe, recipe_id, source_url
 
 DISHES = Path(__file__).parent / "fixtures" / "dishes"
 
@@ -103,12 +104,113 @@ def test_id_and_url_normalise_unicode():
     assert source_url("a/b c#d.md").endswith("/dishes/a/b%20c%23d.md")
 
 
-def test_output_deterministic():
-    a = dump(build_document(DISHES)[0])
-    b = dump(build_document(DISHES)[0])
-    assert a == b
-    assert a.endswith("\n") and "西红柿炒鸡蛋" in a  # ensure_ascii=False
-    assert json.loads(a)["recipes"][0]["time_minutes"] is None
+def test_output_independent_of_filesystem_order(tmp_path, monkeypatch):
+    # Copy the fixtures under NFD-named directories, then feed the files in
+    # shuffled order: the output must still be NFC-named and sorted by id.
+    for src in DISHES.rglob("*.md"):
+        rel = unicodedata.normalize("NFD", src.relative_to(DISHES).as_posix())
+        dst = tmp_path / "dishes" / rel
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.write_bytes(src.read_bytes())
+    dishes = tmp_path / "dishes"
+    baseline = dump(build_document(dishes)[0])
+
+    real_rglob = Path.rglob
+    monkeypatch.setattr(Path, "rglob", lambda self, pat: list(reversed(sorted(real_rglob(self, pat)))))
+    shuffled = dump(build_document(dishes)[0])
+
+    assert shuffled == baseline
+    ids = [r["id"] for r in json.loads(baseline)["recipes"]]
+    assert ids == sorted(ids) and all(unicodedata.is_normalized("NFC", i) for i in ids)
+    assert baseline.endswith("\n") and "西红柿炒鸡蛋" in baseline  # ensure_ascii=False
+    assert json.loads(baseline)["recipes"][0]["time_minutes"] is None
+
+
+def test_cli_writes_lf_only(tmp_path, monkeypatch):
+    cache = tmp_path / "c"
+    shutil.copytree(DISHES, cache / "dishes")
+    (cache / ".complete").write_text("x")
+    out = tmp_path / "o.json"
+    assert main(["build", "--cache-dir", str(cache), "--out", str(out), "--report", str(tmp_path / "r.md")]) == 0
+    assert b"\r" not in out.read_bytes() and b"\r" not in (tmp_path / "r.md").read_bytes()
+
+
+def _ingredients(*bullets, steps="1. 做"):
+    text = "# 测试的做法\n\n## 必备原料和工具\n\n" + "\n".join(bullets) + f"\n\n## 操作\n\n{steps}\n"
+    record, _ = parse_recipe(text, "staple/测试.md")
+    return record
+
+
+def _kinds(record):
+    return {i["raw"]: i["kind"] for i in record["ingredients"]}
+
+
+@pytest.mark.parametrize("food", ["昆布", "韭菜盒子", "藕盒", "茄盒", "糯米纸", "鱼板"])
+def test_foods_with_tool_like_names_are_not_tools(food):
+    assert _kinds(_ingredients(f"- {food}"))[food] != "tool"
+
+
+@pytest.mark.parametrize("tool", ["烤箱", "铲子", "保鲜盒", "筷子一双", "隔热手套 1 双", "砂锅或高压锅"])
+def test_real_tools_still_detected(tool):
+    assert _kinds(_ingredients(f"- {tool}"))[tool] == "tool"
+
+
+def test_mixed_item_is_judged_per_part():
+    k = _kinds(_ingredients("- 油 + 锅 + 菜刀 + 铲子", "- 网购蛋挞液 1 盒，蛋挞皮 1 盒", "- 清水 720g + 600g"))
+    assert k["油"] != "tool" and k["锅"] == k["菜刀"] == k["铲子"] == "tool"
+    assert "tool" not in (k["网购蛋挞液 1 盒"], k["蛋挞皮 1 盒"])
+    assert "清水 720g + 600g" in k  # quantity sum is not split
+
+
+def test_descriptive_text_goes_to_notes_not_ingredients():
+    r = _ingredients("- 盐", "- 炒糖色过程火不要太大！！！电磁炉温度不够，火候过了发苦", "- 这是一段非常非常长的说明文字用来描述怎么选择合适的食材")
+    assert [i["name"] for i in r["ingredients"]] == ["盐"]
+    assert len(r["ingredient_notes"]) == 2
+
+
+def test_prefix_optional_applies_to_every_split_piece():
+    r = _ingredients("- 可选：盐、糖", "- 柱候酱，叉烧酱（可选），蚝油")
+    opt = {i["name"]: i["optional"] for i in r["ingredients"]}
+    assert opt == {"盐": True, "糖": True, "柱候酱": False, "叉烧酱": True, "蚝油": False}
+
+
+def test_ordered_list_ingredients_are_items():
+    r = _ingredients("1. 鸡蛋", "2、 西红柿", "3) 盐")
+    assert [i["name"] for i in r["ingredients"]] == ["鸡蛋", "西红柿", "盐"]
+    assert r["ingredient_notes"] == []
+
+
+def test_unclosed_bracket_is_dropped():
+    assert clean_name("糖（可选") == "糖"
+    assert clean_name("炒锅一个(锅太小难炒") == "炒锅一个"
+    assert clean_name("盐）") == "盐"
+    assert _ingredients("- 糖（可选")["ingredients"][0]["optional"] is True
+
+
+def test_html_and_reference_images_and_empty_markers_removed():
+    steps = "\n".join(
+        [
+            "1. 切菜",
+            '   <img src="./a.png" width="200">',
+            "2. 炒菜 ![炒][pic] 好了",
+            "![炒][pic]",
+            ">",
+            "-",
+            "> 注意火候",
+            "",
+            "[pic]: ./pic.png",
+            "[keep]: https://example.com",
+        ]
+    )
+    r = _ingredients("- 盐", steps=steps)
+    assert r["steps"] == ["1. 切菜", "2. 炒菜  好了", "> 注意火候", "[keep]: https://example.com"]
+    assert "pic.png" not in json.dumps(r) and "<img" not in json.dumps(r)
+
+
+def test_tilde_fence_hides_headings():
+    steps = "1. 做法\n~~~\n## 不是标题\n~~~\n2. 完成"
+    r = _ingredients("- 盐", steps=steps)
+    assert r["steps"][1] == "~~~\n## 不是标题\n~~~" and len(r["steps"]) == 3
 
 
 def test_report_sections(doc):
