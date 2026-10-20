@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the camera's output directory is shared, and only for the duration of one capture. -->
+<paths>
+    <files-path name="captures" path="captures/" />
+</paths>

@@ -121,3 +121,29 @@ build/desktop/tools/recognize-cli --vocab <词表> --text <订单文字文件>
 ```
 
 只在终端打印结果摘要（耗时、token、商品清单；回复被截断时有警告）。默认保持 deepseek-flash 的思考开启（已验证的识别效果基于此），`--no-thinking` 用于对比。`--record` 保存录制（请求摘要 + 原始响应，文件权限 0600）：仓库内除 `private/` 外的路径会被拒绝；合成样本的录制先写到仓库外（如 `/tmp`），确认不含真实数据后再复制到 `test-data/recordings/`；真实样例（`private/bill/`）的录制只能放 `private/recordings/`，不进仓库。在线识别是手动验证，不属于 ctest。
+
+### Android 导入调试
+
+Debug 构建的"我的"页有调试区：选图、拍小票、分享测试文字、复制测试文字，并显示最近一次收到的导入摘要。每次导入在日志中打一行，前缀固定为 `WhileFresh import:`（只含类型、来源、数量和日期来源，不含文字内容）。设计与已知限制见 [docs/mvp/notes/android-integration.md](docs/mvp/notes/android-integration.md)。
+
+```sh
+adb=~/Library/Android/sdk/platform-tools/adb
+act=io.github.mechjiang.whilefresh/.WhileFreshActivity
+
+# 放一张自己生成的图片到相册并让 MediaStore 收录，查出其 _id
+$adb push synthetic.png /sdcard/Pictures/synthetic.png
+$adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/synthetic.png
+$adb shell content query --uri content://media/external/images/media --projection _id:_display_name:datetaken:date_added
+
+# 分享图片（先 am force-stop 包名即测冷启动）。-d 传同一 URI，--grant-read-uri-permission 才会授权
+uri=content://media/external/images/media/<_id>
+$adb shell am start -a android.intent.action.SEND -t image/png --grant-read-uri-permission -d $uri --eu android.intent.extra.STREAM $uri -n $act
+
+# 分享文字
+$adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'订单：西红柿 500g'" -n $act
+
+$adb logcat -d | grep 'WhileFresh import:'
+# 期望：WhileFresh import: kind=images origin=share count=1 capturedAtSource=media-added
+```
+
+`am` 不能传 `Uri` 列表；`ACTION_SEND_MULTIPLE` 用系统"文件"App 多选后分享到"趁鲜"来测。

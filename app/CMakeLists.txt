@@ -39,19 +39,24 @@ qt_add_qml_module(whilefresh
     VERSION 1.0
     QML_FILES
         qml/Main.qml
+        qml/components/ImportDebugPanel.qml
 )
 
 target_link_libraries(whilefresh PRIVATE
     whilefresh-ui
     whilefresh-recognition
     whilefresh-data
+    whilefresh-platform
     Qt6::Gui
     Qt6::Qml
     Qt6::Quick
     Qt6::QuickControls2
 )
 
-target_compile_definitions(whilefresh PRIVATE $<$<CONFIG:Debug>:WHILEFRESH_TLS_SMOKE>)
+target_compile_definitions(whilefresh PRIVATE
+    $<$<CONFIG:Debug>:WHILEFRESH_TLS_SMOKE>
+    $<$<CONFIG:Debug>:WHILEFRESH_DEBUG_TOOLS>
+)
 
 if(ANDROID)
     set_target_properties(whilefresh PROPERTIES

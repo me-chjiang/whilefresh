@@ -1,12 +1,15 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import WhileFresh
 
 // Placeholder shell from T0. Real pages and Theme.qml arrive in T8.
 ApplicationWindow {
     id: window
 
     required property QtObject appInfo
+    required property QtObject platform
+    required property bool debugTools
 
     readonly property var tabTitles: [qsTr("冰箱"), qsTr("菜谱"), qsTr("清冰箱"), qsTr("待买"), qsTr("我的")]
     readonly property int centerTab: 2
@@ -41,6 +44,18 @@ ApplicationWindow {
             visible: window.currentTab === 4
             text: window.appInfo.recognitionConfigured ? qsTr("识别服务：已配置") : qsTr("识别服务：未配置")
             color: "#6b6b6b"
+        }
+
+        // Created at startup, not on first visit, so it also records shares that cold-start the app.
+        Loader {
+            Layout.alignment: Qt.AlignHCenter
+            Layout.topMargin: 24
+            active: window.debugTools
+            visible: window.currentTab === 4
+
+            sourceComponent: ImportDebugPanel {
+                platform: window.platform
+            }
         }
     }
 

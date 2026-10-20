@@ -13,23 +13,26 @@
 ├── .agents/skills/            # 项目级 skill 实体；.claude/skills/ 为同名符号链接
 ├── docs/                      # 产品与研究文档（PRD、调研）
 │   └── mvp/                   # MVP 循环文档：需求、规划、cycle-state、交付报告
+│       └── notes/             # 复杂模块的实现说明（如 android-integration.md）
 ├── app/                       # Qt 6 CMake 工程（Android APK + macOS 桌面开发版）
 │   ├── CMakeLists.txt
 │   ├── src/
 │   │   ├── core/              # 领域逻辑，只依赖 QtCore：食材、日期、新鲜度、来源链、规则、匹配
 │   │   ├── data/              # SQLite 存储、迁移、内置只读数据加载
 │   │   ├── recognition/       # 识别接口与实现（DeepSeek、回放、演示）、切片、解析、去重
-│   │   ├── platform/          # 平台适配的 C++ 侧（分享、相机、文件、剪贴板）；桌面替代实现
+│   │   ├── platform/          # 平台适配的 C++ 侧（分享、相机、文件、剪贴板）、导入载荷与日期来源
+│   │   │   ├── android/       # JNI 胶水（只在 Android 构建中编译）
+│   │   │   └── desktop/       # 桌面替代实现（文件对话框、剪贴板）
 │   │   └── ui/                # 暴露给 QML 的视图模型
 │   ├── qml/                   # QML 页面与组件；Theme 单例
-│   ├── android/               # AndroidManifest、Java 桥接、res、FileProvider 配置
+│   ├── android/               # AndroidManifest、Java 桥接（src/io/github/mechjiang/whilefresh/）、res（xml/ 为 FileProvider 路径）
 │   ├── tools/                 # 仅桌面可用的 C++ 开发工具（如 recognize-cli 真实识别与录制），不进 ctest、不进 APK
 │   ├── assets/
 │   │   ├── data/              # 内置只读数据（由 tools/ 生成并提交）：菜谱、词表、参考表
 │   │   ├── icons/             # Tabler 线条 SVG（附许可文件）
 │   │   ├── textures/          # 纸纹等拟物质感素材
 │   │   └── demo/              # 演示模式的合成截图与对应识别结果（<输入类型>.json，录制格式，嵌入 qrc）
-│   └── tests/                 # Qt Test 单元 / 集成测试
+│   └── tests/                 # Qt Test 单元 / 集成测试，按被测层分子目录（core/、platform/ …）
 ├── tools/                     # Python 离线工具（uv 管理，pytest）
 │   ├── pyproject.toml
 │   ├── whilefresh_tools/      # 包源码：菜谱转换、词表、参考表、合成数据、识别回归
@@ -51,7 +54,7 @@
 - **持久化与 SQL** 只在 `app/src/data/`；数据库结构变更必须新增迁移，不改旧迁移。
 - **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口（`RecognitionService`）；换服务商只新增实现，不改调用方。提示词文本集中在 `prompt-templates.h`，改动含义时同步改 `kPromptVersion`。
 - **桌面开发工具**（需要真实密钥或只在桌面有意义的命令行程序）放 `app/tools/`，仅在非 Android 构建中编译，不注册 ctest。
-- **Android 专有代码**：Java 放 `app/android/src/`，C++ 侧 JNI 胶水放 `app/src/platform/android/`；桌面替代实现放 `app/src/platform/desktop/`。
+- **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口；换服务商只新增实现，不改调用方。
 - **视图模型** 放 `app/src/ui/`；QML 不写业务逻辑，只做展示和交互。
 - **可复用 QML 组件** 放 `app/qml/components/`，页面放 `app/qml/pages/`，主题常量只在 `app/qml/Theme.qml` 定义。
 - **内置数据** 只能由 `tools/` 生成到 `app/assets/data/`，不手改；生成物与生成脚本同分支提交。
@@ -84,3 +87,4 @@
 - 2026-10-21 — T0 工程骨架：新增被忽略的 `build/` 构建目录；规定第三方构建依赖下载到 `~/.cache/whilefresh/`、构建生成文件只写入构建目录。
 - 2026-10-21 — 新增 `tools/whilefresh_tools/vocabulary/`（词表源数据与工具）和 `docs/mvp/notes/`（模块复核记录）；放置规则补充词表源数据。
 - 2026-10-21 — 增加 `app/tools/`（桌面开发工具）、`test-data/recordings/`、`test-data/vocabulary/`、`private/recordings/`，并约定识别提示词与录制格式的放置（T6）。
+- 2026-10-21 — T9 Android 桥接：细化 `app/src/platform/`（`android/`、`desktop/` 与根目录的分工）、`app/android/` 的 Java 包路径与 `res/xml/`、`app/tests/` 按层分子目录；新增 `docs/mvp/notes/` 存放实现说明。

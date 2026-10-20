@@ -1,0 +1,46 @@
+#pragma once
+
+#include "platform/captured-at.h"
+#include "platform/import-payload.h"
+
+#include <QDateTime>
+#include <QString>
+
+#include <optional>
+
+namespace whilefresh::platform {
+
+// A copied image waiting for its final name, e.g. imports/<uuid>.part written by the Java bridge.
+struct StagedImage
+{
+    QString path;
+    QString mimeType;    // may be empty or a wildcard such as "image/*"
+    QString displayName; // only used to guess the extension, never as a path
+    ImageDateHints hints;
+};
+
+// Per-import limits; WhileFreshBridge.java enforces the same numbers on Android.
+constexpr int maxImagesPerImport = 30;
+constexpr qint64 maxImageBytes = 50LL * 1024 * 1024;
+constexpr qint64 maxImportBytes = 200LL * 1024 * 1024;
+
+// Lower-case extension without the dot. MIME type wins over the display name; "img" if neither helps.
+QString imageExtension(const QString &mimeType, const QString &displayName);
+// Concrete MIME type for a known image extension, otherwise empty.
+QString imageMimeType(const QString &extension);
+
+// <AppDataLocation>/imports, created on demand. On Android this is files/imports.
+QString importsDirectory();
+
+// Deletes a staged file, but only if it lies directly in `importsDir`; returns whether it did.
+bool discardStagedFile(const QString &path, const QString &importsDir);
+
+// Deletes *.part files in `dir` last modified more than 24 hours before `now`: copies abandoned
+// by a crash or a provider read that timed out. Returns the number removed.
+int removeStalePartFiles(const QString &dir, const QDateTime &now);
+
+// Renames the staged file to <same dir>/<base name>.<ext> and resolves its date.
+std::optional<ImportedImage> finalizeStagedImage(const StagedImage &staged, const QDateTime &now,
+                                                 QString *error);
+
+}
