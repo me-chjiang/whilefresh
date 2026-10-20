@@ -61,6 +61,14 @@ def make_report(vocab_doc, recipes_doc, shelf_doc, map_doc, products, sample: in
         name = f"{label}（{code}）" if code else label
         out.append(f"| {name} | {total} | {direct} | {_pct(direct, total)} | {fallback} | {_pct(fallback, total)} |")
 
+    weighted = [(counts[n], bool(covering_ancestor(n, by_name, covered))) for n, it in by_name.items() if not it["pantry_default"]]
+    total_uses = sum(c for c, _ in weighted)
+    covered_uses = sum(c for c, ok in weighted if ok)
+    out += [
+        "",
+        f"按菜谱用料出现次数加权（不含默认常备项，回退后）：{covered_uses} / {total_uses}，{_pct(covered_uses, total_uses)}。",
+    ]
+
     only_fallback = sorted(n for n in by_name if n not in covered and covering_ancestor(n, by_name, covered))
     out += ["", f"仅靠 parent 回退才有参考值的标准名 {len(only_fallback)} 个：" + "、".join(f"{n}→{covering_ancestor(n, by_name, covered)}" for n in only_fallback), ""]
 
