@@ -20,15 +20,12 @@ struct DateParse {
     QString text;
 };
 
-// Year-less dates always resolve to the latest occurrence not after the photo day.
-// Direction is retained for call-site clarity; it never invents a future year.
-enum class DateDirection { Past, Future };
-
+// Year-less dates resolve to the latest occurrence not after the photo day.
 // `baseDate` is the day the photo was taken (relative words refer to it); invalid when unknown.
 // Understands 今天/今日/昨天/昨日/前天/大前天/明天/后天/大后天, "N天前", full dates
 // (2026-10-18, 2026/10/18, 2026.10.18, 2026年10月18日, 20261018) and month-day forms
 // (10月18日, 10/18, 10-18, 10.18). Surrounding words such as "生产" or "到期" are ignored.
-DateParse parseDateText(const QString &text, const QDate &baseDate, DateDirection direction);
+DateParse parseDateText(const QString &text, const QDate &baseDate);
 
 // A labelled shelf life such as "保质期180天", "保质期12个月", "保质期1年"; months count as 30
 // days and years as 365. Empty when the text holds no such label.

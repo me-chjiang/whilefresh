@@ -418,6 +418,14 @@ bool Store::saveImportProducts(qint64 id, const QList<QPair<QString, QString>> &
 
 bool Store::discardImportFiles(const QStringList &paths)
 {
+    const QString directory = QDir(m_importsDirectory).canonicalPath();
+    if (directory.isEmpty())
+        return false;
+    for (const auto &path : paths) {
+        const QFileInfo file(path);
+        if (file.absoluteDir().canonicalPath() != directory || file.isSymLink())
+            return false;
+    }
     if (!transaction())
         return false;
     bool ok = true;

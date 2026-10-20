@@ -23,3 +23,4 @@ target_link_libraries(import-payload-test PRIVATE whilefresh-platform)
 whilefresh_add_test(platform-services-test platform/platform-services-test.cpp)
 target_link_libraries(platform-services-test PRIVATE whilefresh-platform)
 
+add_subdirectory(ui)

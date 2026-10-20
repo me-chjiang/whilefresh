@@ -16,12 +16,11 @@ DateParse parsed(const QString &text, const QDate &date)
     return { DateParse::Status::Parsed, date, text };
 }
 
-// A month-day in the year closest to `base` in the given direction; Feb 29 skips to a leap year.
-QDate resolveMonthDay(int month, int day, const QDate &base, DateDirection direction)
+// Feb 29 may need more than one year of fallback.
+QDate resolveMonthDay(int month, int day, const QDate &base)
 {
     if (month < 1 || month > 12 || day < 1 || day > 31)
         return {};
-    Q_UNUSED(direction);
     const int step = -1;
     QDate candidate(base.year(), month, day);
     if (candidate.isValid()) {
@@ -39,7 +38,7 @@ QDate resolveMonthDay(int month, int day, const QDate &base, DateDirection direc
 
 }
 
-DateParse parseDateText(const QString &text, const QDate &baseDate, DateDirection direction)
+DateParse parseDateText(const QString &text, const QDate &baseDate)
 {
     const QString original = text.trimmed();
     if (original.isEmpty())
@@ -64,7 +63,7 @@ DateParse parseDateText(const QString &text, const QDate &baseDate, DateDirectio
         if (!baseDate.isValid())
             return { DateParse::Status::NeedsBaseDate, {}, original };
         return parsed(original, resolveMonthDay(match.captured(1).toInt(), match.captured(2).toInt(),
-                                                baseDate, direction));
+                                                baseDate));
     }
 
     static const QRegularExpression daysAgo(QStringLiteral("(\\d{1,3})\\s*天前"));
