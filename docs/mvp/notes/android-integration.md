@@ -16,7 +16,7 @@ C++ 侧唯一入口是 `whilefresh::platform::PlatformServices`（`app/src/platf
 | `importCancelled(Origin)` | 用户取消选图或拍照；不是错误 |
 | `importFailed(Origin, message)` | 导入失败；`message` 为面向用户的中文短句，不含文件名或文本内容 |
 
-每次主动请求（选图、拍照）恰好产生上述三个信号之一；部分图片失败时先发 `importReceived`（成功的部分），再发 `importFailed`。来自其他 App 的分享不经请求，直接以 `origin = Share` 到达。
+每次请求至少产生一个终态信号（`importReceived` / `importCancelled` / `importFailed`）；部分图片失败时先发 `importReceived`（成功的部分），再发 `importFailed`。选图或拍照尚未结束时再次请求，直接得到 `importFailed`"正在处理上一次导入"（选择显式失败而不是静默忽略，界面不必猜测按钮为何无反应）。来自其他 App 的分享不经请求，直接以 `origin = Share` 到达。Java 桥接消息若格式异常（解析在 C++ 中严格校验字段类型），同样发 `importFailed`"导入数据异常"，并删除消息中位于 `files/imports/` 下的文件。
 
 载荷（`app/src/platform/import-payload.h`，`Q_GADGET`，QML 可读属性）：
 
@@ -35,10 +35,15 @@ T6 可直接把 `localPath` 交给识别；T8 在 `app/src/ui/` 中包一层视�
 
 ## 文件
 
-- 复制：`ContentResolver.openInputStream` → `files/imports/<uuid>.part`，64 KB 缓冲，超过 50 MB 中止并删除半成品。复制后用 `BitmapFactory` 只解码尺寸，不是图片的拒绝。
+- 复制：`ContentResolver.openInputStream` → `files/imports/<uuid>.part`，64 KB 缓冲。复制后用 `BitmapFactory` 只解码尺寸，不是图片的拒绝；MIME 为空或通配时以解码结果为准（相机照片同样按内容判断，HEIC 不会被标成 JPEG）。
+- 上限：单张 50 MB、单次最多 30 张、单次合计 200 MB，超出的部分逐项计入失败；分享文字超过 20000 字直接失败（"文字过长"）。桌面替代实现使用同样的数字（`import-files.h`）。
+- 超时：每个 URI 的读取在独立线程中进行，60 秒未完成即放弃并记为失败；卡住的线程之后若重新写出 `.part`，由下面的启动清理删除。
 - 命名：C++ `finalizeStagedImage` 按 MIME（其次按显示名后缀）推断扩展名，把 `.part` 改名为 `<uuid>.<ext>`；MIME 为空或 `image/*` 时按扩展名补全。显示名只用于取后缀，从不参与路径。
 - 相机：照片先写到 `files/captures/<uuid>.jpg`（FileProvider 只暴露这个目录），返回后立即移到 `files/imports/`；每次拍照前清空 `captures/` 中的残留。
-- 安全：只接受 `content://`；拒绝 `file://` 和本应用自身 authority 的 URI，防止恶意分享让 App 读出自己的私有文件再上传。
+- 安全：只接受 `content://`；拒绝 `file://`；authority 必须与 host 完全一致（`content://0@<authority>/` 这类带 userinfo 的多用户写法、带端口的写法一律拒绝），再用 `PackageManager.resolveContentProvider(host)` 查 provider 所属包，属于本包即拒绝，防止恶意分享让 App 读出自己的私有文件再上传。
+- 相机授权：只授予 WRITE（照片经文件路径读回，不需要 READ）；拍照返回、取消、拉起失败时都 `revokeUriPermission`。
+- 清理：`PlatformServices` 构造时（App 启动）删除 `files/imports/` 中超过 24 小时的 `*.part`。正式导入文件（`<uuid>.<ext>`）的删除责任在入库流程（T5 / T8）：用户确认入库或放弃后删除，平台层不自动删除。
+- 日志：Java 异常只记录异常类名，不打印堆栈和 URI；C++ 日志不含文字内容和文件路径。
 
 ## 图片日期
 
@@ -63,7 +68,7 @@ Java 只收集原始线索，C++ `resolveCapturedAt`（`app/src/platform/capture
 - 从"文件"App（DocumentsUI）分享时 URI 属于 ExternalStorageProvider，只有 `last_modified`，来源为 `file-modified`。无存储权限，不能换成 MediaStore URI 查询。
 - `adb shell am start` 无法构造 `Uri` 列表，`ACTION_SEND_MULTIPLE` 需通过真实 App（如"文件"）分享来测；单图分享需同时用 `-d` 传同一 URI，`--grant-read-uri-permission` 才会授权。
 - 分享同时带图片和文字时只取图片（`text/*` 类型除外）。
-- `files/imports/` 中的文件不会自动清理，由后续识别 / 入库流程在用完后删除。
 - `allowBackup="false"` 只关闭云备份；Android 12+ 的设备间迁移（D2D）不受影响，如需排除另配 `dataExtractionRules`。
-- 每张图上限 50 MB，不做压缩或缩放；识别前是否需要缩图由 T6 决定。
+- 不做压缩或缩放；识别前是否需要缩图由 T6 决定。
+- 读取超时只能放弃等待，无法强制结束阻塞在 provider 中的线程。
 - 桌面替代实现读不到 EXIF，选图时使用文件修改时间；"拍照"退化为选一个文件，日期按当前时间（与 Android 相机一致）。
