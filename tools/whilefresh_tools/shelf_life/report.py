@@ -100,6 +100,15 @@ def make_report(vocab_doc, recipes_doc, shelf_doc, map_doc, products, sample: in
         cells = [str(it[k]) if it[k] is not None else "-" for k in ("fridge_days", "freezer_days", "room_days")]
         out.append(f"| {n} | {label} | {cells[0]} | {cells[1]} | {cells[2]} | {basis} |")
 
+    overrides = [(n, e) for n, e in sorted(map_doc["map"].items()) if e.get("override")]
+    out += ["", f"### 人工修正值（{len(overrides)} 个标准名）", "", "| 标准名 | 修正的存放方式与天数 | 理由 |", "| --- | --- | --- |"]
+    for n, e in overrides:
+        values = "、".join(f"{m} {d}" for m, d in e["override"].items())
+        out.append(f"| {n} | {values} | {e['reason']} |")
+
+    ripe = sorted(n for n, it in shelf_doc["items"].items() if any(c.endswith("(ripe)") for c in it["basis"].values()))
+    out += ["", f"### 仅适用于成熟果的冷藏值（{len(ripe)} 个）", "", "、".join(ripe) if ripe else "无。"]
+
     warnings = shelf_life_warnings(shelf_doc, map_doc)
     out += ["", "### 校验警告", ""]
     out += [f"- {w}" for w in warnings] if warnings else ["无。"]
