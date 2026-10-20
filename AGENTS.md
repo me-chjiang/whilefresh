@@ -49,6 +49,11 @@ Skill 实际文件保存在 `.agents/skills/`，`.claude/skills/` 通过同名�
 
 ## 开发与验证
 
-- 当前仓库以产品和研究文档为主，尚未建立应用技术栈、构建命令或测试约定。
-- 引入代码或工具链时，先在 README 中记录用途、运行方式和验证命令，再按实际技术栈补充本节。
+- 应用技术栈：Qt 6.8.2（Qt Quick/QML + C++17）、CMake + Ninja，工程在 `app/`；同一工程构建 macOS 桌面开发版和 Android APK（x86_64、arm64-v8a）。命令见 README「开发环境与命令」。
+- 必须使用 `~/Qt/6.8.2/<套件>/bin/qt-cmake`（脚本已处理）；PATH 中的 `qmake`/`qtpaths` 来自 Anaconda，不要使用。
+- 构建一律通过 `scripts/` 中的脚本，产物在被忽略的 `build/<目标>/`；第三方依赖由 `scripts/fetch-deps.sh` 下载到 `~/.cache/whilefresh/` 并固定 commit，不放进仓库。
+- 分层依赖：`core` 只链接 Qt::Core（CMake 中有检查）；`data`、`recognition`、`platform` 依赖 `core`；`ui` 依赖以上各层；QML 只做展示。
+- 测试：Qt Test + CTest，仅桌面构建。改动 C++ 后至少运行 `scripts/build-desktop.sh` 与 `ctest --test-dir build/desktop --output-on-failure`。
+- 密钥：只由构建脚本从钥匙串读取并生成到构建目录的 `generated/api-config.h`；脚本不得打印密钥或开启 `set -x`。提交前用 `rg -uu -e 'sk-[0-9a-f]{32}' --glob '!build/**' .` 确认无密钥。
+- 新增代码或工具链时，先在 README 中记录用途、运行方式和验证命令，再补充本节。
 - 执行验证前遵循用户当次要求；如未要求测试，不擅自运行会产生大量文件或访问外部服务的操作。

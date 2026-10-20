@@ -1,6 +1,6 @@
 # 趁鲜（WhileFresh）
 
-AI 产品探索与 Landing Project 材料库。产品名「趁鲜」：帮助家庭趁食材新鲜时用掉已购食材的单人手机客户端，未来可扩展多人协作。仓库目前包含需求验证、产品定义和 MVP 需求，尚未包含应用实现。
+AI 产品探索与 Landing Project 材料库。产品名「趁鲜」：帮助家庭趁食材新鲜时用掉已购食材的单人手机客户端，未来可扩展多人协作。仓库包含需求验证、产品定义、MVP 需求，以及 `app/` 下开发中的 Qt 应用（目前为工程骨架）。
 
 ## 项目材料
 
@@ -20,3 +20,51 @@ Codex 从 `.agents/skills/` 加载项目级 skill。Claude Code 的 `.claude/ski
 
 - [loop-dev-cycle](.agents/skills/loop-dev-cycle/SKILL.md)：软件工程循环。
 - [lexmount-fetch](.agents/skills/lexmount-fetch/SKILL.md)：使用 Lexmount 抓取网页；脚本位于同目录的 `fetch.mjs`，运行条件见 skill 文件。
+
+## 开发环境与命令
+
+`app/` 是 Qt 6 CMake 工程，同一套源码构建 macOS 桌面开发版（日常开发与单元测试）和 Android APK（验收）。目录规则见 [FHS.md](FHS.md)。
+
+### 前置条件
+
+- macOS（已验证 12.7 Intel x86_64），cmake、ninja、git。
+- Qt 6.8.2 安装在 `~/Qt/6.8.2/`，含 `macos`、`android_x86_64`、`android_arm64_v8a` 套件。脚本显式调用其中的 `qt-cmake`，不依赖 PATH 中的 `qmake`/`qtpaths`。
+- Android SDK `~/Library/Android/sdk`：platform android-34、build-tools 34.0.0、NDK 26.1.10909125、platform-tools、emulator；AVD `fm_api34`（x86_64，API 34）。
+- JDK 17。首次 Android 构建时 Gradle 会下载依赖到 `~/.gradle`。
+- 路径可用环境变量覆盖：`WHILEFRESH_QT_ROOT`、`ANDROID_SDK_ROOT`、`ANDROID_NDK_ROOT`、`JAVA_HOME`、`WHILEFRESH_CACHE_DIR`、`WHILEFRESH_AVD`（见 `scripts/env.sh`）。
+
+### 命令
+
+| 用途 | 命令 |
+| --- | --- |
+| 下载第三方依赖（KDAB android_openssl，固定 commit，存到 `~/.cache/whilefresh/`） | `scripts/fetch-deps.sh` |
+| 构建桌面版（Debug；`--with-key` 注入密钥，`--release` 构建 Release） | `scripts/build-desktop.sh` |
+| 运行桌面版 | `build/desktop/whilefresh` |
+| 单元测试 | `ctest --test-dir build/desktop --output-on-failure` |
+| 构建 Android APK（debug 签名；`--no-key` 不注入密钥） | `scripts/build-android.sh x86_64` 或 `scripts/build-android.sh arm64-v8a` |
+| 启动模拟器并等待开机（`--headless` 无窗口） | `scripts/run-emulator.sh --headless` |
+| 安装并启动 APK（ABI 默认取设备主 ABI；多设备时设 `ANDROID_SERIAL`） | `scripts/install-android.sh` |
+| 关闭模拟器 | `~/Library/Android/sdk/platform-tools/adb emu kill` |
+
+APK 输出为 `build/android-<abi>/whilefresh-<abi>-debug.apk`。编辑器诊断用的 `compile_commands.json` 生成在各构建目录下（如 `build/desktop/compile_commands.json`）。
+
+### 密钥注入
+
+`scripts/build-android.sh` 从 macOS 钥匙串读取服务名为 `landing-project-deepseek` 的密钥，通过环境变量交给 CMake，生成到构建目录的 `generated/api-config.h`，源码目录和 `CMakeCache.txt` 中都不出现。钥匙串中没有该条目时照常构建，App 显示"识别服务：未配置"。添加密钥：
+
+```sh
+security add-generic-password -s landing-project-deepseek -a "$USER" -w   # 按提示输入，不要写在命令行里
+```
+
+### 验证 HTTPS
+
+Debug 构建启动时会对 `https://api.deepseek.com/models` 发一次不带密钥的 GET（不计费），收到任何 HTTP 状态码（预期 401）即说明 TLS 正常。日志前缀固定为 `WhileFresh tls-smoke:`。
+
+```sh
+# 桌面版：日志直接输出到终端
+build/desktop/whilefresh
+
+# Android：安装启动后查看 logcat
+~/Library/Android/sdk/platform-tools/adb logcat -d | grep 'WhileFresh tls-smoke:'
+# 期望看到：WhileFresh tls-smoke: ok http-status=401
+```
