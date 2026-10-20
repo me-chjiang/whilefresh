@@ -1,11 +1,23 @@
 add_library(whilefresh-recognition STATIC
     api-key.cpp
     api-key.h
+    image-preprocessor.cpp
+    image-preprocessor.h
+    prompt-templates.h
+    recognition-types.cpp
+    recognition-types.h
+    request-builder.cpp
+    request-builder.h
+    response-parser.cpp
+    response-parser.h
     tls-smoke.cpp
     tls-smoke.h
+    vocabulary.cpp
+    vocabulary.h
 )
 
-target_link_libraries(whilefresh-recognition PUBLIC whilefresh-core Qt6::Network)
+target_link_libraries(whilefresh-recognition PUBLIC whilefresh-core Qt6::Gui Qt6::Network)
+
 
 # ADR-5: the key comes from the environment (scripts read it from the macOS keychain) and is
 # written only into the build tree. It is deliberately not a cache variable, so it never lands
