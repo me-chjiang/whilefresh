@@ -75,3 +75,18 @@ build/desktop/whilefresh
 ~/Library/Android/sdk/platform-tools/adb logcat -d | grep 'WhileFresh tls-smoke:'
 # 期望看到：WhileFresh tls-smoke: ok http-status=401
 ```
+
+### 离线数据工具（Python）
+
+`tools/` 是用 uv 管理的 Python 工具包，用于生成随 App 内置的只读数据（输出到 `app/assets/data/`，生成物需提交）。
+
+```bash
+# 生成菜谱数据：下载固定版本的 HowToCook 到 ~/.cache/whilefresh/howtocook/，输出 app/assets/data/recipes.json
+uv run --project tools python -m whilefresh_tools.recipes build
+
+# 运行工具测试
+uv run --project tools pytest
+```
+
+- 同一版本的输入，两次生成的 `recipes.json` 应逐字节一致；改动解析规则后需重新生成并一起提交。
+- 下载失败时可设置 `WHILEFRESH_CACHE` 指定缓存目录，或把同版本源码压缩包手动放到 `<缓存目录>/snapshot.tar.gz`。

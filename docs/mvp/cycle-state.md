@@ -75,6 +75,9 @@ Phase 2：执行。当前里程碑 M1（T0 工程骨架、T1 菜谱数据、T4 �
 | 2026-10-21 | 主仓库 `.gitignore` 忽略 `/.claude/worktrees/` | 子代理 worktree 不应进入版本库 | 删除该行 |
 | 2026-10-21 | 合并 `feat/visual-drafts`（T4）到本地 main（`9f788b5`）。仅含 `design/` 下 HTML、截图、Tabler 图标（附 MIT 许可）和 README 设计参数表；未做 Sonnet 代码审查，因内容是视觉稿而非随 App 发布的代码 | 主会话已审查范围、署名、密钥、许可；B 方向用户已选定 | `git revert -m 1 9f788b5` |
 | 2026-10-21 | 合并 `feat/app-skeleton`（T0）到本地 main（`8e8f5cd`）。经 Sonnet 审查（可合并，5 条低严重度建议已修）；合并后在 main 上桌面构建与 ctest 通过 | Android 双 ABI 构建、模拟器 HTTPS（401）、密钥只进构建目录均已验证 | `git revert -m 1 8e8f5cd` |
+| 2026-10-21 | 合并 `feat/recipe-data`（T1）到本地 main（`edaa7fb`），解决 `.gitignore` 冲突。Sonnet 审查后修复 7 项（下载与解压加固、工具误判、可选标记、有序列表、图片剥离、括号、换行一致性），pytest 41/41，两次生成逐字节一致 | 372 份菜谱忠实抽取，标准名留给 T2 | `git revert -m 1 edaa7fb` |
+| 2026-10-21 | 提前启动 T9（Android 集成，Opus）与 T6（识别层，Sonnet），不等 M1 全部完成 | T9 只依赖 T0；T6 把词表作为输入参数，可先用合成词表开发，T2 完成后对接 | 按里程碑顺序等待 |
+| 2026-10-21 | 允许 T6 用 `private/bill/` 样例做 1 次真实 DeepSeek 调用验证端到端；录制只能存 `private/recordings/`，不进仓库 | 用户已同意计费并指定 `private/bill/` 用于测试 | — |
 
 ## 偏差日志
 
