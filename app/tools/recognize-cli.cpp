@@ -6,7 +6,8 @@
 //
 // Calls the real DeepSeek API (billed) with the key compiled in by
 // `scripts/build-desktop.sh --with-key`, prints a summary of the parsed result, and can save a
-// recording. Recordings of real material belong in private/recordings/, never in the repository.
+// recording. Recordings of real material belong in private/recordings/, never in the repository;
+// --record refuses any other path inside the repository.
 
 #include "recognition/api-key.h"
 #include "recognition/deepseek-recognizer.h"
@@ -138,6 +139,14 @@ int main(int argc, char *argv[])
             err() << "error: give image files or --text\n";
             return 2;
         }
+    }
+
+    if (parser.isSet(QStringLiteral("record"))
+        && !isRecordingPathAllowed(parser.value(QStringLiteral("record")),
+                                   QString::fromLatin1(WHILEFRESH_REPO_ROOTS).split(QLatin1Char('|')))) {
+        err() << "error: refusing to record inside the repository; use a path outside it or under private/ "
+                 "(and its directory must exist)\n";
+        return 2;
     }
 
     if (!isDeepSeekApiKeyConfigured()) {
