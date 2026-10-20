@@ -132,6 +132,16 @@ private slots:
         QTest::newRow("unknown event") << QByteArray(R"({"event":"ping","origin":"share"})");
         QTest::newRow("unknown kind") << QByteArray(R"({"event":"import","origin":"share","kind":"video"})");
         QTest::newRow("image without path") << QByteArray(R"({"event":"import","origin":"share","kind":"images","images":[{}]})");
+        QTest::newRow("images not an array") << QByteArray(R"({"event":"import","origin":"share","kind":"images","images":{}})");
+        QTest::newRow("images missing") << QByteArray(R"({"event":"import","origin":"share","kind":"images"})");
+        QTest::newRow("image entry not an object") << QByteArray(R"({"event":"import","origin":"share","kind":"images","images":["/a.part"]})");
+        QTest::newRow("path is a number") << QByteArray(R"({"event":"import","origin":"share","kind":"images","images":[{"path":5}]})");
+        QTest::newRow("mimeType is a number") << QByteArray(R"({"event":"import","origin":"share","kind":"images","images":[{"path":"/a.part","mimeType":5}]})");
+        QTest::newRow("date is a string") << QByteArray(R"({"event":"import","origin":"share","kind":"images","images":[{"path":"/a.part","mediaDateTakenMs":"1792051200000"}]})");
+        QTest::newRow("text is a number") << QByteArray(R"({"event":"import","origin":"share","kind":"text","text":5})");
+        QTest::newRow("failures not an array") << QByteArray(R"({"event":"import","origin":"share","kind":"images","images":[],"failures":"x"})");
+        QTest::newRow("failure entry not a string") << QByteArray(R"({"event":"import","origin":"share","kind":"images","images":[],"failures":[1]})");
+        QTest::newRow("failure message not a string") << QByteArray(R"({"event":"failed","origin":"camera","message":{}})");
     }
 
     void rejectsMalformedMessages()
@@ -140,6 +150,40 @@ private slots:
         QString error;
         QVERIFY(!parseBridgeEvent(json, &error).has_value());
         QVERIFY(!error.isEmpty());
+    }
+
+    void discardsOnlyFilesInsideImportsDirectory()
+    {
+        QTemporaryDir imports;
+        QTemporaryDir elsewhere;
+        const QString inside = writeFile(imports, QStringLiteral("a.part"), QByteArray("x"));
+        const QString outside = writeFile(elsewhere, QStringLiteral("b.part"), QByteArray("x"));
+        QVERIFY(!discardStagedFile(outside, imports.path()));
+        QVERIFY(QFileInfo::exists(outside));
+        QVERIFY(!discardStagedFile(imports.filePath(QStringLiteral("../x.part")), imports.path()));
+        QVERIFY(discardStagedFile(inside, imports.path()));
+        QVERIFY(!QFileInfo::exists(inside));
+    }
+
+    void removesOnlyStalePartFiles()
+    {
+        QTemporaryDir dir;
+        const QDateTime now = QDateTime::currentDateTime();
+        const auto age = [](const QString &path, const QDateTime &when) {
+            QFile file(path);
+            return file.open(QIODevice::ReadWrite) && file.setFileTime(when, QFileDevice::FileModificationTime);
+        };
+        const QString stale = writeFile(dir, QStringLiteral("stale.part"), QByteArray("x"));
+        const QString fresh = writeFile(dir, QStringLiteral("fresh.part"), QByteArray("x"));
+        const QString oldImport = writeFile(dir, QStringLiteral("old.png"), QByteArray("x"));
+        QVERIFY(age(stale, now.addSecs(-25 * 3600)));
+        QVERIFY(age(fresh, now.addSecs(-23 * 3600)));
+        QVERIFY(age(oldImport, now.addDays(-3)));
+
+        QCOMPARE(removeStalePartFiles(dir.path(), now), 1);
+        QVERIFY(!QFileInfo::exists(stale));
+        QVERIFY(QFileInfo::exists(fresh));
+        QVERIFY(QFileInfo::exists(oldImport));
     }
 
     void logLineOmitsTextAndPaths()

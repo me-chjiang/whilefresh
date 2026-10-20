@@ -8,10 +8,46 @@ namespace whilefresh::platform {
 
 namespace {
 
-qint64 optionalMs(const QJsonObject &object, const char *key)
+// Optional string field: absent is fine, any other type is a protocol error.
+bool readString(const QJsonObject &object, const char *key, QString *out)
 {
     const QJsonValue value = object.value(QLatin1String(key));
-    return value.isDouble() ? value.toInteger(-1) : -1;
+    if (value.isUndefined())
+        return true;
+    if (!value.isString())
+        return false;
+    *out = value.toString();
+    return true;
+}
+
+bool readMs(const QJsonObject &object, const char *key, qint64 *out)
+{
+    const QJsonValue value = object.value(QLatin1String(key));
+    if (value.isUndefined())
+        return true;
+    if (!value.isDouble())
+        return false;
+    *out = value.toInteger(-1);
+    return true;
+}
+
+bool readImage(const QJsonValue &value, StagedImage *image)
+{
+    if (!value.isObject())
+        return false;
+    const QJsonObject item = value.toObject();
+    const QJsonValue path = item.value(QLatin1String("path"));
+    if (!path.isString() || path.toString().isEmpty())
+        return false;
+    image->path = path.toString();
+    return readString(item, "mimeType", &image->mimeType)
+            && readString(item, "displayName", &image->displayName)
+            && readString(item, "exifDateTimeOriginal", &image->hints.exifDateTimeOriginal)
+            && readString(item, "exifOffsetTimeOriginal", &image->hints.exifOffsetTimeOriginal)
+            && readMs(item, "cameraCaptureMs", &image->hints.cameraCaptureMs)
+            && readMs(item, "mediaDateTakenMs", &image->hints.mediaDateTakenMs)
+            && readMs(item, "mediaDateAddedMs", &image->hints.mediaDateAddedMs)
+            && readMs(item, "fileModifiedMs", &image->hints.fileModifiedMs);
 }
 
 }
@@ -42,7 +78,10 @@ std::optional<BridgeEvent> parseBridgeEvent(const QByteArray &json, QString *err
     }
     if (type == QLatin1String("failed")) {
         event.type = BridgeEvent::Type::Failed;
-        event.message = object.value(QLatin1String("message")).toString();
+        if (!readString(object, "message", &event.message)) {
+            *error = QStringLiteral("bridge failure message is not a string");
+            return std::nullopt;
+        }
         return event;
     }
     if (type != QLatin1String("import")) {
@@ -51,13 +90,30 @@ std::optional<BridgeEvent> parseBridgeEvent(const QByteArray &json, QString *err
     }
 
     event.type = BridgeEvent::Type::Import;
-    for (const QJsonValue &failure : object.value(QLatin1String("failures")).toArray())
-        event.failures << failure.toString();
+    const QJsonValue failures = object.value(QLatin1String("failures"));
+    if (!failures.isUndefined()) {
+        if (!failures.isArray()) {
+            *error = QStringLiteral("bridge failures is not an array");
+            return std::nullopt;
+        }
+        for (const QJsonValue &failure : failures.toArray()) {
+            if (!failure.isString()) {
+                *error = QStringLiteral("bridge failure entry is not a string");
+                return std::nullopt;
+            }
+            event.failures << failure.toString();
+        }
+    }
 
     const QString kind = object.value(QLatin1String("kind")).toString();
     if (kind == QLatin1String("text")) {
         event.kind = ImportPayload::Kind::Text;
-        event.text = object.value(QLatin1String("text")).toString();
+        const QJsonValue text = object.value(QLatin1String("text"));
+        if (!text.isString()) {
+            *error = QStringLiteral("bridge text is not a string");
+            return std::nullopt;
+        }
+        event.text = text.toString();
         return event;
     }
     if (kind != QLatin1String("images")) {
@@ -66,25 +122,34 @@ std::optional<BridgeEvent> parseBridgeEvent(const QByteArray &json, QString *err
     }
 
     event.kind = ImportPayload::Kind::Images;
-    for (const QJsonValue &value : object.value(QLatin1String("images")).toArray()) {
-        const QJsonObject item = value.toObject();
+    const QJsonValue images = object.value(QLatin1String("images"));
+    if (!images.isArray()) {
+        *error = QStringLiteral("bridge images is not an array");
+        return std::nullopt;
+    }
+    for (const QJsonValue &value : images.toArray()) {
         StagedImage image;
-        image.path = item.value(QLatin1String("path")).toString();
-        if (image.path.isEmpty()) {
-            *error = QStringLiteral("bridge image without a path");
+        if (!readImage(value, &image)) {
+            *error = QStringLiteral("bridge image entry is malformed");
             return std::nullopt;
         }
-        image.mimeType = item.value(QLatin1String("mimeType")).toString();
-        image.displayName = item.value(QLatin1String("displayName")).toString();
-        image.hints.exifDateTimeOriginal = item.value(QLatin1String("exifDateTimeOriginal")).toString();
-        image.hints.exifOffsetTimeOriginal = item.value(QLatin1String("exifOffsetTimeOriginal")).toString();
-        image.hints.cameraCaptureMs = optionalMs(item, "cameraCaptureMs");
-        image.hints.mediaDateTakenMs = optionalMs(item, "mediaDateTakenMs");
-        image.hints.mediaDateAddedMs = optionalMs(item, "mediaDateAddedMs");
-        image.hints.fileModifiedMs = optionalMs(item, "fileModifiedMs");
         event.images << image;
     }
     return event;
+}
+
+BridgeLeftovers bridgeLeftovers(const QByteArray &json)
+{
+    BridgeLeftovers leftovers;
+    const QJsonObject object = QJsonDocument::fromJson(json).object();
+    if (const auto origin = originFromName(object.value(QLatin1String("origin")).toString()))
+        leftovers.origin = *origin;
+    for (const QJsonValue &value : object.value(QLatin1String("images")).toArray()) {
+        const QString path = value.toObject().value(QLatin1String("path")).toString();
+        if (!path.isEmpty())
+            leftovers.stagedPaths << path;
+    }
+    return leftovers;
 }
 
 }

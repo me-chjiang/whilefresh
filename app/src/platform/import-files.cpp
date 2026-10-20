@@ -60,6 +60,27 @@ QString importsDirectory()
     return dir;
 }
 
+bool discardStagedFile(const QString &path, const QString &importsDir)
+{
+    const QFileInfo file(path);
+    const QString dir = QFileInfo(importsDir).canonicalFilePath();
+    if (dir.isEmpty() || !file.isFile() || file.canonicalPath() != dir)
+        return false;
+    return QFile::remove(file.filePath());
+}
+
+int removeStalePartFiles(const QString &dir, const QDateTime &now)
+{
+    int removed = 0;
+    const QDateTime cutoff = now.addSecs(-24 * 3600);
+    const QFileInfoList parts = QDir(dir).entryInfoList({ QStringLiteral("*.part") }, QDir::Files);
+    for (const QFileInfo &part : parts) {
+        if (part.lastModified() < cutoff && QFile::remove(part.filePath()))
+            ++removed;
+    }
+    return removed;
+}
+
 std::optional<ImportedImage> finalizeStagedImage(const StagedImage &staged, const QDateTime &now,
                                                  QString *error)
 {

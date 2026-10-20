@@ -54,8 +54,20 @@ void DesktopPlatformServices::importFromFileDialog(ImportPayload::Origin origin)
     const QMimeDatabase mimeDatabase;
     QList<StagedImage> staged;
     QStringList failures;
-    for (const QString &path : paths) {
-        const QFileInfo source(path);
+    qint64 budget = maxImportBytes;
+    for (int i = 0; i < paths.size(); ++i) {
+        const QFileInfo source(paths[i]);
+        if (i >= maxImagesPerImport) {
+            failures << QStringLiteral("单次最多导入 %1 张").arg(maxImagesPerImport);
+            continue;
+        }
+        if (source.size() > qMin(maxImageBytes, budget)) {
+            failures << (budget < maxImageBytes ? QStringLiteral("本次导入超过 200 MB")
+                                                : QStringLiteral("图片超过 50 MB"));
+            continue;
+        }
+        budget -= source.size();
+        const QString &path = paths[i];
         StagedImage image;
         image.path = QDir(importsDir).filePath(QUuid::createUuid().toString(QUuid::WithoutBraces)
                                                + QStringLiteral(".part"));

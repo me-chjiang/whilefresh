@@ -107,6 +107,20 @@ private slots:
         hints.fileModifiedMs = ms(2026, 10, 22, 6); // less than a day ahead: clock skew is tolerated
         QCOMPARE(resolveCapturedAt(hints, now).source, Source::FileModified);
     }
+
+    void acceptsExactBoundaries()
+    {
+        ImageDateHints hints;
+        hints.fileModifiedMs = QDateTime(QDate(2000, 1, 1), QTime(0, 0), QTimeZone::UTC).toMSecsSinceEpoch();
+        QCOMPARE(resolveCapturedAt(hints, now).source, Source::FileModified);
+        hints.fileModifiedMs -= 1;
+        QCOMPARE(resolveCapturedAt(hints, now).source, Source::None);
+
+        hints.fileModifiedMs = now.addDays(1).toMSecsSinceEpoch();
+        QCOMPARE(resolveCapturedAt(hints, now).source, Source::FileModified);
+        hints.fileModifiedMs += 1;
+        QCOMPARE(resolveCapturedAt(hints, now).source, Source::None);
+    }
 };
 
 QTEST_APPLESS_MAIN(CapturedAtTest)

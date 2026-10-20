@@ -27,6 +27,17 @@ struct BridgeEvent
     QString message;      // reason of a Failed event
 };
 
+// Strict: unknown values and wrongly typed fields are errors.
 std::optional<BridgeEvent> parseBridgeEvent(const QByteArray &json, QString *error);
+
+// What can still be recovered from a message parseBridgeEvent rejected, so the request gets a
+// terminal signal and copied files are not orphaned.
+struct BridgeLeftovers
+{
+    ImportPayload::Origin origin = ImportPayload::Origin::Share;
+    QStringList stagedPaths;
+};
+
+BridgeLeftovers bridgeLeftovers(const QByteArray &json);
 
 }

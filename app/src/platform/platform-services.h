@@ -10,10 +10,11 @@
 
 namespace whilefresh::platform {
 
-// Native import / export entry points for the UI. Imports are asynchronous and always end in
-// exactly one of importReceived, importCancelled or importFailed per request; a partially failed
-// import emits importReceived for the good items and then importFailed. Shares from other apps
-// arrive unsolicited through the same signals with origin Share.
+// Native import / export entry points for the UI. Imports are asynchronous; every request ends in
+// at least one terminal signal (importReceived, importCancelled or importFailed). A partially
+// failed import emits importReceived for the good items first, then importFailed. A request made
+// while another gallery / camera request is still open fails with "正在处理上一次导入". Shares
+// from other apps arrive unsolicited through the same signals with origin Share.
 class PlatformServices : public QObject
 {
     Q_OBJECT
@@ -34,7 +35,12 @@ signals:
     void importFailed(whilefresh::platform::ImportPayload::Origin origin, const QString &message);
 
 protected:
+    // Also removes stale *.part files from the imports directory.
     explicit PlatformServices(QObject *parent = nullptr);
+
+    // One JSON message from the Java bridge (format: bridge-event.cpp). A malformed message still
+    // yields importFailed, and the files it names are deleted.
+    void handleBridgeMessage(const QByteArray &json);
 
     // Finalizes staged files, then emits importReceived and/or importFailed.
     void deliverImages(ImportPayload::Origin origin, const QList<StagedImage> &staged,

@@ -1,5 +1,7 @@
 #include "platform/platform-services.h"
 
+#include "platform/bridge-event.h"
+
 #if defined(Q_OS_ANDROID)
 #include "platform/android/android-platform-services.h"
 #else
@@ -24,6 +26,38 @@ PlatformServices *PlatformServices::create(QObject *parent)
 PlatformServices::PlatformServices(QObject *parent)
     : QObject(parent)
 {
+    const int removed = removeStalePartFiles(importsDirectory(), QDateTime::currentDateTime());
+    if (removed > 0)
+        qInfo("WhileFresh import: removed %d stale partial files", removed);
+}
+
+void PlatformServices::handleBridgeMessage(const QByteArray &json)
+{
+    QString error;
+    const std::optional<BridgeEvent> event = parseBridgeEvent(json, &error);
+    if (!event) {
+        qWarning("WhileFresh import: malformed bridge message: %s", qUtf8Printable(error));
+        const BridgeLeftovers leftovers = bridgeLeftovers(json);
+        const QString importsDir = importsDirectory();
+        for (const QString &path : leftovers.stagedPaths)
+            discardStagedFile(path, importsDir);
+        deliverFailed(leftovers.origin, QStringLiteral("导入数据异常"));
+        return;
+    }
+    switch (event->type) {
+    case BridgeEvent::Type::Cancelled:
+        deliverCancelled(event->origin);
+        break;
+    case BridgeEvent::Type::Failed:
+        deliverFailed(event->origin, event->message);
+        break;
+    case BridgeEvent::Type::Import:
+        if (event->kind == ImportPayload::Kind::Text)
+            deliverText(event->origin, event->text);
+        else
+            deliverImages(event->origin, event->images, event->failures);
+        break;
+    }
 }
 
 void PlatformServices::copyText(const QString &text)

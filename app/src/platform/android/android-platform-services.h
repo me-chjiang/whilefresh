@@ -19,7 +19,7 @@ public:
     void shareText(const QString &text) override;
 
     // Runs on the Qt main thread for each JSON message posted by the bridge.
-    void handleBridgeMessage(const QString &json);
+    void onBridgeMessage(const QString &json);
 };
 
 }

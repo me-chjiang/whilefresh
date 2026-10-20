@@ -1,7 +1,5 @@
 #include "platform/android/android-platform-services.h"
 
-#include "platform/bridge-event.h"
-
 #include <QJniEnvironment>
 #include <QJniObject>
 #include <QMutex>
@@ -16,11 +14,15 @@ QMutex instanceMutex;
 AndroidPlatformServices *instance = nullptr;
 
 // Called on the bridge's worker or UI thread, never on the Qt main thread.
-void JNICALL onBridgeMessage(JNIEnv *env, jclass, jstring json)
+void JNICALL jniOnBridgeMessage(JNIEnv *env, jclass, jstring json)
 {
     // GetStringChars keeps UTF-16 intact; GetStringUTFChars would mangle emoji (modified UTF-8).
+    if (!json)
+        return;
     const jsize length = env->GetStringLength(json);
     const jchar *chars = env->GetStringChars(json, nullptr);
+    if (!chars)
+        return; // OutOfMemoryError is pending; the JVM reports it when we return
     const QString message(reinterpret_cast<const QChar *>(chars), length);
     env->ReleaseStringChars(json, chars);
 
@@ -28,7 +30,7 @@ void JNICALL onBridgeMessage(JNIEnv *env, jclass, jstring json)
     if (!instance)
         return;
     AndroidPlatformServices *target = instance;
-    QMetaObject::invokeMethod(target, [target, message] { target->handleBridgeMessage(message); },
+    QMetaObject::invokeMethod(target, [target, message] { target->onBridgeMessage(message); },
                               Qt::QueuedConnection);
 }
 
@@ -44,7 +46,7 @@ AndroidPlatformServices::AndroidPlatformServices(QObject *parent)
 {
     static const bool registered = [] {
         const JNINativeMethod methods[] = {
-            { "nativeOnMessage", "(Ljava/lang/String;)V", reinterpret_cast<void *>(onBridgeMessage) },
+            { "nativeOnMessage", "(Ljava/lang/String;)V", reinterpret_cast<void *>(jniOnBridgeMessage) },
         };
         QJniEnvironment env;
         return env.registerNativeMethods(bridgeClass, methods, 1);
@@ -90,28 +92,9 @@ void AndroidPlatformServices::shareText(const QString &text)
     qInfo("WhileFresh share: opened the share sheet chars=%lld", static_cast<long long>(text.size()));
 }
 
-void AndroidPlatformServices::handleBridgeMessage(const QString &json)
+void AndroidPlatformServices::onBridgeMessage(const QString &json)
 {
-    QString error;
-    const std::optional<BridgeEvent> event = parseBridgeEvent(json.toUtf8(), &error);
-    if (!event) {
-        qWarning("WhileFresh import: dropped a malformed bridge message: %s", qUtf8Printable(error));
-        return;
-    }
-    switch (event->type) {
-    case BridgeEvent::Type::Cancelled:
-        deliverCancelled(event->origin);
-        break;
-    case BridgeEvent::Type::Failed:
-        deliverFailed(event->origin, event->message);
-        break;
-    case BridgeEvent::Type::Import:
-        if (event->kind == ImportPayload::Kind::Text)
-            deliverText(event->origin, event->text);
-        else
-            deliverImages(event->origin, event->images, event->failures);
-        break;
-    }
+    handleBridgeMessage(json.toUtf8());
 }
 
 }
