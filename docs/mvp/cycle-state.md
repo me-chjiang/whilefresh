@@ -74,6 +74,7 @@ Phase 2：执行。当前里程碑 M1（T0 工程骨架、T1 菜谱数据、T4 �
 | 2026-10-21 | 上一会话的后台子代理（T0、T1、T4）已停止且不可恢复；按用户要求重新开子代理，分别在原 worktree 和原分支上接续半成品（T0 Opus，T1、T4 Sonnet），不另建 worktree | 保留已有未提交工作，避免重做 | — |
 | 2026-10-21 | 主仓库 `.gitignore` 忽略 `/.claude/worktrees/` | 子代理 worktree 不应进入版本库 | 删除该行 |
 | 2026-10-21 | 合并 `feat/visual-drafts`（T4）到本地 main（`9f788b5`）。仅含 `design/` 下 HTML、截图、Tabler 图标（附 MIT 许可）和 README 设计参数表；未做 Sonnet 代码审查，因内容是视觉稿而非随 App 发布的代码 | 主会话已审查范围、署名、密钥、许可；B 方向用户已选定 | `git revert -m 1 9f788b5` |
+| 2026-10-21 | 合并 `feat/app-skeleton`（T0）到本地 main（`8e8f5cd`）。经 Sonnet 审查（可合并，5 条低严重度建议已修）；合并后在 main 上桌面构建与 ctest 通过 | Android 双 ABI 构建、模拟器 HTTPS（401）、密钥只进构建目录均已验证 | `git revert -m 1 8e8f5cd` |
 
 ## 偏差日志
 
@@ -96,9 +97,11 @@ Phase 2：执行。当前里程碑 M1（T0 工程骨架、T1 菜谱数据、T4 �
 - **问题 1：标准食材名不稳定**：两次结果分别为"麻辣香肠/川味香肠""大拌菜/沙拉菜"。需要在提示词中给出固定词表，让模型只从词表中选择。
 - **问题 2：保质期估计不稳定**：同一款香肠冷藏天数两次分别为 30 和 90，常温一次为空、一次为 30。常见食材改用本地参考表，AI 只为表外食材补充，且结果按标准名缓存。
 - 接收系统分享和相机需要 Android 原生桥接（`content://` URI、冷 / 热启动），Qt 不会自动处理。
-- PATH 中的 `qmake` / `qtpaths` 指向 Anaconda，构建时须显式使用 `~/Qt/6.8.2/`。
 - HowToCook 的 Markdown 结构尚未抽样核实。
 - Qt LGPL 分发义务需在交付前核对（非法律意见）。
+- arm64-v8a APK 已能构建，尚未在真机运行。
+- 桌面版使用本机另装的 OpenSSL 3.6.3，来源未核实；不影响 Android。
+- AndroidManifest 中 Qt 模板遗留的 `requestLegacyExternalStorage`、FileProvider、`allowBackup` 在 T9 清理。
 - 目前只有美团小象一个平台的样例，其他平台待补充。
 
 ## 验收记录
