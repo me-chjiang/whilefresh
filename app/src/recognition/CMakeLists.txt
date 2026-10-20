@@ -1,9 +1,12 @@
 add_library(whilefresh-recognition STATIC
     api-key.cpp
     api-key.h
+    deepseek-recognizer.cpp
+    deepseek-recognizer.h
     image-preprocessor.cpp
     image-preprocessor.h
     prompt-templates.h
+    recognition-service.h
     recognition-types.cpp
     recognition-types.h
     request-builder.cpp
