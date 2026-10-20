@@ -4,7 +4,11 @@
     android:installLocation="auto"
     android:versionCode="-- %%INSERT_VERSION_CODE%% --"
     android:versionName="-- %%INSERT_VERSION_NAME%% --">
-    <!-- %%INSERT_PERMISSIONS -->
+    <!-- Permissions are listed by hand instead of letting androiddeployqt insert them: Qt Core would
+         add WRITE_EXTERNAL_STORAGE, but imports only go through the system picker, share and
+         ContentResolver. No CAMERA either: declaring it makes ACTION_IMAGE_CAPTURE require a grant. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- %%INSERT_FEATURES -->
     <supports-screens
         android:anyDensity="true"
@@ -15,18 +19,28 @@
         android:name="org.qtproject.qt.android.bindings.QtApplication"
         android:hardwareAccelerated="true"
         android:label="@string/app_name"
-        android:requestLegacyExternalStorage="true"
-        android:allowBackup="true"
-        android:fullBackupOnly="false">
+        android:allowBackup="false">
+        <!-- singleTask: shares from other apps must reuse the running instance (see WhileFreshActivity). -->
         <activity
-            android:name="org.qtproject.qt.android.bindings.QtActivity"
+            android:name="io.github.mechjiang.whilefresh.WhileFreshActivity"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
-            android:launchMode="singleTop"
+            android:launchMode="singleTask"
             android:screenOrientation="unspecified"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
             </intent-filter>
 
           <meta-data
@@ -40,12 +54,12 @@
 
         <provider
             android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.qtprovider"
+            android:authorities="${applicationId}.fileprovider"
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data
                 android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/qtprovider_paths"/>
+                android:resource="@xml/whilefresh_file_paths" />
         </provider>
     </application>
 </manifest>
