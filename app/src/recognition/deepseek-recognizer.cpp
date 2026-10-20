@@ -157,6 +157,7 @@ void DeepSeekRecognizer::cancel(quint64 requestId)
         return;
     QPointer<QNetworkReply> reply = it->reply;
     QFutureWatcher<PrepareOutcome> *watcher = it->watcher;
+    stopDeadline(*it);
     m_jobs.erase(it);
     if (watcher)
         watcher->deleteLater();
@@ -199,12 +200,34 @@ void DeepSeekRecognizer::sendBatch(quint64 id)
     QNetworkRequest request(m_endpoint);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("Authorization", "Bearer " + m_apiKey.toUtf8());
-    request.setTransferTimeout(m_timeoutMs);
+    request.setTransferTimeout(m_idleTimeoutMs);
 
     job.batchTimer.start();
+    job.deadlineHit = false;
     QNetworkReply *reply = m_network.post(request, batch.body);
     job.reply = reply;
+
+    auto *deadline = new QTimer(this);
+    deadline->setSingleShot(true);
+    connect(deadline, &QTimer::timeout, this, [this, id] {
+        const auto it = m_jobs.find(id);
+        if (it == m_jobs.end() || !it->reply)
+            return;
+        it->deadlineHit = true;
+        it->reply->abort();
+    });
+    deadline->start(m_deadlineMs);
+    job.deadline = deadline;
     connect(reply, &QNetworkReply::finished, this, [this, id, reply] { replyFinished(id, reply); });
+}
+
+void DeepSeekRecognizer::stopDeadline(Job &job)
+{
+    if (job.deadline) {
+        job.deadline->stop();
+        job.deadline->deleteLater();
+        job.deadline = nullptr;
+    }
 }
 
 void DeepSeekRecognizer::replyFinished(quint64 id, QNetworkReply *reply)
@@ -215,6 +238,7 @@ void DeepSeekRecognizer::replyFinished(quint64 id, QNetworkReply *reply)
         return;
     Job &job = *it;
     job.reply = nullptr;
+    stopDeadline(job);
 
     const QByteArray body = reply->readAll();
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -223,12 +247,13 @@ void DeepSeekRecognizer::replyFinished(quint64 id, QNetworkReply *reply)
     const qsizetype batchTotal = job.batches.size();
 
     if (reply->error() != QNetworkReply::NoError || status < 200 || status >= 300) {
-        const RecognitionError error = classifyFailure(reply, status, body);
+        const RecognitionError error = job.deadlineHit
+            ? makeError(ErrorKind::Timeout, QStringLiteral("no complete answer within the %1 ms deadline").arg(m_deadlineMs))
+            : classifyFailure(reply, status, body);
         qCWarning(lcRecognition, "request %llu batch %d/%lld failed: kind=%s status=%d elapsed=%lldms attempt=%d",
                   id, batchNumber, qint64(batchTotal), qUtf8Printable(enumKey(error.kind)), status, elapsed,
                   job.attempt + 1);
-        const bool retryable = error.kind == ErrorKind::Timeout || error.kind == ErrorKind::ServerError;
-        if (retryable && job.attempt < kMaxRetries) {
+        if (error.kind == ErrorKind::ServerError && job.attempt < kMaxRetries) {
             ++job.attempt;
             QTimer::singleShot(m_retryDelayMs, this, [this, id] {
                 if (m_jobs.contains(id))

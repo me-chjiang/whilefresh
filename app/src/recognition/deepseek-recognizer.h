@@ -11,6 +11,7 @@
 #include <QUrl>
 
 class QNetworkReply;
+class QTimer;
 
 namespace whilefresh::recognition {
 
@@ -28,8 +29,10 @@ struct PrepareOutcome {
 // Recognition through the DeepSeek chat-completions API (ADR-4).
 //
 // Images are decoded, scaled, sliced and encoded on a worker thread, then sent in as few
-// requests as the limits allow (normally one per import). Each request has a transfer
-// timeout; timeouts and 5xx answers are retried once, 4xx answers never. Logs carry sizes,
+// requests as the limits allow (normally one per import). Each request has an idle timeout
+// and an overall deadline. Only 5xx answers (and a connection the server drops) are retried,
+// once; timeouts are not, because the server may still finish and bill the first attempt.
+// 4xx answers are never retried. Logs carry sizes,
 // counts, timings, token usage and status codes only - never the key, image data or prompts.
 class DeepSeekRecognizer : public RecognitionService
 {
@@ -47,7 +50,8 @@ public:
     // Settings below exist for tests and tools; the defaults are what the app uses.
     void setApiKey(const QString &key) { m_apiKey = key; }
     void setEndpoint(const QUrl &endpoint) { m_endpoint = endpoint; }
-    void setTimeoutMs(int ms) { m_timeoutMs = ms; }
+    void setIdleTimeoutMs(int ms) { m_idleTimeoutMs = ms; }
+    void setDeadlineMs(int ms) { m_deadlineMs = ms; }
     void setRetryDelayMs(int ms) { m_retryDelayMs = ms; }
     void setBatchLimits(const BatchLimits &limits) { m_limits = limits; }
 
@@ -61,6 +65,8 @@ private:
         QElapsedTimer total;
         QElapsedTimer batchTimer;
         QPointer<QNetworkReply> reply;
+        QPointer<QTimer> deadline;
+        bool deadlineHit = false;
         QFutureWatcher<PrepareOutcome> *watcher = nullptr;
     };
 
@@ -69,13 +75,15 @@ private:
     void replyFinished(quint64 id, QNetworkReply *reply);
     void succeed(quint64 id);
     void fail(quint64 id, const RecognitionError &error);
+    void stopDeadline(Job &job);
     void failLater(quint64 id, const RecognitionError &error);
 
     QNetworkAccessManager m_network;
     QHash<quint64, Job> m_jobs;
     QString m_apiKey;
     QUrl m_endpoint;
-    int m_timeoutMs = 60000;
+    int m_idleTimeoutMs = 150000; // no bytes in either direction; a non-streaming reply is silent while the model works
+    int m_deadlineMs = 240000;    // per request, whatever the traffic
     int m_retryDelayMs = 1000;
     BatchLimits m_limits;
 };

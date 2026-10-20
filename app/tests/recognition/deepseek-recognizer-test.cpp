@@ -4,6 +4,7 @@
 #include "fake-http-server.h"
 #include "recognition-test-support.h"
 
+#include <QElapsedTimer>
 #include <QImage>
 #include <QSignalSpy>
 #include <QTemporaryDir>
@@ -40,7 +41,8 @@ struct Fixture {
             qFatal("fake server cannot listen");
         recognizer.setApiKey(QString::fromLatin1(kTestKey));
         recognizer.setEndpoint(server.url());
-        recognizer.setTimeoutMs(5000);
+        recognizer.setIdleTimeoutMs(5000);
+        recognizer.setDeadlineMs(20000);
         recognizer.setRetryDelayMs(0);
     }
 
@@ -219,28 +221,80 @@ private slots:
         QCOMPARE(f.result().items.size(), 1);
     }
 
-    void timeoutIsRetriedOnceThenReported()
+    void silenceBeyondTheIdleTimeoutIsATimeoutAndNotRetried()
     {
         Fixture f;
-        f.recognizer.setTimeoutMs(300);
-        f.server.enqueue({ 200, {}, true });
-        f.server.enqueue({ 200, {}, true });
-        f.recognizer.recognize(textRequest(QStringLiteral("x")));
-        f.waitForAnswer();
-        QCOMPARE(f.error().kind, ErrorKind::Timeout);
-        QCOMPARE(f.server.received().size(), 2);
-    }
-
-    void timeoutThenSuccessRecovers()
-    {
-        Fixture f;
-        f.recognizer.setTimeoutMs(300);
+        f.recognizer.setIdleTimeoutMs(300);
         f.server.enqueue({ 200, {}, true });
         f.server.enqueue({ 200, okBody({ itemJson(QStringLiteral("鸡蛋"), QStringLiteral("鸡蛋")) }) });
         f.recognizer.recognize(textRequest(QStringLiteral("x")));
         f.waitForAnswer();
+        QCOMPARE(f.error().kind, ErrorKind::Timeout);
+        QTest::qWait(300); // a retry would show up as a second request
+        QCOMPARE(f.server.received().size(), 1);
+    }
+
+    void aSlowAnswerWithinBothLimitsSucceeds()
+    {
+        // The model works silently before answering; that must not look like a dead connection.
+        Fixture f;
+        f.recognizer.setIdleTimeoutMs(3000);
+        f.recognizer.setDeadlineMs(6000);
+        f.server.enqueue({ 200, okBody({ itemJson(QStringLiteral("鸡蛋"), QStringLiteral("鸡蛋")) }), false, 800 });
+        f.recognizer.recognize(textRequest(QStringLiteral("x")));
+        f.waitForAnswer();
         QCOMPARE(f.failed.count(), 0);
-        QCOMPARE(f.server.received().size(), 2);
+        QCOMPARE(f.server.received().size(), 1);
+        QVERIFY(f.result().elapsedMs >= 700);
+    }
+
+    void exceedingTheOverallDeadlineIsATimeoutAndNotRetried()
+    {
+        Fixture f;
+        f.recognizer.setIdleTimeoutMs(10000);
+        f.recognizer.setDeadlineMs(300);
+        f.server.enqueue({ 200, okBody({ itemJson(QStringLiteral("鸡蛋"), QStringLiteral("鸡蛋")) }), false, 1500 });
+        f.server.enqueue({ 200, okBody({ itemJson(QStringLiteral("鸡蛋"), QStringLiteral("鸡蛋")) }) });
+        QElapsedTimer timer;
+        timer.start();
+        f.recognizer.recognize(textRequest(QStringLiteral("x")));
+        f.waitForAnswer();
+        QCOMPARE(f.error().kind, ErrorKind::Timeout);
+        QVERIFY2(timer.elapsed() < 1200, "gave up at the deadline, not when the server answered");
+        QTest::qWait(300);
+        QCOMPARE(f.server.received().size(), 1);
+        QCOMPARE(f.succeeded.count(), 0);
+    }
+
+    void theDeadlineAppliesToEachBatch()
+    {
+        Fixture f;
+        BatchLimits limits;
+        limits.maxImages = 2;
+        f.recognizer.setBatchLimits(limits);
+        f.recognizer.setDeadlineMs(1500);
+        // Each batch takes 800 ms: over 1500 ms in total, but within the deadline per request.
+        f.server.enqueue({ 200, okBody({ itemJson(QStringLiteral("鸡蛋"), QStringLiteral("鸡蛋")) }), false, 800 });
+        f.server.enqueue({ 200, okBody({ itemJson(QStringLiteral("洋葱"), QStringLiteral("洋葱")) }), false, 800 });
+        f.recognizer.recognize(imageRequest());
+        f.waitForAnswer();
+        QCOMPARE(f.failed.count(), 0);
+        QCOMPARE(f.result().items.size(), 2);
+    }
+
+    void cancellingDuringTheRetryWaitStopsTheRetry()
+    {
+        Fixture f;
+        f.recognizer.setRetryDelayMs(600);
+        f.server.enqueue({ 500, "boom" });
+        f.server.enqueue({ 200, okBody({ itemJson(QStringLiteral("鸡蛋"), QStringLiteral("鸡蛋")) }) });
+        const quint64 id = f.recognizer.recognize(textRequest(QStringLiteral("x")));
+        QTRY_COMPARE_WITH_TIMEOUT(f.server.received().size(), 1, 10000);
+        QTest::qWait(150); // the failed answer has been processed, the retry is waiting
+        f.recognizer.cancel(id);
+        QTest::qWait(1000);
+        QCOMPARE(f.server.received().size(), 1);
+        QCOMPARE(f.succeeded.count() + f.failed.count(), 0);
     }
 
     void unreachableServerIsNoNetwork()

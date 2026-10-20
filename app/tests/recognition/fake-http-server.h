@@ -7,6 +7,7 @@
 #include <QPointer>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QTimer>
 #include <QUrl>
 
 // Minimal local HTTP/1.1 server for client tests. Serves scripted replies in order, one per
@@ -20,6 +21,7 @@ public:
         int status = 200;
         QByteArray body;
         bool hang = false; // accept the request, never answer
+        int delayMs = 0;   // answer only after this long
     };
     struct Received {
         QByteArray requestLine;
@@ -69,6 +71,17 @@ private:
 
         const Reply reply = m_replies.isEmpty() ? Reply{ 500, "no reply scripted", false } : m_replies.takeFirst();
         if (reply.hang)
+            return;
+        if (reply.delayMs > 0) {
+            QTimer::singleShot(reply.delayMs, socket, [this, socket, reply] { respond(socket, reply); });
+            return;
+        }
+        respond(socket, reply);
+    }
+
+    void respond(QTcpSocket *socket, const Reply &reply)
+    {
+        if (socket->state() != QAbstractSocket::ConnectedState)
             return;
         const QByteArray head = "HTTP/1.1 " + QByteArray::number(reply.status) + " X\r\n"
             "Content-Type: application/json\r\nConnection: close\r\nContent-Length: "
