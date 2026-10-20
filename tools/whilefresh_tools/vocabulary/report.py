@@ -3,12 +3,12 @@
 import random
 from collections import Counter
 
-from .schema import CATEGORIES, recipe_ingredient_names
+from .schema import CATEGORIES, normalize_groups, recipe_ingredient_names
 
 
 def make_report(vocab: dict, map_doc: dict, recipes: dict, sample: int, seed: int) -> str:
     items = vocab["items"]
-    mapping = map_doc["map"]
+    mapping = {k: normalize_groups(v) for k, v in map_doc["map"].items()}
     counts = Counter(i["category"] for i in items)
     needed = recipe_ingredient_names(recipes)
     mapped = [n for n in needed if mapping.get(n)]
@@ -17,7 +17,7 @@ def make_report(vocab: dict, map_doc: dict, recipes: dict, sample: int, seed: in
         ing for r in recipes["recipes"] for ing in r["ingredients"] if ing["kind"] != "tool"
     ]
     occ_mapped = sum(1 for ing in occurrences if mapping.get(ing["name"]))
-    used = {t for ts in mapping.values() for t in ts}
+    used = {t for groups in mapping.values() for g in groups for t in g}
 
     out = ["## 规模统计", "", f"- 标准名总数：{len(items)}"]
     out += [f"  - {zh}（{code}）：{counts.get(code, 0)}" for code, zh in CATEGORIES]
@@ -33,12 +33,12 @@ def make_report(vocab: dict, map_doc: dict, recipes: dict, sample: int, seed: in
         "",
         "## 随机抽样映射（seed %d，共 %d 条）" % (seed, sample),
         "",
-        "| 原料写法 | 标准名 |",
+        "| 原料写法 | 需求（+ 表示全部需要，｜ 表示任一即可） |",
         "| --- | --- |",
     ]
     rng = random.Random(seed)
     for name in rng.sample(sorted(needed), min(sample, len(needed))):
-        targets = "、".join(mapping[name]) if mapping[name] else "（忽略）"
+        targets = " + ".join("｜".join(g) for g in mapping[name]) if mapping[name] else "（忽略）"
         out.append(f"| {name} | {targets} |")
     out += ["", "## 映射为空的写法", "", "、".join(empty) or "(无)", ""]
     return "\n".join(out)

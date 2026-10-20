@@ -10,7 +10,7 @@ from pathlib import Path
 from .fetch import COMMIT, REPO_URL, FetchError, default_cache_dir, ensure_snapshot
 from .parse import parse_recipe
 from ..vocabulary.mapping import MissingMapping, annotate_recipes, load_map
-from ..vocabulary.schema import MAP_PATH
+from ..vocabulary.schema import MAP_PATH, SOURCE_PATH, load_json, validate_map
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_OUT = REPO_ROOT / "app" / "assets" / "data" / "recipes.json"
@@ -104,7 +104,8 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--cache-dir", type=Path, default=None, help="snapshot cache directory")
     b.add_argument("--out", type=Path, default=DEFAULT_OUT)
     b.add_argument("--report", type=Path, default=DEFAULT_REPORT)
-    b.add_argument("--ingredient-map", type=Path, default=MAP_PATH, help="recipe ingredient -> standard names")
+    b.add_argument("--ingredient-map", type=Path, default=MAP_PATH, help="recipe ingredient -> requirement groups of standard names")
+    b.add_argument("--vocabulary-source", type=Path, default=SOURCE_PATH, help="vocabulary the map targets must exist in")
     args = parser.parse_args(argv)
 
     try:
@@ -113,8 +114,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     try:
-        doc, data = build_document(cache / "dishes", ingredient_map=load_map(args.ingredient_map))
-    except (MissingMapping, OSError) as exc:
+        ingredient_map = load_map(args.ingredient_map)
+        problems = validate_map({"map": ingredient_map}, load_json(args.vocabulary_source)["items"])
+        if problems:
+            raise ValueError("ingredient map does not match the vocabulary: " + "; ".join(problems[:5]))
+        doc, data = build_document(cache / "dishes", ingredient_map=ingredient_map)
+    except (MissingMapping, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     args.out.parent.mkdir(parents=True, exist_ok=True)

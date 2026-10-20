@@ -39,7 +39,7 @@ def cmd_build(args) -> int:
     source = load_json(args.source)
     doc = build_vocabulary(source)
     errors = validate_vocabulary(doc)
-    errors += validate_map(load_json(args.map), {i["name"] for i in doc["items"]})
+    errors += validate_map(load_json(args.map), doc["items"])
     if errors:
         _print_errors(errors)
         return 1

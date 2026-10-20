@@ -9,6 +9,7 @@ import hashlib
 import json
 import os
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -18,10 +19,13 @@ MODEL = "deepseek-flash"
 KEYCHAIN_SERVICE = "landing-project-deepseek"
 TIMEOUT_S = 600
 MAX_ATTEMPTS = 2
+RETRY_BACKOFF_S = 5.0
 
 
 class DeepSeekError(RuntimeError):
-    pass
+    def __init__(self, message: str, retryable: bool = False):
+        super().__init__(message)
+        self.retryable = retryable
 
 
 def default_cache_dir() -> Path:
@@ -56,18 +60,21 @@ def _post(payload: dict, key: str) -> dict:
         with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
             return json.load(resp)
     except urllib.error.HTTPError as exc:
-        raise DeepSeekError(f"DeepSeek returned HTTP {exc.code}") from None
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
-        raise DeepSeekError(f"DeepSeek request failed: {type(exc).__name__}") from None
+        raise DeepSeekError(f"DeepSeek returned HTTP {exc.code}", retryable=exc.code == 429 or exc.code >= 500) from None
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        raise DeepSeekError(f"DeepSeek request failed: {type(exc).__name__}", retryable=True) from None
+    except json.JSONDecodeError:
+        raise DeepSeekError("DeepSeek returned a non-JSON body", retryable=True) from None
 
 
 class Client:
     """``post`` and ``key_provider`` are injectable so tests never touch the network."""
 
-    def __init__(self, cache_dir: Path | None = None, post=_post, key_provider=read_api_key):
+    def __init__(self, cache_dir: Path | None = None, post=_post, key_provider=read_api_key, sleep=time.sleep):
         self.cache_dir = cache_dir or default_cache_dir()
         self._post = post
         self._key_provider = key_provider
+        self._sleep = sleep
         self._key: str | None = None
         self.requests = 0
         self.cache_hits = 0
@@ -94,28 +101,43 @@ class Client:
     def _cache_path(self, payload: dict) -> Path:
         return self.cache_dir / f"{self.cache_key(payload)}.json"
 
+    def _post_with_retry(self, payload: dict) -> dict:
+        """One retry with backoff on rate limits, server errors and network failures."""
+        for attempt in range(2):
+            self.requests += 1
+            try:
+                return self._post(payload, self._key)
+            except DeepSeekError as exc:
+                if attempt == 1 or not exc.retryable:
+                    raise
+                self._sleep(RETRY_BACKOFF_S)
+        raise AssertionError("unreachable")
+
     def complete_json(self, system: str, user: str, max_tokens: int = 8000) -> dict:
         """Return the parsed JSON object the model answered with (cached)."""
         payload = self.build_payload(system, user, max_tokens)
         path = self._cache_path(payload)
-        if path.exists():
+        try:
+            parsed = json.loads(path.read_text(encoding="utf-8"))["parsed"]
+        except (OSError, ValueError, KeyError, TypeError):
+            parsed = None  # missing or corrupt cache file counts as a miss
+        if isinstance(parsed, dict):
             self.cache_hits += 1
-            return json.loads(path.read_text(encoding="utf-8"))["parsed"]
+            return parsed
 
         last = "no attempt made"
         for _ in range(MAX_ATTEMPTS):
             if self._key is None:
                 self._key = self._key_provider()
-            self.requests += 1
-            data = self._post(payload, self._key)
+            data = self._post_with_retry(payload)
             for k in self.usage:
                 self.usage[k] += int((data.get("usage") or {}).get(k) or 0)
             try:
                 choice = data["choices"][0]
-                parsed = json.loads(choice["message"]["content"])
                 if choice.get("finish_reason") == "length":
                     last = "response truncated (finish_reason=length)"
                     continue
+                parsed = json.loads(choice["message"]["content"])
                 if not isinstance(parsed, dict):
                     last = "response is not a JSON object"
                     continue

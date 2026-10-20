@@ -60,10 +60,23 @@ def dump_vocabulary(doc: dict) -> str:
     )
 
 
+def normalize_groups(value) -> list[list[str]]:
+    """Requirement groups from a map value.
+
+    Canonical form is a list of groups; a group is a list of alternative standard
+    names, any one of which satisfies it, and groups are all required. A bare string
+    element is shorthand for a one-name group, so the old flat list ["葱", "姜"]
+    means [["葱"], ["姜"]]. Malformed input is returned as-is for validation.
+    """
+    if not isinstance(value, list):
+        return value
+    return [[g] if isinstance(g, str) else g for g in value]
+
+
 def dump_map(doc: dict) -> str:
-    """One mapping per line, keys sorted."""
+    """One mapping per line, keys sorted, values as requirement groups."""
     entries = ",\n".join(
-        f"  {_line(k)}: {_line(v)}" for k, v in sorted(doc["map"].items())
+        f"  {_line(k)}: {_line(normalize_groups(v))}" for k, v in sorted(doc["map"].items())
     )
     return '{\n "version": %d,\n "map": {\n%s\n }\n}\n' % (doc["version"], entries)
 
@@ -80,6 +93,11 @@ def categories_doc() -> list[dict]:
     return [{"code": c, "name": n} for c, n in CATEGORIES]
 
 
+def norm_key(text: str) -> str:
+    """Case- and whitespace-insensitive identity for names and aliases."""
+    return "".join(text.split()).casefold()
+
+
 def validate_vocabulary(doc: dict) -> list[str]:
     errors: list[str] = []
     if not isinstance(doc.get("version"), int):
@@ -91,6 +109,7 @@ def validate_vocabulary(doc: dict) -> list[str]:
         return errors + ["items must be a non-empty list"]
 
     names: dict[str, dict] = {}
+    name_keys: dict[str, str] = {}
     for idx, it in enumerate(items):
         where = f"items[{idx}]"
         if not isinstance(it, dict):
@@ -105,7 +124,10 @@ def validate_vocabulary(doc: dict) -> list[str]:
             continue
         if name in names:
             errors.append(f"duplicate standard name {name!r}")
+        elif norm_key(name) in name_keys:
+            errors.append(f"standard names {name_keys[norm_key(name)]!r} and {name!r} differ only in case or spacing")
         names[name] = it
+        name_keys.setdefault(norm_key(name), name)
         if it.get("category") not in CATEGORY_CODES:
             errors.append(f"{name!r}: invalid category {it.get('category')!r}")
         for flag in ("pantry_default", "bulk_default"):
@@ -121,26 +143,29 @@ def validate_vocabulary(doc: dict) -> list[str]:
             if not isinstance(alias, str) or not alias.strip() or alias != alias.strip():
                 errors.append(f"{name!r}: bad alias {alias!r}")
                 continue
-            if alias in names:
+            key = norm_key(alias)
+            if key in name_keys:
                 errors.append(f"alias {alias!r} of {name!r} collides with a standard name")
-            if alias in alias_owner:
+            if key in alias_owner:
                 errors.append(
-                    f"alias {alias!r} used by both {alias_owner[alias]!r} and {name!r}"
+                    f"alias {alias!r} used by both {alias_owner[key]!r} and {name!r}"
                 )
-            alias_owner[alias] = name
+            alias_owner[key] = name
 
     for name, it in names.items():
         parent = it.get("parent")
         if parent is None:
             continue
-        if parent not in names:
+        if not isinstance(parent, str):
+            errors.append(f"{name!r}: parent must be a string, got {parent!r}")
+        elif parent not in names:
             errors.append(f"{name!r}: parent {parent!r} is not in the vocabulary")
         elif parent == name:
             errors.append(f"{name!r}: parent is itself")
     for name in names:
         seen = [name]
         cur = names[name].get("parent")
-        while cur in names:
+        while isinstance(cur, str) and cur in names:
             if cur in seen:
                 errors.append("parent cycle: " + " -> ".join(seen + [cur]))
                 break
@@ -149,20 +174,44 @@ def validate_vocabulary(doc: dict) -> list[str]:
     return errors
 
 
-def validate_map(map_doc: dict, vocab_names: set[str]) -> list[str]:
+def validate_map(map_doc: dict, items: list[dict]) -> list[str]:
+    """Groups are non-empty, free of repeats, and only name vocabulary items; a key
+    that is itself a standard name or alias must require that item."""
     errors: list[str] = []
     mapping = map_doc.get("map")
     if not isinstance(mapping, dict):
         return ["map must be an object"]
-    for raw, targets in mapping.items():
-        if not isinstance(targets, list) or not all(isinstance(t, str) for t in targets):
-            errors.append(f"map[{raw!r}]: value must be a list of names")
+    names = {i["name"] for i in items if isinstance(i, dict) and isinstance(i.get("name"), str)}
+    owner = {}
+    for i in items:
+        if isinstance(i, dict) and isinstance(i.get("name"), str):
+            owner[norm_key(i["name"])] = i["name"]
+            for a in i.get("aliases") or []:
+                if isinstance(a, str):
+                    owner.setdefault(norm_key(a), i["name"])
+    for raw, value in mapping.items():
+        groups = normalize_groups(value)
+        if not isinstance(groups, list):
+            errors.append(f"map[{raw!r}]: value must be a list of requirement groups")
             continue
-        if len(set(targets)) != len(targets):
-            errors.append(f"map[{raw!r}]: repeated target in {targets}")
-        for t in targets:
-            if t not in vocab_names:
-                errors.append(f"map[{raw!r}]: target {t!r} is not in the vocabulary")
+        flat: list[str] = []
+        seen_groups: set[tuple] = set()
+        for group in groups:
+            if not isinstance(group, list) or not group or not all(isinstance(t, str) for t in group):
+                errors.append(f"map[{raw!r}]: bad group {group!r} (must be a non-empty list of names)")
+                continue
+            if len(set(group)) != len(group):
+                errors.append(f"map[{raw!r}]: repeated name in group {group}")
+            if tuple(sorted(group)) in seen_groups:
+                errors.append(f"map[{raw!r}]: group {group} appears twice")
+            seen_groups.add(tuple(sorted(group)))
+            for t in group:
+                if t not in names:
+                    errors.append(f"map[{raw!r}]: target {t!r} is not in the vocabulary")
+            flat += group
+        std = owner.get(norm_key(raw))
+        if std is not None and std not in flat:
+            errors.append(f"map[{raw!r}] is the name or alias of {std!r} but does not require it: {groups}")
     return errors
 
 
@@ -189,7 +238,7 @@ def validate_recipes(recipes_doc: dict, map_doc: dict) -> list[str]:
             if "canonical" not in ing:
                 errors.append(f"{r['id']}: ingredient {ing['name']!r} lacks canonical")
                 continue
-            expected = [] if ing["kind"] == "tool" else mapping.get(ing["name"])
+            expected = [] if ing["kind"] == "tool" else normalize_groups(mapping.get(ing["name"]))
             if expected is not None and ing["canonical"] != expected:
                 errors.append(
                     f"{r['id']}: canonical of {ing['name']!r} differs from the map"
@@ -199,9 +248,5 @@ def validate_recipes(recipes_doc: dict, map_doc: dict) -> list[str]:
 
 def validate_all(vocab_doc: dict, map_doc: dict, recipes_doc: dict) -> list[str]:
     errors = validate_vocabulary(vocab_doc)
-    names = {
-        i["name"]
-        for i in vocab_doc.get("items", [])
-        if isinstance(i, dict) and isinstance(i.get("name"), str)
-    }
-    return errors + validate_map(map_doc, names) + validate_recipes(recipes_doc, map_doc)
+    items = vocab_doc.get("items") if isinstance(vocab_doc.get("items"), list) else []
+    return errors + validate_map(map_doc, items) + validate_recipes(recipes_doc, map_doc)
