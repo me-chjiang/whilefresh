@@ -25,7 +25,7 @@
 Skill 实际文件保存在 `.agents/skills/`，`.claude/skills/` 通过同名符号链接复用。`CLAUDE.md` 通过 `@AGENTS.md` 引入本索引，无需重复维护。
 
 - [loop-dev-cycle](.agents/skills/loop-dev-cycle/SKILL.md)：软件工程循环。
-- [lexmount-fetch](.agents/skills/lexmount-fetch/SKILL.md)：使用 Lexmount 抓取公开网页正文并输出 Markdown；脚本和运行条件见 skill 目录。仅作后备：网页检索和抓取默认使用工具内置的搜索与抓取，内置方式失败时再用本 skill。
+- [lexmount-fetch](.agents/skills/lexmount-fetch/SKILL.md)：使用 Lexmount 抓取公开网页正文并输出 Markdown；脚本和运行条件见 skill 目录。仅作后备：网页检索和抓取默认使用工具内置的搜索与抓取，内置方式失败时再用 Lexmount。本机不安装该 skill 的 Node 依赖，需要时用 Python 直接调用 Lexmount Web Fetch API（`POST {base-url}/v1/extract`，请求头 `X-API-Key`、`X-Project-Id`，凭据读自 `~/.config/lexmount/config.yaml`，不得打印）。
 
 ## AI 协作
 
