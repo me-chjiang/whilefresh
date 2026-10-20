@@ -17,7 +17,7 @@ export ANDROID_SDK_ROOT ANDROID_NDK_ROOT JAVA_HOME WHILEFRESH_ANDROID_OPENSSL_DI
 export_deepseek_key() {
     local key
     key="$(security find-generic-password -s landing-project-deepseek -w 2>/dev/null || true)"
-    export WHILEFRESH_DEEPSEEK_API_KEY="$key"
+    export WHILEFRESH_DEEPSEEK_API_KEY="$key" WHILEFRESH_KEY_FROM_SCRIPT=1
     if [[ -n "$key" ]]; then
         echo "DeepSeek API key: read from keychain"
     else
@@ -26,5 +26,18 @@ export_deepseek_key() {
 }
 
 disable_deepseek_key() {
-    export WHILEFRESH_DEEPSEEK_API_KEY=""
+    export WHILEFRESH_DEEPSEEK_API_KEY="" WHILEFRESH_KEY_FROM_SCRIPT=1
 }
+
+require_path() {
+    local path="$1" what="$2" override="$3"
+    if [[ ! -e "$path" ]]; then
+        echo "error: $what not found at $path (override with $override)" >&2
+        exit 1
+    fi
+}
+
+require_path "$QT_ROOT" "Qt 6.8.2 install" WHILEFRESH_QT_ROOT
+require_path "$ANDROID_SDK_ROOT" "Android SDK" ANDROID_SDK_ROOT
+require_path "$ANDROID_NDK_ROOT" "Android NDK" ANDROID_NDK_ROOT
+require_path "$JAVA_HOME/bin/java" "JDK 17" JAVA_HOME

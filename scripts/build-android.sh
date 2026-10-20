@@ -26,9 +26,7 @@ for arg in "$@"; do
     esac
 done
 
-if [[ ! -f "$WHILEFRESH_ANDROID_OPENSSL_DIR/android_openssl.cmake" ]]; then
-    "$REPO_ROOT/scripts/fetch-deps.sh"
-fi
+"$REPO_ROOT/scripts/fetch-deps.sh"
 
 if [[ $with_key -eq 1 ]]; then
     export_deepseek_key

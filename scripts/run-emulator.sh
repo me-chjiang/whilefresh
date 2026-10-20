@@ -17,14 +17,25 @@ for arg in "$@"; do
     esac
 done
 
+if "$ADB" devices | grep '^emulator-' >/dev/null; then
+    echo "an emulator is already attached; stop it first with: adb emu kill" >&2
+    exit 1
+fi
+
 "$emulator" -accel-check || echo "warning: hardware acceleration unavailable, the emulator will be slow" >&2
 
 nohup "$emulator" -avd "$avd" -no-snapshot-save -no-boot-anim "${extra_args[@]+"${extra_args[@]}"}" \
     > "$log" 2>&1 &
-echo "emulator starting (pid $!), log: $log"
+pid=$!
+echo "emulator starting (pid $pid), log: $log"
 
-"$ADB" wait-for-device
+# Poll instead of `adb wait-for-device`, which would block forever if the emulator dies.
 for _ in $(seq 1 180); do
+    if ! kill -0 "$pid" 2>/dev/null; then
+        echo "emulator exited before boot completed; last log lines:" >&2
+        tail -n 20 "$log" >&2
+        exit 1
+    fi
     if [[ "$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == "1" ]]; then
         echo "emulator booted"
         exit 0

@@ -16,8 +16,13 @@ if(NOT _deepseek_api_key MATCHES "^[A-Za-z0-9_-]*$")
 endif()
 if(_deepseek_api_key)
     message(STATUS "DeepSeek API key: injected")
-else()
+elseif(DEFINED ENV{WHILEFRESH_KEY_FROM_SCRIPT})
     message(STATUS "DeepSeek API key: not set, recognition will report it is not configured")
+else()
+    # A re-run triggered by ninja does not see the key the build script exported earlier.
+    message(WARNING "DeepSeek API key: not set and configure was not started by a scripts/build-*.sh "
+        "script (e.g. ninja re-ran CMake). This is a key-less build (本次为无密钥构建). "
+        "Re-run the build script to inject the key.")
 endif()
 set(WHILEFRESH_GENERATED_DEEPSEEK_API_KEY "${_deepseek_api_key}")
 configure_file(api-config.h.in "${CMAKE_BINARY_DIR}/generated/api-config.h" @ONLY)

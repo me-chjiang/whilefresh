@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # Fetch third-party build dependencies that are too large to vendor into the repo.
 set -euo pipefail
+source "$(dirname "$0")/env.sh"
 
 ANDROID_OPENSSL_URL="https://github.com/KDAB/android_openssl.git"
 # 2026-01-26 "Update binaries with correct symver values (#76)"; ships OpenSSL 3.x for Qt 6.5+.
 ANDROID_OPENSSL_COMMIT="b71f1470962019bd89534a2919f5925f93bc5779"
-
-cache_root="${WHILEFRESH_CACHE_DIR:-$HOME/.cache/whilefresh}"
 
 fetch_pinned() {
     local url="$1" commit="$2" dir="$3"
@@ -24,4 +23,4 @@ fetch_pinned() {
     echo "fetched: $dir @ $commit"
 }
 
-fetch_pinned "$ANDROID_OPENSSL_URL" "$ANDROID_OPENSSL_COMMIT" "$cache_root/android_openssl"
+fetch_pinned "$ANDROID_OPENSSL_URL" "$ANDROID_OPENSSL_COMMIT" "$WHILEFRESH_ANDROID_OPENSSL_DIR"
