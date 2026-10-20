@@ -7,7 +7,7 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
-from .fetch import COMMIT, REPO_URL, default_cache_dir, ensure_snapshot
+from .fetch import COMMIT, REPO_URL, FetchError, default_cache_dir, ensure_snapshot
 from .parse import parse_recipe
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -97,13 +97,19 @@ def main(argv: list[str] | None = None) -> int:
     b.add_argument("--report", type=Path, default=DEFAULT_REPORT)
     args = parser.parse_args(argv)
 
-    cache = ensure_snapshot(args.cache_dir or default_cache_dir())
+    try:
+        cache = ensure_snapshot(args.cache_dir or default_cache_dir())
+    except FetchError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     doc, data = build_document(cache / "dishes")
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(dump(doc), encoding="utf-8")
+    with open(args.out, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(dump(doc))
     report = format_report(doc, data)
     args.report.parent.mkdir(parents=True, exist_ok=True)
-    args.report.write_text(report, encoding="utf-8")
+    with open(args.report, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(report)
     sys.stdout.write(report)
     print(f"\nwrote {args.out} ({args.out.stat().st_size} bytes)")
     return 0
