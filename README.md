@@ -107,6 +107,38 @@ uv run --project tools pytest
 - 词表字段约定：`name`（标准名）、`category`（品类代码）、`aliases[]`（全表唯一）为识别层读取的三个固定字段；`parent` 表示"持有子项即可满足父项"；`pantry_default` 默认算家里常备；`bulk_default` 默认存量多。复核记录见 [词表复核报告](docs/mvp/notes/vocabulary-review.md)。
 - 下载失败时可设置 `WHILEFRESH_CACHE` 指定缓存目录，或把同版本源码压缩包手动放到 `<缓存目录>/snapshot.tar.gz`。
 
+#### 合成测试数据与识别回归（T7）
+
+`tools/whilefresh_tools/synthetic/` 离线生成 23 个虚构样本（13 张买菜截图、6 张小票照片、4 段订单文字）及逐样本 JSON 标准答案。截图仿四种常见 App 信息布局，不使用真实平台商标或 logo；小票含旋转、透视、模糊、阴影/不均匀光照、褶皱、部分遮挡等变体。数据均为虚构，不包含真实收货人、手机号和地址。生成命令只读取正式词表，不调用 AI；需要本机 Google Chrome 与 tools 项目中的 Pillow（`uv` 安装），不安装全局依赖。
+
+```sh
+# 截图和小票由 Chrome 无头渲染 HTML，JPEG 照片由 Pillow 后处理；文字直接生成
+uv run --project tools python -m whilefresh_tools.synthetic generate
+# 仅刷新 HTML/TXT/标准答案（不启动 Chrome），或只生成一个样本
+uv run --project tools python -m whilefresh_tools.synthetic generate --no-render
+uv run --project tools python -m whilefresh_tools.synthetic generate --id cart-fresh-long-01
+
+# 离线评估已有合成样本录制，不产生网络请求
+uv run --project tools python -m whilefresh_tools.synthetic evaluate --out docs/mvp/notes/recognition-baseline.md
+uv run --project tools pytest
+```
+
+产物位于 `test-data/synthetic/{screenshots,receipts,texts}/`（同名图片或 TXT、HTML 排版源与 JSON 标准答案），合成录制位于 `test-data/recordings/synthetic/`。固定场景/随机种子保证重复生成 HTML 与 JSON 逐字节相同；PNG 在不同 Chrome 版本下可能有细微差别，JPEG 另受 Pillow 版本影响。小票遮挡处不可辨认的两行在标准答案中标记 `optional: true`，评估时不计入指标分母。`quantity_text` 指可见规格，`count` 指购买件数；订单时间按页面原文保留，不换算相对日期。
+
+**计费，仅在用户批准后运行**，先带密钥构建并逐样本调用 CLI 一次；驱动器写 `/tmp/whilefresh-t7-synthetic/`，调用前留下 `.attempted` 防止重复计费，达到 30 个底层 HTTP 响应就停。需人工检查该目录的录制内容确为合成数据后再收集：
+
+```sh
+scripts/build-desktop.sh --with-key
+uv run --project tools python -m whilefresh_tools.synthetic.regress run
+uv run --project tools python -m whilefresh_tools.synthetic.regress status
+# 检查 /tmp/whilefresh-t7-synthetic/*.json 仅包含虚构样本的返回；不要复制私人真实样例
+uv run --project tools python -m whilefresh_tools.synthetic.regress collect
+uv run --project tools python -m whilefresh_tools.synthetic evaluate --out docs/mvp/notes/recognition-baseline.md
+scripts/build-desktop.sh  # 用完密钥后恢复为不带密钥的桌面构建
+```
+
+采集器把 `recognize-cli --record` 原样写入 `/tmp`，通过校验后仅在仓库内副本补一个 `elapsed_ms`（取自同次 CLI 摘要）；原生 format-1 录制本身没有耗时字段，回放器忽略这个补充字段。报告统计标准名+勾选匹配召回/精确、类别、赠品、日期、件数、规格、token 与耗时；首版不设阈值。**不要用该合成基线代替 `private/` 真实样例的验收**。
+
 ### 识别层与录制工具
 
 识别层在 `app/src/recognition/`：`RecognitionService` 接口，`DeepSeekRecognizer`（真实服务）、`ReplayRecognizer`（回放录制）、`DemoRecognizer`（演示预置）三种实现。`ctest` 默认全部离线（假服务器 + 合成录制），不计费。
