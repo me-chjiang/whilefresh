@@ -24,3 +24,6 @@ build-*/
 *.aab
 __pycache__/
 .venv/
+
+# Agent worktrees
+/.claude/worktrees/
