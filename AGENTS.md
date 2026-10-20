@@ -17,6 +17,7 @@
 - `AGENTS.md`：跨工具共用的项目规则。
 - `CLAUDE.md`：Claude Code 的规则导入入口。
 - `README.md`：项目简介与材料索引。
+- `FHS.md`：目录布局与文件放置规则。新增、移动、删除文件前先读；结构变化时同步更新。
 
 新文件使用 kebab-case 命名。按内容类型归档，避免把资料长期堆在根目录；不要为了目录整齐而移动已有文件，除非任务需要并已确认。
 
@@ -40,7 +41,8 @@ Skill 实际文件保存在 `.agents/skills/`，`.claude/skills/` 通过同名�
 
 ## Git 约定
 
-- 默认主分支为 `main`；尚未有代码协作流程时，不自行创建或合并功能分支。
+- 默认主分支为 `main`，远端为 https://github.com/me-chjiang/whilefresh 。
+- MVP 开发中每个功能使用独立分支（如 `feat/recipe-data`）；经审查和测试后，把摘要交用户，**用户确认后才合并到 `main`**。流程见 `docs/mvp/cycle-state.md`。
 - 提交信息遵循 Conventional Commits。
 - 提交使用本机 Git 用户配置，不添加 `Co-Authored-By` 等额外署名。
 - 未经明确要求，不创建提交、不推送远端、不改写提交历史。

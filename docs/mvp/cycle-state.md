@@ -4,13 +4,13 @@
 
 ## 当前阶段
 
-Phase 1：规划，产出 `mvp-plan.md`，完成后等待用户确认。
+Phase 2：执行。当前里程碑 M1（T0 工程骨架、T1 菜谱数据、T4 视觉稿并行；随后 T2、T3、T7）。
 
 ## 进度
 
 - [x] Phase 0: 需求对齐（2026-10-20 用户确认）
-- [ ] Phase 1: 规划（进行中）
-- [ ] Phase 2: 执行
+- [x] Phase 1: 规划（2026-10-20 用户确认）
+- [ ] Phase 2: 执行（进行中 - M1）
 - [ ] Phase 3: 迭代
 - [ ] Phase 4: 验收
 
@@ -40,6 +40,9 @@ Phase 1：规划，产出 `mvp-plan.md`，完成后等待用户确认。
 | 2026-10-20 | 识别时附固定标准食材词表 | 实测不给词表时标准名前后不一致 | 识别后再离线归一 |
 | 2026-10-20 | 修订并入 PRD v5，需求稿确认，进入 Phase 1 | 用户确认 | — |
 | 2026-10-20 | 远端仓库 https://github.com/me-chjiang/whilefresh | 用户创建 | — |
+| 2026-10-20 | Phase 1 规划通过；引入 KDAB android_openssl；图标用 Tabler Icons；参考表用 USDA FoodKeeper | 用户确认 | JNI 调系统 HTTPS；Lucide |
+| 2026-10-20 | M4 结束后进入 Phase 3 测试与迭代，共 3 轮（skill 上限为 5 轮） | 用户指定 | — |
+| 2026-10-20 | 新增 `FHS.md` 记录目录与放置规则，由 AGENTS.md 引用 | 规划要求 Phase 2 前完成 | — |
 
 ## Agent 分工
 
@@ -68,8 +71,6 @@ Phase 1：规划，产出 `mvp-plan.md`，完成后等待用户确认。
 ## 待解决问题
 
 - DeepSeek 密钥额度限制方式仍未核实。
-- 保质期参考表拟用 USDA FoodKeeper（CC0），待用户在 Phase 1 Gate 确认。
-- Android 套件缺 OpenSSL，HTTPS 方案待用户在 Phase 1 Gate 确认（见 mvp-plan ADR-3）。
 
 ## 技术验证记录
 
