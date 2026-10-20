@@ -8,7 +8,7 @@
   "file": "receipt-03-perspective-blur.jpg",
   "items": [
     {
-      "canonical_name": "面包",
+      "canonical_name": "吐司",
       "raw_name": "全麦吐司片",
       "quantity_text": "400g",
       "count": 1,
@@ -112,7 +112,7 @@
       "optional": false
     },
     {
-      "canonical_name": "面条",
+      "canonical_name": "鲜面条",
       "raw_name": "鲜切面条",
       "quantity_text": "500g",
       "count": 1,

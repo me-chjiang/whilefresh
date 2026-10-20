@@ -46,7 +46,7 @@ def emoji_for(p: Product) -> str:
         return "🧂"
     if p.category == "irrelevant":
         return "🧴"
-    return _EMOJI.get(p.canonical, "🥬")
+    return _EMOJI.get(p.visual_key or p.canonical, "🥬")
 
 
 # Soft pastel backgrounds for product thumbnails, picked by a stable hash of the name.

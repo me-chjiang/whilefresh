@@ -118,7 +118,7 @@ def _cart_item(p: Product) -> str:
     return (
         '<div class="item">'
         + checkbox(p.selected, "#1faa6b")
-        + thumb(emoji_for(p), 56, p.canonical + p.raw)
+        + thumb(emoji_for(p), 56, (p.visual_key or p.canonical) + p.raw)
         + '<div class="info">'
         + f'<div class="name">{esc(p.raw)}{gift_tag}{_date_tags(p, "tag")}</div>'
         + (f'<span class="spec">{esc(p.spec)}</span>' if p.spec else "")
@@ -232,7 +232,7 @@ def render_order_darkstore(sample: Sample) -> tuple[str, int]:
         price = "¥0.00" if p.gift else f"¥{money(p.price)}"
         rows.append(
             '<div class="line">'
-            + thumb(emoji_for(p), 58, p.canonical + p.raw)
+            + thumb(emoji_for(p), 58, (p.visual_key or p.canonical) + p.raw)
             + f'<div class="info"><div class="nm">{esc(p.raw)}{gift_tag}{_date_tags(p, "tag")}</div>'
             + (f'<div class="sp">{esc(p.spec)}</div>' if p.spec else "")
             + f'</div><div class="rt"><b>{price}</b><span>x{p.count}</span></div></div>'
@@ -316,7 +316,7 @@ def render_order_delivery(sample: Sample) -> tuple[str, int]:
         gift = '<span class="tg gift">赠品</span>' if p.gift else ""
         total = "¥0" if p.gift else f"¥{money(_line_total(p))}"
         rows.append(
-            '<div class="it">' + thumb(emoji_for(p), 48, p.canonical + p.raw, 8)
+            '<div class="it">' + thumb(emoji_for(p), 48, (p.visual_key or p.canonical) + p.raw, 8)
             + f'<div class="mid"><div class="nm">{esc(p.raw)}{gift}{_date_tags(p, "tg")}</div>'
             + (f'<div class="sp">{esc(p.spec)}</div>' if p.spec else "")
             + f'</div><div class="q">×{p.count}</div><div class="pr">{total}</div></div>'
@@ -408,7 +408,7 @@ def _mall_item(p: Product) -> str:
     price = "¥0.00" if p.gift else f"¥{money(p.price)}"
     orig = f"<s>¥{money(p.orig_price)}</s>" if p.orig_price else ""
     return (
-        '<div class="pi">' + thumb(emoji_for(p), 64, p.canonical + p.raw, 6)
+        '<div class="pi">' + thumb(emoji_for(p), 64, (p.visual_key or p.canonical) + p.raw, 6)
         + f'<div class="info"><div class="t">{esc(p.raw)}{gift}{_date_tags(p, "tag")}</div>'
         + (f'<span class="s">规格:{esc(p.spec)}</span>' if p.spec else "")
         + f'</div><div class="rt"><b>{price}</b>{orig}<span>x{p.count}</span></div></div>'

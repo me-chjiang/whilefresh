@@ -27,7 +27,7 @@ def _request_kind(sample: Sample) -> str:
 
 def _ensure_tmp(path: Path) -> None:
     target = path.resolve()
-    if not target.is_relative_to(Path("/tmp")):
+    if not target.is_relative_to(Path("/tmp").resolve()):
         raise ValueError(f"temporary recording directory must be under /tmp: {target}")
     path.mkdir(parents=True, exist_ok=True)
 
@@ -161,11 +161,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tmp", type=Path, default=TMP_ROOT)
     parser.add_argument("--cli", type=Path, default=REPO_ROOT / "build" / "desktop" / "tools" / "recognize-cli")
     parser.add_argument("--limit", type=int, default=30, help="Maximum HTTP responses (default 30)")
+    parser.add_argument("--id", action="append", dest="ids", help="Restrict to sample ID (repeatable)")
     args = parser.parse_args(argv)
+    selected = tuple(s for s in SAMPLES if not args.ids or s.id in args.ids)
+    unknown = set(args.ids or ()) - {s.id for s in selected}
+    if unknown:
+        parser.error(f"unknown IDs: {', '.join(sorted(unknown))}")
     if args.action == "run":
-        return 0 if run(args.tmp, args.cli, args.limit) else 1
+        return 0 if run(args.tmp, args.cli, args.limit, selected) else 1
     if args.action == "collect":
-        copied, failed = collect(args.tmp)
+        copied, failed = collect(args.tmp, selected)
         print(f"Copied {copied} synthetic recordings to {RECORDINGS_DIR}; missing/invalid: {', '.join(failed) if failed else 'none'}")
         return 1 if failed else 0
     _ensure_tmp(args.tmp)

@@ -69,6 +69,7 @@ class Product:
     optional: bool = False  # drawn but may be unreadable (occluded); misses are not penalised
     emoji: str | None = None
     orig_price: float | None = None  # struck-through price
+    visual_key: str | None = None  # keep existing thumbnail stable when gold taxonomy is corrected
 
 
 @dataclass(frozen=True)

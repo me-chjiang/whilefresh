@@ -47,7 +47,7 @@
       "optional": false
     },
     {
-      "canonical_name": "米醋",
+      "canonical_name": "香醋",
       "raw_name": "鼎味轩 香醋",
       "quantity_text": "500ml",
       "count": 1,
@@ -138,7 +138,7 @@
       "optional": false
     },
     {
-      "canonical_name": "胡椒粉",
+      "canonical_name": "白胡椒",
       "raw_name": "锦厨 白胡椒粉",
       "quantity_text": "50g",
       "count": 1,
@@ -216,7 +216,7 @@
       "optional": false
     },
     {
-      "canonical_name": "木耳",
+      "canonical_name": "干木耳",
       "raw_name": "黑木耳 干货",
       "quantity_text": "200g",
       "count": 1,

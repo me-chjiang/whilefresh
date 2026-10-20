@@ -42,6 +42,7 @@ class Stats:
     noise_false_positives: int = 0
     other_false_positives: int = 0
     uncategorized: int = 0
+    uncategorized_actionable: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
@@ -85,6 +86,7 @@ class Evaluation:
     ignored_kinds: list[str] = field(default_factory=list)
     ignored_summary: str = ""
     source: str = ""
+    expected_source: str = ""
     category_rows: list[tuple[str, str | None]] = field(default_factory=list)
 
 
@@ -282,6 +284,8 @@ def evaluate_sample(truth: dict, recording: dict, vocabulary: dict[str, str]) ->
     stats.expected = sum(not item["optional"] for item in expected)
     stats.predicted = len(predictions) - optional_matched
     stats.uncategorized = sum(p["canonical_name"] == UNCATEGORIZED for p in predictions)
+    stats.uncategorized_actionable = sum(p["canonical_name"] == UNCATEGORIZED and p["category"] != "irrelevant"
+                                         for p in predictions)
     stats.gift_expected = sum(p["is_gift"] for p in expected if not p["optional"])
     stats.unchecked_expected = sum(not p["selected"] for p in expected if not p["optional"])
     details: list[str] = []
@@ -339,7 +343,8 @@ def evaluate_sample(truth: dict, recording: dict, vocabulary: dict[str, str]) ->
         else:
             stats.other_false_positives += 1
             details.append(f"多余商品：{got['raw_name']}")
-    return Evaluation(truth["id"], stats, details, truth["ignored_kinds"], ignored, source, category_rows)
+    return Evaluation(truth["id"], stats, details, truth["ignored_kinds"], ignored,
+                      source, truth["source_type"], category_rows)
 
 
 def _percent(value: float | None) -> str:
@@ -366,14 +371,15 @@ def render_report(results: list[Evaluation], missing: list[str], errors: dict[st
         "- 日期只考察标准答案**可见的原文**，按字段逐个精确比较；不按拍摄日期换算相对日期。",
         "- `elapsed_ms` 是采集时从 CLI 摘要写入录制副本的补充字段（原生 format-1 没有时长）；缺失则不计平均耗时。",
         "",
-        "| 样本 | 召回 | 精确 | 标准名 | 分类 | 赠品 | 未勾选 | 日期 | 无关误纳入 | 未归类 | token | 耗时/s |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        "| 样本 | 来源类型 | 召回 | 精确 | 标准名 | 分类 | 赠品 | 未勾选 | 日期 | 无关误纳入 | 未归类 | token | 耗时/s |",
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for result in results:
         s = result.stats
         time = f"{s.elapsed_ms / 1000:.1f}" if s.elapsed_samples else "—"
+        source = result.source if s.source_correct else f"{result.expected_source}→{result.source}"
         lines.append(
-            f"| {result.id} | {_percent(s.recall)} ({s.true_positive}/{s.expected}) | "
+            f"| {result.id} | {source} | {_percent(s.recall)} ({s.true_positive}/{s.expected}) | "
             f"{_percent(s.precision)} ({s.true_positive}/{s.predicted}) | "
             f"{_percent(s.canonical_accuracy)} ({s.canonical_correct}/{s.matched}) | "
             f"{_percent(s.category_accuracy)} ({s.category_correct}/{s.matched}) | "
@@ -384,7 +390,7 @@ def render_report(results: list[Evaluation], missing: list[str], errors: dict[st
     avg = f"{total.elapsed_ms / total.elapsed_samples / 1000:.1f}" if total.elapsed_samples else "—"
     lines.extend(
         [
-            f"| **总体** | **{_percent(total.recall)} ({total.true_positive}/{total.expected})** | "
+            f"| **总体** | **{total.source_correct}/{total.samples}** | **{_percent(total.recall)} ({total.true_positive}/{total.expected})** | "
             f"**{_percent(total.precision)} ({total.true_positive}/{total.predicted})** | "
             f"**{_percent(total.canonical_accuracy)} ({total.canonical_correct}/{total.matched})** | "
             f"**{_percent(total.category_accuracy)} ({total.category_correct}/{total.matched})** | "
@@ -397,7 +403,8 @@ def render_report(results: list[Evaluation], missing: list[str], errors: dict[st
             f"{_percent(total.count_correct / total.matched if total.matched else None)} "
             f"({total.count_correct}/{total.matched})；无关内容误纳入 {total.noise_false_positives}，"
             f"其他多余商品 {total.other_false_positives}；无依据日期 {total.invented_dates}；"
-            f"来源类型 {total.source_correct}/{total.samples} 正确。",
+            f"未归类 {total.uncategorized} 中 {total.uncategorized_actionable} 件食材/调料仍需归名、"
+            f"其余为已购日用品等无关商品。",
             f"Token：prompt {total.prompt_tokens}，completion {total.completion_tokens}，total {total.total_tokens}；"
             f"可用时长 {total.elapsed_samples}/{total.samples}，平均 {avg} 秒/样本。",
             "",
@@ -422,7 +429,7 @@ def render_report(results: list[Evaluation], missing: list[str], errors: dict[st
     )
     worst = sorted(results, key=lambda r: (r.stats.recall if r.stats.recall is not None else 1,
                                            r.stats.precision if r.stats.precision is not None else 1,
-                                           r.stats.date_accuracy if r.stats.date_accuracy is not None else 1))[:3]
+                                           -r.stats.expected))[:3]
     for result in worst:
         s = result.stats
         lines.append(f"### {result.id}（召回 {_percent(s.recall)}，精确 {_percent(s.precision)}）")
@@ -431,9 +438,18 @@ def render_report(results: list[Evaluation], missing: list[str], errors: dict[st
         if len(result.errors) > 12:
             lines.append(f"- 另有 {len(result.errors) - 12} 处差异，见录制文件。")
         if not result.errors:
-            lines.append("- 无配对/分类差异。")
+            lines.append(
+                f"- 无商品配对/分类差异；仅 {sum(bool(r.errors) for r in results)} 份样本出现商品错误，"
+                f"本样本 {s.expected} 行并列满分，按复杂度列入观察。"
+            )
         lines.append("")
-    lines.extend(["## 数据范围与未覆盖", ""])
+    lines.extend(["## 来源类型差异", ""])
+    source_errors = [r for r in results if not r.stats.source_correct]
+    if source_errors:
+        lines.extend(f"- {r.id}：应为 `{r.expected_source}`，识别为 `{r.source}`。" for r in source_errors)
+    else:
+        lines.append("所有录制的来源类型均与标准答案一致。")
+    lines.extend(["", "## 数据范围与未覆盖", ""])
     if missing:
         lines.append("缺失录制：" + "、".join(missing) + "。")
     if errors:
