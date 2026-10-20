@@ -10,8 +10,14 @@ namespace whilefresh::recognition {
 //
 //   { "format": 1,
 //     "request": { "inputKind": "screenshot", "imageCount": 3, "textLength": 0,
-//                  "promptVersion": "v1" },
+//                  "promptVersion": "v2" },
+//     "batches": [ { "firstImage": 0, "lastImage": 3 }, ... ],      // optional, one per response
 //     "responses": [ { <raw /chat/completions body> }, ... ] }
+//
+// "batches" tells which original images each response covered; without it replay cannot tell
+// overlap duplicates from real ones and drops nothing.
+//
+// Files are written readable by the owner only: they hold what the user bought.
 //
 // Recordings of synthetic material go to test-data/recordings/; recordings of real material
 // must stay under private/recordings/.
@@ -21,7 +27,12 @@ struct Recording {
     int textLength = 0;
     QString promptVersion;
     QList<QByteArray> responses; // raw bodies, compact JSON
+    QList<BatchSpan> batches;    // parallel to responses, or empty
 };
+
+// Whether recording to `path` is acceptable: anything outside the repository roots, or inside
+// `<root>/private/`. Real-sample recordings must never land in a tracked directory.
+bool isRecordingPathAllowed(const QString &path, const QStringList &repositoryRoots);
 
 Recording makeRecording(const RecognitionRequest &request, const RecognitionResult &result);
 

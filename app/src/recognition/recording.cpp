@@ -3,7 +3,9 @@
 #include "recognition/request-builder.h"
 #include "recognition/response-parser.h"
 
+#include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
 
@@ -27,7 +29,31 @@ Recording makeRecording(const RecognitionRequest &request, const RecognitionResu
     recording.textLength = int(request.text.size());
     recording.promptVersion = promptVersion();
     recording.responses = result.rawResponses;
+    if (result.batchSpans.size() == result.rawResponses.size())
+        recording.batches = result.batchSpans;
     return recording;
+}
+
+bool isRecordingPathAllowed(const QString &path, const QStringList &repositoryRoots)
+{
+    // The file itself may not exist yet, so resolve its directory.
+    const QFileInfo info(path);
+    QDir directory = info.absoluteDir();
+    if (!directory.exists())
+        return false;
+    const QString target = QDir::cleanPath(directory.canonicalPath() + QLatin1Char('/') + info.fileName());
+
+    const auto isInside = [](const QString &candidate, const QString &root) {
+        return candidate == root || candidate.startsWith(root + QLatin1Char('/'));
+    };
+    for (const QString &rootPath : repositoryRoots) {
+        const QString root = QDir(rootPath).canonicalPath();
+        if (root.isEmpty() || !isInside(target, root))
+            continue;
+        if (!isInside(target, root + QStringLiteral("/private")))
+            return false;
+    }
+    return true;
 }
 
 std::optional<Recording> readRecording(const QString &path, QString *error)
@@ -50,6 +76,10 @@ std::optional<Recording> readRecording(const QString &path, QString *error)
     recording.imageCount = summary.value(QStringLiteral("imageCount")).toInt();
     recording.textLength = summary.value(QStringLiteral("textLength")).toInt();
     recording.promptVersion = summary.value(QStringLiteral("promptVersion")).toString();
+    for (const QJsonValue &span : doc.object().value(QStringLiteral("batches")).toArray()) {
+        recording.batches.append({ span.toObject().value(QStringLiteral("firstImage")).toInt(-1),
+                                   span.toObject().value(QStringLiteral("lastImage")).toInt(-1) });
+    }
     for (const QJsonValue &response : doc.object().value(QStringLiteral("responses")).toArray())
         recording.responses.append(QJsonDocument(response.toObject()).toJson(QJsonDocument::Compact));
     if (recording.responses.isEmpty()) {
@@ -71,17 +101,27 @@ bool writeRecording(const QString &path, const Recording &recording, QString *er
         { QStringLiteral("textLength"), recording.textLength },
         { QStringLiteral("promptVersion"), recording.promptVersion },
     };
-    const QJsonObject root{
+    QJsonObject root{
         { QStringLiteral("format"), kFormat },
         { QStringLiteral("request"), summary },
         { QStringLiteral("responses"), responses },
     };
+    if (recording.batches.size() == recording.responses.size() && !recording.batches.isEmpty()) {
+        QJsonArray spans;
+        for (const BatchSpan &span : recording.batches) {
+            spans.append(QJsonObject{ { QStringLiteral("firstImage"), span.firstImage },
+                                      { QStringLiteral("lastImage"), span.lastImage } });
+        }
+        root.insert(QStringLiteral("batches"), spans);
+    }
 
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         setError(error, QStringLiteral("cannot write recording %1: %2").arg(path, file.errorString()));
         return false;
     }
+    // Restrict before any content is written; an existing file is tightened as well.
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
     file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     return true;
 }
@@ -98,6 +138,8 @@ std::optional<RecognitionResult> resultFromRecording(const Recording &recording,
                 *error = outcome.error;
             return std::nullopt;
         }
+        if (recording.batches.size() == recording.responses.size())
+            outcome.result->batchSpans = { recording.batches.at(parts.size()) };
         parts.append(*outcome.result);
     }
     return mergeResults(parts);

@@ -21,9 +21,13 @@ ParseOutcome parseChatCompletion(const QByteArray &body, const Vocabulary *vocab
 // Same for the bare model text, with usage left at zero.
 ParseOutcome parseModelContent(const QString &content, const Vocabulary *vocabulary, InputKind kind);
 
-// Merges the results of consecutive requests of one import. Items of later results that
-// repeat an earlier item (same rawName, quantityText and isGift) are dropped; usage and raw
-// responses are summed / concatenated.
+// Merges the results of consecutive requests of one import; usage, raw responses and batch
+// spans are summed / concatenated. Two identical-looking items are two real purchases, so
+// the only duplicates dropped are those caused by the overlap between slices: when one
+// original image was split across two consecutive requests (known from the batch spans), an
+// item of the later request that repeats (same rawName, quantityText and isGift) an item of
+// the earlier request, both attributed to that image or to none, is dropped. Without span
+// information nothing is dropped.
 RecognitionResult mergeResults(const QList<RecognitionResult> &results);
 
 }

@@ -66,12 +66,20 @@ struct TokenUsage {
     int totalTokens = 0;
 };
 
+// Which original images (0-based indices into RecognitionRequest::images) one request covered;
+// -1 for text input.
+struct BatchSpan {
+    int firstImage = -1;
+    int lastImage = -1;
+};
+
 struct RecognitionResult {
     SourceType sourceType = SourceType::Other;
     QList<RecognizedItem> items;
     QString ignoredSummary;
     // Raw chat-completion bodies, one per request sent; used for debugging and recording.
     QList<QByteArray> rawResponses;
+    QList<BatchSpan> batchSpans; // parallel to rawResponses when known
     TokenUsage usage;
     qint64 elapsedMs = 0;
     bool isDemo = false;
@@ -90,6 +98,7 @@ enum class ErrorKind {
     RequestRejected, // any other 4xx
     BadResponse,
     InvalidInput,
+    SecureConnectionFailed, // TLS handshake or certificate trouble (often a wrong system clock)
     Internal, // a part of the app is broken (e.g. a missing image plugin), not the user or the network
 };
 

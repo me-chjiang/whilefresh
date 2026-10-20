@@ -130,9 +130,71 @@ private slots:
         recognizer.recognize(requestFor(InputKind::Screenshot));
         QTRY_COMPARE(succeeded.count(), 1);
         const auto result = succeeded.at(0).at(1).value<RecognitionResult>();
-        QCOMPARE(result.items.size(), 3); // the egg repeated in the second batch is dropped
+        // The egg of image 23 repeated in the second batch (that image straddles both) is dropped;
+        // the egg from image 40 is a different purchase.
+        QCOMPARE(result.items.size(), 4);
         QCOMPARE(result.rawResponses.size(), 2);
         QCOMPARE(result.usage.totalTokens, 5400 + 4350);
+    }
+
+    void replayWithoutBatchSpansDropsNothing()
+    {
+        QString error;
+        auto recording = readRecording(testDataPath(QStringLiteral("recordings/synthetic-two-batches.json")), &error);
+        QVERIFY2(recording, qPrintable(error));
+        recording->batches.clear();
+        RecognitionRequest request;
+        request.vocabulary = syntheticVocabulary();
+        RecognitionError failure;
+        const auto result = resultFromRecording(*recording, request, &failure);
+        QVERIFY(result);
+        QCOMPARE(result->items.size(), 5);
+    }
+
+    void recordingsAreWrittenOwnerOnly()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString path = dir.filePath(QStringLiteral("rec.json"));
+        QFile existing(path); // a pre-existing world-readable file is tightened too
+        QVERIFY(existing.open(QIODevice::WriteOnly));
+        existing.close();
+        QVERIFY(existing.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup
+                                        | QFileDevice::ReadOther));
+
+        Recording recording;
+        recording.responses = { QByteArray("{}") };
+        QString error;
+        QVERIFY2(writeRecording(path, recording, &error), qPrintable(error));
+        const auto permissions = QFile::permissions(path);
+        QCOMPARE(permissions & (QFileDevice::ReadGroup | QFileDevice::WriteGroup | QFileDevice::ExeGroup
+                                | QFileDevice::ReadOther | QFileDevice::WriteOther | QFileDevice::ExeOther),
+                 QFileDevice::Permissions());
+        QVERIFY(permissions.testFlag(QFileDevice::ReadOwner));
+    }
+
+    void recordingPathsInsideTheRepositoryMustBeUnderPrivate()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        QVERIFY(QDir(dir.path()).mkpath(QStringLiteral("private/recordings")));
+        QVERIFY(QDir(dir.path()).mkpath(QStringLiteral("test-data/recordings")));
+        const QStringList roots{ dir.path() };
+
+        QVERIFY(isRecordingPathAllowed(dir.filePath(QStringLiteral("private/recordings/a.json")), roots));
+        QVERIFY(!isRecordingPathAllowed(dir.filePath(QStringLiteral("test-data/recordings/a.json")), roots));
+        QVERIFY(!isRecordingPathAllowed(dir.filePath(QStringLiteral("a.json")), roots));
+        QVERIFY(!isRecordingPathAllowed(dir.filePath(QStringLiteral("private/../a.json")), roots));
+        QVERIFY(!isRecordingPathAllowed(dir.filePath(QStringLiteral("private-x/a.json")), roots)); // directory missing
+        QVERIFY(!isRecordingPathAllowed(dir.filePath(QStringLiteral("private/recordings/missing-dir/a.json")), roots));
+
+        QTemporaryDir outside;
+        QVERIFY(outside.isValid());
+        QVERIFY(isRecordingPathAllowed(outside.filePath(QStringLiteral("a.json")), roots));
+
+        // A symlink pointing into the repository does not get around the rule.
+        QVERIFY(QFile::link(dir.filePath(QStringLiteral("test-data")), outside.filePath(QStringLiteral("link"))));
+        QVERIFY(!isRecordingPathAllowed(outside.filePath(QStringLiteral("link/a.json")), roots));
     }
 
     void replayAppliesTheRequestsVocabulary()
@@ -205,8 +267,10 @@ private slots:
         QVERIFY2(original, qPrintable(error));
         QCOMPARE(original->inputKind, InputKind::Screenshot);
         QCOMPARE(original->imageCount, 45);
-        QCOMPARE(original->promptVersion, QStringLiteral("v1"));
+        QCOMPARE(original->promptVersion, QStringLiteral("v2"));
         QCOMPARE(original->responses.size(), 2);
+        QCOMPARE(original->batches.size(), 2);
+        QCOMPARE(original->batches.at(1).firstImage, 22);
 
         QTemporaryDir dir;
         const QString path = dir.filePath(QStringLiteral("copy.json"));
@@ -215,6 +279,8 @@ private slots:
         QVERIFY2(copy, qPrintable(error));
         QCOMPARE(copy->responses, original->responses);
         QCOMPARE(copy->imageCount, 45);
+        QCOMPARE(copy->batches.size(), 2);
+        QCOMPARE(copy->batches.at(0).lastImage, 22);
     }
 
     void makeRecordingSummarisesTheRequest()

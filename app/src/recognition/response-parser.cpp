@@ -345,19 +345,35 @@ ParseOutcome parseChatCompletion(const QByteArray &body, const Vocabulary *vocab
 RecognitionResult mergeResults(const QList<RecognitionResult> &results)
 {
     RecognitionResult merged;
-    QSet<QString> earlierKeys;
     bool sourceTypeSet = false;
     QStringList summaries;
 
-    for (const RecognitionResult &part : results) {
-        QSet<QString> thisKeys;
-        for (const RecognizedItem &item : part.items) {
-            const QString key = itemKey(item);
-            thisKeys.insert(key);
-            if (!earlierKeys.contains(key))
-                merged.items.append(item);
+    for (qsizetype k = 0; k < results.size(); ++k) {
+        const RecognitionResult &part = results.at(k);
+
+        // The image shared with the previous request, if the split ran through one image.
+        int sharedImage = -1;
+        if (k > 0 && !part.batchSpans.isEmpty() && !results.at(k - 1).batchSpans.isEmpty()) {
+            const int previousLast = results.at(k - 1).batchSpans.last().lastImage;
+            if (previousLast >= 0 && part.batchSpans.first().firstImage == previousLast)
+                sharedImage = previousLast;
         }
-        earlierKeys.unite(thisKeys);
+        const auto fromSharedImage = [&](const RecognizedItem &item) {
+            return item.imageIndex == -1 || item.imageIndex == sharedImage;
+        };
+        QSet<QString> previousKeys;
+        if (sharedImage >= 0) {
+            for (const RecognizedItem &item : results.at(k - 1).items) {
+                if (fromSharedImage(item))
+                    previousKeys.insert(itemKey(item));
+            }
+        }
+
+        for (const RecognizedItem &item : part.items) {
+            if (sharedImage >= 0 && fromSharedImage(item) && previousKeys.contains(itemKey(item)))
+                continue;
+            merged.items.append(item);
+        }
 
         if (!sourceTypeSet || (merged.sourceType == SourceType::Other && part.sourceType != SourceType::Other)) {
             merged.sourceType = part.sourceType;
@@ -367,6 +383,7 @@ RecognitionResult mergeResults(const QList<RecognitionResult> &results)
             summaries.append(part.ignoredSummary);
 
         merged.rawResponses.append(part.rawResponses);
+        merged.batchSpans.append(part.batchSpans);
         merged.usage.promptTokens += part.usage.promptTokens;
         merged.usage.completionTokens += part.usage.completionTokens;
         merged.usage.totalTokens += part.usage.totalTokens;

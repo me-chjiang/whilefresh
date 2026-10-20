@@ -43,11 +43,19 @@ public:
     quint16 port() const { return m_server.serverPort(); }
     QUrl url() const { return QUrl(QStringLiteral("http://127.0.0.1:%1/chat/completions").arg(port())); }
     void enqueue(const Reply &reply) { m_replies.append(reply); }
+    // Answer whatever arrives with these raw bytes and hang up (what a non-TLS server does to a ClientHello).
+    void setGarbageResponse(const QByteArray &bytes) { m_garbage = bytes; }
     const QList<Received> &received() const { return m_received; }
 
 private:
     void onReadyRead(QTcpSocket *socket)
     {
+        if (!m_garbage.isEmpty()) {
+            socket->readAll();
+            socket->write(m_garbage);
+            socket->disconnectFromHost();
+            return;
+        }
         QByteArray &buffer = m_buffers[socket];
         buffer += socket->readAll();
         const qsizetype headerEnd = buffer.indexOf("\r\n\r\n");
@@ -93,6 +101,7 @@ private:
     QTcpServer m_server;
     QList<QTcpSocket *> m_sockets;
     QHash<QTcpSocket *, QByteArray> m_buffers;
+    QByteArray m_garbage;
     QList<Reply> m_replies;
     QList<Received> m_received;
 };

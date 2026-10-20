@@ -277,33 +277,57 @@ private slots:
         }
     }
 
-    void mergeDropsRepeatsFromLaterResults()
+    void mergeOnlyDropsOverlapDuplicatesOfAnImageSplitAcrossRequests()
     {
-        const auto parse = [](const QStringList &items) {
-            return *parseChatCompletion(chatCompletion(modelJson(items), 100, 10), syntheticVocabulary().get(),
-                                        InputKind::Screenshot).result;
+        const auto part = [](const QStringList &items, int firstImage, int lastImage) {
+            RecognitionResult result = *parseChatCompletion(chatCompletion(modelJson(items), 100, 10),
+                                                            syntheticVocabulary().get(), InputKind::Screenshot).result;
+            result.batchSpans = { { firstImage, lastImage } };
+            return result;
         };
-        const QString egg = itemJson(QStringLiteral("鲜鸡蛋"), QStringLiteral("鸡蛋"), QStringLiteral(R"("quantity_text":"10枚")"));
-        const QString giftEgg = itemJson(QStringLiteral("鲜鸡蛋"), QStringLiteral("鸡蛋"),
-                                         QStringLiteral(R"("quantity_text":"10枚","is_gift":true)"));
-        const QString eggOther = itemJson(QStringLiteral("鲜鸡蛋"), QStringLiteral("鸡蛋"), QStringLiteral(R"("quantity_text":"30枚")"));
+        const auto egg = [](const QString &extra = {}) {
+            return itemJson(QStringLiteral("鲜鸡蛋"), QStringLiteral("鸡蛋"),
+                            QStringLiteral("\"quantity_text\":\"10枚\"") + extra);
+        };
         const QString onion = itemJson(QStringLiteral("洋葱"), QStringLiteral("洋葱"));
+        const QString onImage3 = QStringLiteral(",\"image_index\":4"); // 1-based in the reply -> image 3
+        const QString onImage5 = QStringLiteral(",\"image_index\":6");
 
-        RecognitionResult first = parse({ egg, egg, onion }); // repeats inside one result are kept
+        // Image 3 straddles the two requests: its overlap duplicate goes, a real second egg from
+        // image 5 stays, and so does the gift egg (a different item).
+        RecognitionResult first = part({ egg(onImage3), onion }, 0, 3);
         first.ignoredSummary = QStringLiteral("热卖推荐");
-        RecognitionResult second = parse({ egg, giftEgg, eggOther, onion });
+        RecognitionResult second = part({ egg(onImage3), egg(onImage5), egg(onImage5 + QStringLiteral(",\"is_gift\":true")), onion }, 3, 6);
         second.ignoredSummary = QStringLiteral("热卖推荐");
-        RecognitionResult third = parse({ egg });
+        RecognitionResult third = part({ egg(onImage5) }, 7, 8); // no shared image with the previous request
         third.ignoredSummary = QStringLiteral("优惠横幅");
 
         const RecognitionResult merged = mergeResults({ first, second, third });
-        QCOMPARE(merged.items.size(), 5); // egg, egg, onion | giftEgg, eggOther
+        // egg(3), onion | egg(5), gift egg(5) | egg(5) again
+        QCOMPARE(merged.items.size(), 5);
+        QCOMPARE(merged.items.at(2).imageIndex, 5);
         QCOMPARE(merged.items.at(3).isGift, true);
-        QCOMPARE(merged.items.at(4).quantityText, QStringLiteral("30枚"));
         QCOMPARE(merged.rawResponses.size(), 3);
+        QCOMPARE(merged.batchSpans.size(), 3);
         QCOMPARE(merged.usage.totalTokens, 330);
         QCOMPARE(merged.ignoredSummary, QStringLiteral("热卖推荐；优惠横幅"));
         QCOMPARE(merged.sourceType, SourceType::Cart);
+    }
+
+    void mergeWithoutSpansDropsNothing()
+    {
+        const QString egg = itemJson(QStringLiteral("鲜鸡蛋"), QStringLiteral("鸡蛋"));
+        const RecognitionResult one = *parseChatCompletion(chatCompletion(modelJson({ egg })), nullptr, InputKind::Screenshot).result;
+        QCOMPARE(mergeResults({ one, one }).items.size(), 2);
+    }
+
+    void mergeKeepsTruncatedFlag()
+    {
+        RecognitionResult a;
+        RecognitionResult b;
+        b.truncated = true;
+        QVERIFY(mergeResults({ a, b }).truncated);
+        QVERIFY(!mergeResults({ a, a }).truncated);
     }
 
     void mergeOfNothingIsEmpty()

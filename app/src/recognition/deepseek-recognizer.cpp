@@ -17,11 +17,6 @@
 
 namespace whilefresh::recognition {
 
-namespace {
-
-constexpr int kMaxRetries = 1;
-constexpr int kDetailSnippetChars = 200;
-
 ErrorKind kindForHttpStatus(int status)
 {
     if (status == 401 || status == 403)
@@ -36,6 +31,8 @@ ErrorKind kindForHttpStatus(int status)
 ErrorKind kindForNetworkError(QNetworkReply::NetworkError error)
 {
     switch (error) {
+    case QNetworkReply::SslHandshakeFailedError:
+        return ErrorKind::SecureConnectionFailed;
     case QNetworkReply::TimeoutError:
     case QNetworkReply::OperationCanceledError: // what a transfer timeout reports on some Qt versions
         return ErrorKind::Timeout;
@@ -48,6 +45,11 @@ ErrorKind kindForNetworkError(QNetworkReply::NetworkError error)
         return ErrorKind::NoNetwork;
     }
 }
+
+namespace {
+
+constexpr int kMaxRetries = 1;
+constexpr int kDetailSnippetChars = 200;
 
 RecognitionError classifyFailure(QNetworkReply *reply, int status, const QByteArray &body)
 {
@@ -69,7 +71,13 @@ PrepareOutcome prepareJob(const RecognitionRequest &request, const BatchLimits &
     PrepareOutcome outcome;
     const auto addBatch = [&](const QList<PreparedImage> &images, const QString &text) {
         const QJsonObject body = buildChatRequest(request.kind, *request.vocabulary, images, text, options);
-        outcome.batches.append({ QJsonDocument(body).toJson(QJsonDocument::Compact), int(images.size()) });
+        BatchSpan span;
+        for (const PreparedImage &image : images) {
+            if (span.firstImage < 0)
+                span.firstImage = image.imageIndex;
+            span.lastImage = image.imageIndex;
+        }
+        outcome.batches.append({ QJsonDocument(body).toJson(QJsonDocument::Compact), int(images.size()), span });
     };
 
     if (request.kind == InputKind::OrderText) {
@@ -298,6 +306,7 @@ void DeepSeekRecognizer::replyFinished(quint64 id, QNetworkReply *reply)
            id, batchNumber, qint64(batchTotal), status, qint64(body.size()), elapsed,
            qint64(outcome.result->items.size()), outcome.result->usage.totalTokens);
 
+    outcome.result->batchSpans = { job.batches.at(job.batchIndex).span };
     job.parts.append(*outcome.result);
     job.attempt = 0;
     if (++job.batchIndex < job.batches.size())

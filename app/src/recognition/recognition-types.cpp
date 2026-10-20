@@ -47,6 +47,7 @@ constexpr Name<ErrorKind> kErrorKinds[] = {
     { ErrorKind::RequestRejected, "request-rejected" },
     { ErrorKind::BadResponse, "bad-response" },
     { ErrorKind::InvalidInput, "invalid-input" },
+    { ErrorKind::SecureConnectionFailed, "secure-connection-failed" },
     { ErrorKind::Internal, "internal" },
 };
 
@@ -109,6 +110,8 @@ QString userMessageFor(ErrorKind kind)
         return QStringLiteral("没能看懂识别结果，请重试一次。");
     case ErrorKind::InvalidInput:
         return QStringLiteral("没有可识别的内容，请重新选择图片或文字。");
+    case ErrorKind::SecureConnectionFailed:
+        return QStringLiteral("安全连接失败，请检查系统时间或网络环境。");
     case ErrorKind::Internal:
         return QStringLiteral("图片处理组件缺失，请更新应用。");
     }

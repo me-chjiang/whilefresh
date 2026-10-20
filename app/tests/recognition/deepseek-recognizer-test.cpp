@@ -7,6 +7,7 @@
 #include <QElapsedTimer>
 #include <QImage>
 #include <QSignalSpy>
+#include <QSslSocket>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -447,6 +448,56 @@ private slots:
         body = QJsonDocument::fromJson(f.server.received().at(1).body).object();
         QCOMPARE(body.value("max_tokens").toInt(), 9000);
         QCOMPARE(body.value("thinking").toObject().value("type").toString(), QStringLiteral("disabled"));
+    }
+
+    void sameItemInDifferentImagesIsNotMerged()
+    {
+        Fixture f;
+        const QString egg = itemJson(QStringLiteral("鲜鸡蛋"), QStringLiteral("鸡蛋"), QStringLiteral("\"quantity_text\":\"10枚\""));
+        f.server.enqueue({ 200, okBody({ egg }) });
+        f.server.enqueue({ 200, okBody({ egg }) });
+
+        RecognitionRequest request = imageRequest();
+        request.images = { request.images.first(), request.images.first() }; // two images, 3 slices each
+        BatchLimits perImage;
+        perImage.maxImages = 3; // one image per request
+        f.recognizer.setBatchLimits(perImage);
+        f.recognizer.recognize(request);
+        f.waitForAnswer();
+        QCOMPARE(f.failed.count(), 0);
+        QCOMPARE(f.server.received().size(), 2);
+        QCOMPARE(f.result().items.size(), 2); // two real purchases of the same egg
+        QCOMPARE(f.result().batchSpans.size(), 2);
+        QCOMPARE(f.result().batchSpans.at(1).firstImage, 1);
+    }
+
+    void networkAndStatusErrorsMapToTheRightKinds()
+    {
+        QCOMPARE(kindForNetworkError(QNetworkReply::SslHandshakeFailedError), ErrorKind::SecureConnectionFailed);
+        QCOMPARE(kindForNetworkError(QNetworkReply::ConnectionRefusedError), ErrorKind::NoNetwork);
+        QCOMPARE(kindForNetworkError(QNetworkReply::HostNotFoundError), ErrorKind::NoNetwork);
+        QCOMPARE(kindForNetworkError(QNetworkReply::TemporaryNetworkFailureError), ErrorKind::NoNetwork);
+        QCOMPARE(kindForNetworkError(QNetworkReply::TimeoutError), ErrorKind::Timeout);
+        QCOMPARE(kindForNetworkError(QNetworkReply::RemoteHostClosedError), ErrorKind::ServerError);
+        QCOMPARE(kindForHttpStatus(401), ErrorKind::AuthFailed);
+        QCOMPARE(kindForHttpStatus(429), ErrorKind::QuotaOrRateLimit);
+        QCOMPARE(kindForHttpStatus(503), ErrorKind::ServerError);
+        QCOMPARE(kindForHttpStatus(404), ErrorKind::RequestRejected);
+        QVERIFY(userMessageFor(ErrorKind::SecureConnectionFailed).contains(QStringLiteral("系统时间")));
+        QVERIFY(userMessageFor(ErrorKind::SecureConnectionFailed) != userMessageFor(ErrorKind::NoNetwork));
+    }
+
+    void aFailedTlsHandshakeIsNotReportedAsNoNetwork()
+    {
+        if (!QSslSocket::supportsSsl())
+            QSKIP("no TLS backend");
+        Fixture f;
+        f.server.setGarbageResponse("HTTP/1.1 400 Bad Request\r\n\r\n"); // answers a ClientHello in plain text
+        f.recognizer.setEndpoint(QUrl(QStringLiteral("https://127.0.0.1:%1/chat/completions").arg(f.server.port())));
+        f.recognizer.recognize(textRequest(QStringLiteral("x")));
+        f.waitForAnswer();
+        QCOMPARE(f.error().kind, ErrorKind::SecureConnectionFailed);
+        QCOMPARE(f.server.received().size(), 0);
     }
 
     void missingJpegPluginIsReportedAsAnInternalError()

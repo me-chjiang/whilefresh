@@ -8,10 +8,10 @@
 #include <QFutureWatcher>
 #include <QHash>
 #include <QNetworkAccessManager>
+#include <QNetworkReply>
 #include <QPointer>
 #include <QUrl>
 
-class QNetworkReply;
 class QTimer;
 
 namespace whilefresh::recognition {
@@ -19,7 +19,12 @@ namespace whilefresh::recognition {
 struct PreparedBatch {
     QByteArray body;
     int imageCount = 0;
+    BatchSpan span;
 };
+
+// How HTTP statuses and Qt network errors are classified (exposed for tests).
+ErrorKind kindForHttpStatus(int status);
+ErrorKind kindForNetworkError(QNetworkReply::NetworkError error);
 
 struct PrepareOutcome {
     QList<PreparedBatch> batches;
