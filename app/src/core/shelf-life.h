@@ -35,37 +35,48 @@ std::optional<StartBasis> startBasisFromKey(const QString &key);
 
 // One row of app/assets/data/shelf-life.json.
 struct ShelfLifeReference {
-    StorageDays days;
-    QString source;       // e.g. "USDA FoodKeeper"
+    StorageDays days;     // a missing value means "no reference for this storage"
+    QString source;       // row source code, e.g. "foodkeeper"
     QString foodkeeperId; // as text; empty when not from FoodKeeper
-    QString basis;        // free text, e.g. how the number was chosen
+    // Per storage key ("fridge", ...): how the number was picked (e.g. "DOP_Refrigerate_Min").
+    // For display and statistics only; no logic depends on it.
+    QHash<QString, QString> basis;
 };
 
 // The built-in reference table, keyed by standard name. An absent file is an empty table.
-// Accepted layouts: { "<name>": {...}, ... }, { "items": { "<name>": {...} } } or
-// { "items": [ { "name": "<name>", ... } ] }; non-object members (e.g. "version") are skipped.
+// Accepted layouts: { "source": "...", "items": { "<name>": {...} } } (what T3 generates),
+// { "items": [ { "name": "<name>", ... } ] } or a bare { "<name>": {...} } map; non-object
+// members (e.g. "version") are skipped.
+//
+// A name that is not listed has no reference value of its own; the nearest listed ancestor in
+// the vocabulary stands in for it. A listed row with null for a storage has no reference for
+// that storage (the chain falls through to the AI estimate); ancestors are not consulted then.
 class ShelfLifeTable
 {
 public:
     static std::optional<ShelfLifeTable> fromJson(const QByteArray &json, QString *error = nullptr);
 
     void insert(const QString &name, const ShelfLifeReference &reference) { m_rows.insert(name, reference); }
+    void setSourceName(const QString &name) { m_sourceName = name; }
+    // Display name of the data source, e.g. "USDA FoodKeeper"; empty when the file names none.
+    const QString &sourceName() const { return m_sourceName; }
     bool isEmpty() const { return m_rows.isEmpty(); }
     int size() const { return m_rows.size(); }
 
     struct Hit {
         int days = 0;
-        QString matchedName; // the entry itself or the ancestor that had a value
+        QString matchedName; // the entry itself or the listed ancestor
         ShelfLifeReference reference;
     };
-    // Looks up `name`, then each ancestor in the catalog, for a value in `storage`.
+    // The value for `storage` in the nearest listed row (the name itself, else an ancestor).
     std::optional<Hit> lookup(const QString &name, Storage storage, const IngredientCatalog *catalog) const;
-    // First row found for `name` or an ancestor, regardless of storage.
+    // The nearest listed row for `name` or an ancestor.
     const ShelfLifeReference *row(const QString &name, const IngredientCatalog *catalog,
                                   QString *matchedName = nullptr) const;
 
 private:
     QHash<QString, ShelfLifeReference> m_rows;
+    QString m_sourceName;
 };
 
 // Rules the user confirmed ("以后同类食材都按这个"), held in memory; persisted by the data layer.
@@ -122,6 +133,7 @@ struct ShelfLifeInput {
     std::optional<int> labelledDays; // "保质期 N 天" on the package
     std::optional<int> manualDays;   // the user's override for this item
     StorageDays aiDays;              // the recognizer's estimate for all three storages
+    bool referenceConditionsConfirmed = false; // user checked the reference is applicable
 };
 
 struct ShelfLifeContext {
@@ -146,9 +158,10 @@ struct ShelfLifeResolution {
 
 // The source chain (ADR-7, user-confirmed priorities):
 //   expiry: package expiry date as is; otherwise start date + days, where start is
-//           production date > purchase date > entry date;
+//           production date > purchase date > entry date (except reference values: purchase only);
 //   days:   manual override > labelled on package > local rule > reference table (with parent
 //           fallback) > cached AI estimate > fresh AI estimate.
+// Reference expiry also requires user confirmation of its applicable conditions.
 // Changing the storage just re-runs this with the item's stored AI days; no new AI call.
 ShelfLifeResolution resolveShelfLife(const ShelfLifeInput &input, const ShelfLifeContext &context);
 

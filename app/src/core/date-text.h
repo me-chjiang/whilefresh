@@ -20,9 +20,8 @@ struct DateParse {
     QString text;
 };
 
-// Year-less dates ("10月18日") are ambiguous. Production and purchase dates lie in the past, so
-// they resolve to the latest occurrence not after the base day; expiry dates lie ahead, so they
-// resolve to the earliest occurrence not before it.
+// Year-less dates always resolve to the latest occurrence not after the photo day.
+// Direction is retained for call-site clarity; it never invents a future year.
 enum class DateDirection { Past, Future };
 
 // `baseDate` is the day the photo was taken (relative words refer to it); invalid when unknown.

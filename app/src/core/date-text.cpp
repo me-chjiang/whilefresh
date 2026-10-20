@@ -21,10 +21,11 @@ QDate resolveMonthDay(int month, int day, const QDate &base, DateDirection direc
 {
     if (month < 1 || month > 12 || day < 1 || day > 31)
         return {};
-    const int step = direction == DateDirection::Past ? -1 : 1;
+    Q_UNUSED(direction);
+    const int step = -1;
     QDate candidate(base.year(), month, day);
     if (candidate.isValid()) {
-        const bool wrongSide = direction == DateDirection::Past ? candidate > base : candidate < base;
+        const bool wrongSide = candidate > base;
         if (!wrongSide)
             return candidate;
     }

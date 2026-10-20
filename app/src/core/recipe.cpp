@@ -174,8 +174,10 @@ RecipeMatch RecipeMatcher::match(const Recipe &recipe) const
 
     QSet<qint64> selected, nearExpiry, inventory;
     for (const GroupMatch &group : std::as_const(result.groups)) {
-        if (!group.optional)
-            group.satisfied() ? ++result.haveCount : ++result.missingCount;
+        if (group.satisfied())
+            ++result.haveCount;
+        else if (!group.optional)
+            ++result.missingCount;
         for (const StockEntry &entry : group.satisfiedBy) {
             if (entry.pantry)
                 continue;

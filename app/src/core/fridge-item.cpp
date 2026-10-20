@@ -73,6 +73,7 @@ ShelfLifeInput FridgeItem::shelfLifeInput() const
     input.labelledDays = labelledDays;
     input.manualDays = manualDays;
     input.aiDays = aiDays;
+    input.referenceConditionsConfirmed = referenceConditionsConfirmed;
     return input;
 }
 

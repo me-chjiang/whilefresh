@@ -29,7 +29,15 @@ ShelfLifeReference referenceFromJson(const QJsonObject &object)
     reference.source = object.value(QStringLiteral("source")).toString();
     const QJsonValue id = object.value(QStringLiteral("foodkeeper_id"));
     reference.foodkeeperId = id.isDouble() ? QString::number(id.toInteger()) : id.toString();
-    reference.basis = object.value(QStringLiteral("basis")).toString();
+    const QJsonValue basis = object.value(QStringLiteral("basis"));
+    if (basis.isObject()) {
+        const QJsonObject perStorage = basis.toObject();
+        for (auto it = perStorage.begin(); it != perStorage.end(); ++it)
+            reference.basis.insert(it.key(), it.value().toString());
+    } else if (basis.isString()) {
+        for (Storage storage : allStorages)
+            reference.basis.insert(storageKey(storage), basis.toString());
+    }
     return reference;
 }
 
@@ -136,6 +144,8 @@ std::optional<ShelfLifeTable> ShelfLifeTable::fromJson(const QByteArray &json, Q
     }
     ShelfLifeTable table;
     const QJsonObject root = doc.object();
+    if (const QJsonValue source = root.value(QStringLiteral("source")); source.isString())
+        table.setSourceName(source.toString());
     const QJsonValue items = root.value(QStringLiteral("items"));
     if (items.isArray()) {
         for (const QJsonValue &value : items.toArray()) {
@@ -157,17 +167,14 @@ std::optional<ShelfLifeTable> ShelfLifeTable::fromJson(const QByteArray &json, Q
 std::optional<ShelfLifeTable::Hit> ShelfLifeTable::lookup(const QString &name, Storage storage,
                                                           const IngredientCatalog *catalog) const
 {
-    QStringList chain{ name };
-    if (catalog)
-        chain += catalog->ancestors(name);
-    for (const QString &candidate : chain) {
-        const auto it = m_rows.constFind(candidate);
-        if (it == m_rows.constEnd())
-            continue;
-        if (const auto days = it->days.forStorage(storage))
-            return Hit{ *days, candidate, *it };
-    }
-    return std::nullopt;
+    QString matched;
+    const ShelfLifeReference *reference = row(name, catalog, &matched);
+    if (!reference)
+        return std::nullopt;
+    const auto days = reference->days.forStorage(storage);
+    if (!days)
+        return std::nullopt;
+    return Hit{ *days, matched, *reference };
 }
 
 const ShelfLifeReference *ShelfLifeTable::row(const QString &name, const IngredientCatalog *catalog,
@@ -178,7 +185,7 @@ const ShelfLifeReference *ShelfLifeTable::row(const QString &name, const Ingredi
         chain += catalog->ancestors(name);
     for (const QString &candidate : chain) {
         const auto it = m_rows.constFind(candidate);
-        if (it != m_rows.constEnd() && !it->days.isEmpty()) {
+        if (it != m_rows.constEnd()) {
             if (matchedName)
                 *matchedName = candidate;
             return &*it;
@@ -231,6 +238,14 @@ ShelfLifeResolution resolveShelfLife(const ShelfLifeInput &input, const ShelfLif
 
     const bool eligible = isRuleEligibleName(input.name);
     const QString storageName = storageDisplayName(input.storage);
+    if (eligible) {
+        for (Storage storage : allStorages) {
+            const auto value = input.aiDays.forStorage(storage);
+            if (value && *value > 0 && !(context.aiCache && context.aiCache->days(input.name, storage)))
+                result.newAiEstimates.append({ input.name, storage, *value });
+        }
+    }
+
 
     // A manual override beats everything, including the package expiry it was meant to correct.
     if (!input.manualDays && input.packageExpiry.isValid()) {
@@ -261,9 +276,9 @@ ShelfLifeResolution resolveShelfLife(const ShelfLifeInput &input, const ShelfLif
             const QString basis = hit->matchedName == input.name
                 ? QString()
                 : QStringLiteral("（按「%1」）").arg(hit->matchedName);
-            const QString attribution = hit->reference.source.isEmpty()
+            const QString attribution = context.table->sourceName().isEmpty()
                 ? texts::sourceReference()
-                : QStringLiteral("参考：%1").arg(hit->reference.source);
+                : QStringLiteral("参考：%1").arg(context.table->sourceName());
             result.note = QStringLiteral("%1%2，%3 %4 天").arg(attribution, basis, storageName).arg(*days);
         }
     }
@@ -281,15 +296,7 @@ ShelfLifeResolution resolveShelfLife(const ShelfLifeInput &input, const ShelfLif
             result.source = ShelfLifeSource::AiEstimate;
             result.note = QStringLiteral("AI 估计%1 %2 天").arg(storageName).arg(*days);
         }
-        if (eligible) {
-            // Cache every storage the first time this food shows up, so a later storage change or
-            // the next import of the same food reuses the same numbers.
-            for (Storage storage : allStorages) {
-                const auto value = input.aiDays.forStorage(storage);
-                if (value && *value > 0 && !(context.aiCache && context.aiCache->days(input.name, storage)))
-                    result.newAiEstimates.append({ input.name, storage, *value });
-            }
-        }
+
     }
 
     if (!days) {
@@ -298,6 +305,14 @@ ShelfLifeResolution resolveShelfLife(const ShelfLifeInput &input, const ShelfLif
         return result;
     }
     result.days = days;
+    // FoodKeeper DOP values describe time after purchase, not total life after production.
+    // Without a purchase date we keep the reference days but cannot claim an expiry date.
+    if (result.source == ShelfLifeSource::Reference) {
+        result.startDate = input.referenceConditionsConfirmed ? input.purchaseDate : QDate();
+        result.startBasis = result.startDate.isValid() ? StartBasis::PurchaseDate : StartBasis::None;
+        if (!result.startDate.isValid())
+            result.note += QStringLiteral("，适用条件及购买日期待确认，暂无到期日");
+    }
     if (result.startDate.isValid()) {
         result.expiryDate = result.startDate.addDays(*days);
         result.note += QStringLiteral("，") + startBasisNote(result.startBasis);

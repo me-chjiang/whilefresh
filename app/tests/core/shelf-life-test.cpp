@@ -37,11 +37,14 @@ private slots:
 
     void tableLoadsAllLayouts()
     {
-        QCOMPARE(table.size(), 3);
-        QCOMPARE(table.row(QStringLiteral("猪肉"), &catalog)->foodkeeperId, QStringLiteral("123"));
-        auto items = ShelfLifeTable::fromJson(R"({"version":1,"items":{"盐":{"room_days":1000}}})");
-        QVERIFY(items);
-        QCOMPARE(items->size(), 1);
+        QCOMPARE(table.size(), 5);
+        QCOMPARE(table.sourceName(), QStringLiteral("USDA FoodKeeper"));
+        QCOMPARE(table.row(QStringLiteral("猪肉"), &catalog)->foodkeeperId, QStringLiteral("74"));
+        QCOMPARE(table.row(QStringLiteral("猪肉"), &catalog)->basis.value(QStringLiteral("fridge")),
+                 QStringLiteral("DOP_Refrigerate_Min"));
+        auto bare = ShelfLifeTable::fromJson(R"({"version":1,"盐":{"room_days":1000,"basis":"manual"}})");
+        QVERIFY(bare);
+        QCOMPARE(bare->size(), 1);
         auto array = ShelfLifeTable::fromJson(R"({"items":[{"name":"盐","room_days":1000}]})");
         QVERIFY(array);
         QCOMPARE(array->lookup(QStringLiteral("盐"), Storage::Room, nullptr)->days, 1000);
@@ -59,12 +62,13 @@ private slots:
         QCOMPARE(result.expiryDate, QDate(2026, 10, 30));
         QCOMPARE(result.days, std::optional<int>(9));
         QVERIFY(!result.isEstimate());
-        QVERIFY(result.newAiEstimates.isEmpty());
+        QCOMPARE(result.newAiEstimates.size(), 1);
     }
 
     void startDatePriority()
     {
-        ShelfLifeInput in = input(QStringLiteral("猪肉"));
+        ShelfLifeInput in = input(QStringLiteral("牛奶"));
+        in.aiDays.fridge = 3;
         auto result = resolveShelfLife(in, context());
         QCOMPARE(result.startBasis, StartBasis::EntryDate);
         QCOMPARE(result.expiryDate, QDate(2026, 10, 24));
@@ -113,6 +117,20 @@ private slots:
         QCOMPARE(result.source, ShelfLifeSource::Reference);
         QCOMPARE(result.days, std::optional<int>(120));
         QVERIFY(result.note.contains(QStringLiteral("猪肉")));
+    }
+
+    void listedRowWithNullDoesNotUseAncestor()
+    {
+        // 圣女果 is listed without a fridge value; its parent 西红柿 has one but must not be used.
+        ShelfLifeInput in = input(QStringLiteral("圣女果"));
+        in.aiDays.fridge = 6;
+        auto result = resolveShelfLife(in, context());
+        QCOMPARE(result.source, ShelfLifeSource::AiEstimate);
+        QCOMPARE(result.days, std::optional<int>(6));
+        in.storage = Storage::Room;
+        result = resolveShelfLife(in, context());
+        QCOMPARE(result.source, ShelfLifeSource::Reference);
+        QCOMPARE(result.days, std::optional<int>(2));
     }
 
     void referenceWithoutValueForStorageFallsThrough()
@@ -181,6 +199,8 @@ private slots:
         FridgeItem item;
         item.canonicalName = QStringLiteral("五花肉");
         item.entryDate = QDate(2026, 10, 21);
+        item.purchaseDate.date = item.entryDate;
+        item.referenceConditionsConfirmed = true;
         item.aiDays = { 2, 90, std::nullopt };
         item.applyShelfLife(resolveShelfLife(item.shelfLifeInput(), context()));
         QCOMPARE(item.shelfLifeSource, ShelfLifeSource::Reference);
@@ -194,6 +214,21 @@ private slots:
         item.storage = Storage::Room;
         item.applyShelfLife(resolveShelfLife(item.shelfLifeInput(), context()));
         QCOMPARE(item.shelfLifeSource, ShelfLifeSource::None);
+    }
+
+    void referenceRequiresPurchaseDate()
+    {
+        auto in = input(QStringLiteral("猪肉"));
+        in.productionDate = QDate(2026, 10, 1);
+        auto result = resolveShelfLife(in, context());
+        QVERIFY(!result.expiryDate.isValid());
+        QCOMPARE(result.startBasis, StartBasis::None);
+        in.purchaseDate = QDate(2026, 10, 20);
+        QVERIFY(!resolveShelfLife(in, context()).expiryDate.isValid());
+        in.referenceConditionsConfirmed = true;
+        result = resolveShelfLife(in, context());
+        QCOMPARE(result.expiryDate, QDate(2026, 10, 23));
+        QCOMPARE(result.startBasis, StartBasis::PurchaseDate);
     }
 
     void storageSuggestion()

@@ -56,6 +56,7 @@ struct FridgeItem {
     std::optional<int> labelledDays;
     std::optional<int> manualDays;
     StorageDays aiDays;
+    bool referenceConditionsConfirmed = false;
 
     // Result of the source chain at the last edit; not recomputed when rules change later.
     ShelfLifeSource shelfLifeSource = ShelfLifeSource::None;

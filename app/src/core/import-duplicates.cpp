@@ -16,7 +16,7 @@ QHash<QString, int> countPairs(const QList<QPair<QString, QString>> &items)
 {
     QHash<QString, int> counts;
     for (const auto &[name, quantity] : items) {
-        if (!name.trimmed().isEmpty())
+        if (!name.trimmed().isEmpty() && name != QStringLiteral("未归类"))
             ++counts[name.trimmed() + QChar(0x1f) + quantity.trimmed()];
     }
     return counts;
@@ -66,7 +66,7 @@ DuplicateCheck checkSimilarItems(const QList<QPair<QString, QString>> &items, co
         return {};
     DuplicateCheck best;
     for (const ImportFingerprint &earlier : previous) {
-        if (!earlier.createdAt.isValid() || std::abs(earlier.createdAt.daysTo(now)) > DuplicateRules::withinDays)
+        if (!earlier.createdAt.isValid() || std::abs(earlier.createdAt.secsTo(now)) > DuplicateRules::withinDays * 86400)
             continue;
         const QHash<QString, int> other = countPairs(earlier.items);
         int common = 0;

@@ -43,12 +43,19 @@ inline IngredientCatalog smallCatalog()
 inline ShelfLifeTable smallShelfLifeTable()
 {
     const QByteArray json = R"({
-      "猪肉": {"fridge_days": 3, "freezer_days": 120, "room_days": null, "source": "USDA FoodKeeper",
-               "foodkeeper_id": 123, "basis": "DOP min"},
-      "鸡蛋": {"fridge_days": 21, "freezer_days": null, "room_days": null, "source": "USDA FoodKeeper",
-               "foodkeeper_id": "77", "basis": "DOP min"},
-      "土豆": {"fridge_days": null, "freezer_days": null, "room_days": 21, "source": "USDA FoodKeeper",
-               "foodkeeper_id": 9, "basis": "DOP min"}
+      "version": 1, "source": "USDA FoodKeeper", "foodkeeper_version": "v128",
+      "items": {
+        "猪肉": {"fridge_days": 3, "freezer_days": 120, "room_days": null, "source": "foodkeeper",
+                 "foodkeeper_id": 74, "basis": {"fridge": "DOP_Refrigerate_Min", "freezer": "DOP_Freeze_Min"}},
+        "鸡蛋": {"fridge_days": 21, "freezer_days": null, "room_days": null, "source": "foodkeeper",
+                 "foodkeeper_id": 21, "basis": {"fridge": "DOP_Refrigerate_Min"}},
+        "土豆": {"fridge_days": null, "freezer_days": null, "room_days": 30, "source": "foodkeeper",
+                 "foodkeeper_id": 297, "basis": {"room": "DOP_Pantry_Min"}},
+        "西红柿": {"fridge_days": 7, "freezer_days": null, "room_days": 3, "source": "foodkeeper",
+                   "foodkeeper_id": 300, "basis": {"fridge": "manual", "room": "DOP_Pantry_Min"}},
+        "圣女果": {"fridge_days": null, "freezer_days": null, "room_days": 2, "source": "foodkeeper",
+                   "foodkeeper_id": 301, "basis": {"room": "manual"}}
+      }
     })";
     QString error;
     auto table = ShelfLifeTable::fromJson(json, &error);

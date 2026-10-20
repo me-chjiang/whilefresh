@@ -93,7 +93,7 @@ struct GroupMatch {
 struct RecipeMatch {
     const Recipe *recipe = nullptr;
     QList<GroupMatch> groups; // de-duplicated, in recipe order
-    int haveCount = 0;    // satisfied required groups ("有 N")
+    int haveCount = 0;    // satisfied groups, including optional ones ("有 N")
     int missingCount = 0; // unsatisfied required groups ("缺 M")
     int selectedUsed = 0;    // distinct selected items used
     int nearExpiryUsed = 0;  // distinct near-expiry items used
