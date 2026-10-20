@@ -75,3 +75,29 @@ build/desktop/whilefresh
 ~/Library/Android/sdk/platform-tools/adb logcat -d | grep 'WhileFresh tls-smoke:'
 # 期望看到：WhileFresh tls-smoke: ok http-status=401
 ```
+
+### Android 导入调试
+
+Debug 构建的"我的"页有调试区：选图、拍小票、分享测试文字、复制测试文字，并显示最近一次收到的导入摘要。每次导入在日志中打一行，前缀固定为 `WhileFresh import:`（只含类型、来源、数量和日期来源，不含文字内容）。设计与已知限制见 [docs/mvp/notes/android-integration.md](docs/mvp/notes/android-integration.md)。
+
+```sh
+adb=~/Library/Android/sdk/platform-tools/adb
+act=io.github.mechjiang.whilefresh/.WhileFreshActivity
+
+# 放一张自己生成的图片到相册并让 MediaStore 收录，查出其 _id
+$adb push synthetic.png /sdcard/Pictures/synthetic.png
+$adb shell am broadcast -a android.intent.action.MEDIA_SCANNER_SCAN_FILE -d file:///sdcard/Pictures/synthetic.png
+$adb shell content query --uri content://media/external/images/media --projection _id:_display_name:datetaken:date_added
+
+# 分享图片（先 am force-stop 包名即测冷启动）。-d 传同一 URI，--grant-read-uri-permission 才会授权
+uri=content://media/external/images/media/<_id>
+$adb shell am start -a android.intent.action.SEND -t image/png --grant-read-uri-permission -d $uri --eu android.intent.extra.STREAM $uri -n $act
+
+# 分享文字
+$adb shell am start -a android.intent.action.SEND -t text/plain --es android.intent.extra.TEXT "'订单：西红柿 500g'" -n $act
+
+$adb logcat -d | grep 'WhileFresh import:'
+# 期望：WhileFresh import: kind=images origin=share count=1 capturedAtSource=media-added
+```
+
+`am` 不能传 `Uri` 列表；`ACTION_SEND_MULTIPLE` 用系统"文件"App 多选后分享到"趁鲜"来测。
