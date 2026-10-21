@@ -1,6 +1,8 @@
 add_library(whilefresh-ui STATIC
     app-info.cpp
     app-info.h
+    app-model.cpp
+    app-model.h
     kitchen-service.cpp
     kitchen-service.h
     import-service.cpp

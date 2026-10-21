@@ -34,7 +34,7 @@ endforeach()
 
 qt_add_executable(whilefresh src/main.cpp)
 
-set_source_files_properties(qml/Theme.qml qml/mock/MockData.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+set_source_files_properties(qml/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
 
 qt_add_qml_module(whilefresh
     URI WhileFresh
@@ -42,7 +42,6 @@ qt_add_qml_module(whilefresh
     QML_FILES
         qml/Main.qml
         qml/Theme.qml
-        qml/mock/MockData.qml
         qml/components/ImportDebugPanel.qml
         qml/components/IconGlyph.qml
         qml/components/PaperBackground.qml

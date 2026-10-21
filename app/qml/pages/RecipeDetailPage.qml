@@ -90,7 +90,7 @@ Item {
                 width: content.width
                 text: "缺料加入待买"
                 accent: Theme.green
-                onClicked: { MockData.addMissing(page.recipe); page.shoppingRequested() }
+                onClicked: { App.addMissing(page.recipe.id); page.shoppingRequested() }
             }
             Text { text: "原步骤"; font.family: Theme.serif; font.pixelSize: Theme.textPanel; font.weight: Theme.weightBlack; color: Theme.ink }
             Repeater {

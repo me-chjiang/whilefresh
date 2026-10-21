@@ -56,7 +56,7 @@ Item {
                     RowLayout {
                         width: parent.width
                         Text { text: "要用掉的食材"; font.family: Theme.serif; font.pixelSize: Theme.textPanel; font.weight: Theme.weightBlack; color: Theme.ink; Layout.fillWidth: true }
-                        Text { text: "已选 " + MockData.selectedIds.length + " / " + MockData.items.length; font.pixelSize: Theme.textSubtitle; color: Theme.noteMuted }
+                        Text { text: "已选 " + App.selectedIds.length + " / " + App.items.length; font.pixelSize: Theme.textSubtitle; color: Theme.noteMuted }
                     }
                     Flow {
                         id: chips
@@ -64,11 +64,11 @@ Item {
                         height: childrenRect.height
                         spacing: Theme.gapSmall
                         Repeater {
-                            model: MockData.items
+                            model: App.items
                             delegate: Item {
                                 id: chipTarget
                                 required property var modelData
-                                readonly property bool selected: MockData.selectedIds.indexOf(modelData.id) >= 0
+                                readonly property bool selected: App.selectedIds.indexOf(modelData.id) >= 0
                                 width: chipText.implicitWidth + 64 + (modelData.first || modelData.freshness === "nearing" ? 36 : 0)
                                 height: Theme.touch
                                 Rectangle {
@@ -102,7 +102,7 @@ Item {
                                         }
                                     }
                                 }
-                                TapHandler { onTapped: MockData.toggleSelected(chipTarget.modelData.id) }
+                                TapHandler { onTapped: App.toggleSelected(chipTarget.modelData.id) }
                             }
                         }
                     }
@@ -114,7 +114,7 @@ Item {
                 Text { text: "用到最多 · 缺料最少"; font.pixelSize: Theme.textMeta; color: Theme.muted }
             }
             EmptyState {
-                visible: MockData.selectedIds.length === 0
+                visible: App.selectedIds.length === 0
                 width: content.width
                 height: visible ? implicitHeight + Theme.gapLarge : 0
                 iconName: "chef-hat"
@@ -122,7 +122,7 @@ Item {
                 detail: "可从上面的便签里增减食材"
             }
             Repeater {
-                model: MockData.selectedIds.length ? MockData.recipes : []
+                model: App.clearRecipes
                 delegate: RecipeCard {
                     required property var modelData
                     width: content.width

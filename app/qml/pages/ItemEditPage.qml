@@ -8,6 +8,7 @@ Item {
     required property var ingredient
     signal backRequested()
     property var dateEdits: ({})
+    property string saveError: ""
     PageHeader { id: header; x: Theme.gap; width: parent.width - Theme.gap * 2; heading: "编辑食材"; actionText: "返回"; onActionTriggered: page.backRequested() }
     Flickable {
         anchors.top: header.bottom
@@ -72,25 +73,23 @@ Item {
                 titleStyle: true
                 onClicked: {
                     if (!itemName.text.trim()) return
-                    const edits = { name: itemName.text.trim(), quantity: quantity.text.trim(), location: location.currentText, shelfDays: shelfDays.text.trim(), source: "user" }
+                    const edits = { name: itemName.text.trim(), quantity: quantity.text.trim(), location: location.currentText, shelfDays: shelfDays.text.trim() }
                     const keys = ["purchasedAt", "storedAt", "producedAt", "packageExpiresAt"]
                     keys.forEach(function(key) { edits[key] = page.dateEdits[key] === undefined ? (page.ingredient[key] || "") : page.dateEdits[key] })
-                    const changedDate = keys.some(function(key) { return edits[key] !== (page.ingredient[key] || "") })
-                    MockData.setItem(page.ingredient.id, edits)
-                    if (location.currentText !== page.ingredient.location || shelfDays.text !== (page.ingredient.shelfDays || "") || changedDate) rememberDialog.open()
+                    const result = App.saveItem(page.ingredient.id, edits)
+                    if (!result.ok) { page.saveError = result.error || "保存失败，请检查输入"; return }
+                    if (result.question) { rememberDialog.message = result.question; rememberDialog.open() }
                     else page.backRequested()
                 }
             }
+            NoticeBanner { visible: page.saveError !== ""; width: parent.width; height: visible ? implicitHeight : 0; message: page.saveError }
         }
     }
     ConfirmDialog {
         id: rememberDialog
         message: "以后同类食材都按这个存放位置和保质天数吗？"
         confirmText: "记住这个设置"
-        onAcceptedAction: {
-            MockData.rules = MockData.rules.filter(function(r) { return r.name !== page.ingredient.name }).concat([{ name: itemName.text.trim(), location: location.currentText, days: shelfDays.text.trim(), source: "你的设置" }])
-            page.backRequested()
-        }
-        onRejected: page.backRequested()
+        onAcceptedAction: { App.confirmRememberedRules(); page.backRequested() }
+        onRejected: { App.dismissRememberedRules(); page.backRequested() }
     }
 }

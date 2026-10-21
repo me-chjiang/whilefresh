@@ -53,7 +53,7 @@ Item {
                 width: parent.width
                 spacing: Theme.gapSmall
                 EmptyState {
-                    visible: MockData.recipes.filter(function(r) { return r.name.indexOf(page.query) >= 0 }).length === 0
+                    visible: App.recipes.filter(function(r) { return r.name.indexOf(page.query) >= 0 }).length === 0
                     width: parent.width
                     height: visible ? implicitHeight + Theme.gapLarge * 2 : 0
                     iconName: "book-2"
@@ -61,7 +61,7 @@ Item {
                     detail: "试试别的菜名，或改选食材"
                 }
                 Repeater {
-                    model: MockData.recipes.filter(function(r) { return r.name.indexOf(page.query) >= 0 })
+                    model: App.recipes.filter(function(r) { return r.name.indexOf(page.query) >= 0 })
                     delegate: RecipeCard {
                         required property var modelData
                         width: list.width

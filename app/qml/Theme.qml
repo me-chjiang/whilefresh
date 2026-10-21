@@ -50,13 +50,13 @@ QtObject {
         return colors[code] || other
     }
     function freshnessColor(status) {
-        return status === "overdue" ? overdue : status === "nearing" ? nearing : fresh
+        return status === "overdue" ? overdue : status === "nearing" ? nearing : status === "unknown" ? muted : fresh
     }
     function freshnessLabel(status) {
-        return status === "overdue" ? "超出估计期限" : status === "nearing" ? "临期" : "新鲜"
+        return status === "overdue" ? "超出估计期限" : status === "nearing" ? "临期" : status === "unknown" ? "未知" : "新鲜"
     }
     function sourceLabel(source) {
-        return ({ package: "包装标注", user: "你的设置", reference: "参考表", ai: "AI 估计" })[source] || "参考表"
+        return ({ package: "包装标注", user: "你的设置", reference: "参考表", ai: "AI 估计", none: "未知" })[source] || "参考表"
     }
 
     property FontLoader titleFace: FontLoader {

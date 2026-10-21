@@ -1,12 +1,15 @@
 #include "data/sqlite-support.h"
 #include "platform/platform-services.h"
+#include "data/builtin-data.h"
 #include "ui/app-info.h"
+#include "ui/app-model.h"
 
 #ifdef WHILEFRESH_TLS_SMOKE
 #include "recognition/tls-smoke.h"
 #endif
 
 #include <QQmlApplicationEngine>
+#include <QtQml>
 
 #ifdef Q_OS_ANDROID
 #include <QGuiApplication>
@@ -35,6 +38,16 @@ int main(int argc, char *argv[])
 #endif
     // Created before the engine so a share that cold-started the app is queued for QML.
     auto *platformServices = whilefresh::platform::PlatformServices::create(&app);
+
+    QString dataError;
+    const auto builtin = whilefresh::data::BuiltinData::builtIn(&dataError);
+    if (!builtin) {
+        qCritical("built-in data failed to load: %s", qUtf8Printable(dataError));
+        return EXIT_FAILURE;
+    }
+    // Opens the database, retries pending file cleanup and restores demo mode.
+    whilefresh::ui::AppModel appModel(platformServices, builtin);
+    qmlRegisterSingletonInstance("WhileFresh", 1, 0, "App", &appModel);
 
     QQmlApplicationEngine engine;
     engine.setInitialProperties({ { QStringLiteral("appInfo"), QVariant::fromValue(&appInfo) },
