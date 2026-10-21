@@ -305,14 +305,8 @@ ShelfLifeResolution resolveShelfLife(const ShelfLifeInput &input, const ShelfLif
         return result;
     }
     result.days = days;
-    // FoodKeeper DOP values describe time after purchase, not total life after production.
-    // Without a purchase date we keep the reference days but cannot claim an expiry date.
-    if (result.source == ShelfLifeSource::Reference) {
-        result.startDate = input.referenceConditionsConfirmed ? input.purchaseDate : QDate();
-        result.startBasis = result.startDate.isValid() ? StartBasis::PurchaseDate : StartBasis::None;
-        if (!result.startDate.isValid())
-            result.note += QStringLiteral("，适用条件及购买日期待确认，暂无到期日");
-    }
+    // FoodKeeper days count from purchase. Starting from an earlier production date is the
+    // conservative side; the entry date stands in for an unknown purchase date (ADR-7).
     if (result.startDate.isValid()) {
         result.expiryDate = result.startDate.addDays(*days);
         result.note += QStringLiteral("，") + startBasisNote(result.startBasis);

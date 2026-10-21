@@ -161,8 +161,8 @@ private slots:
         QVERIFY(service.confirm());
         QCOMPARE(store->items().first().entryDate, QDate(2026, 10, 21));
         QCOMPARE(store->items().first().productionDate.date, QDate(2026, 10, 18));
-        // No purchase date: FoodKeeper cannot be applied to production or entry dates.
-        QVERIFY(!store->items().first().expiryDate.isValid());
+        // The visible production date is the start date, the conservative side of a purchase-based reference.
+        QVERIFY(store->items().first().expiryDate > QDate(2026, 10, 18));
         QCOMPARE(store->imports().first().images.first().capturedAtSource, QStringLiteral("user"));
     }
 
@@ -361,13 +361,12 @@ private slots:
         auto draft = service.draft().items.first();
         draft.item.productionDate.date = QDate(2026, 10, 18);
         draft.item.purchaseDate.date = QDate(2026, 10, 20);
-        draft.item.referenceConditionsConfirmed = true;
         QVERIFY(service.updateItem(0, draft));
         QVERIFY(service.confirm());
         const auto item = store->items().first();
         QCOMPARE(item.productionDate.origin, DateOrigin::User);
         QCOMPARE(item.purchaseDate.origin, DateOrigin::User);
-        QCOMPARE(item.expiryDate, QDate(2026, 11, 10));
+        QCOMPARE(item.expiryDate, QDate(2026, 11, 8)); // production date wins over purchase date
         QVERIFY(store->imports().first().images.isEmpty());
         QCOMPARE(store->imports().first().textLength, input.text.size());
     }

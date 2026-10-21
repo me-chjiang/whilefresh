@@ -13,6 +13,7 @@ Item {
     readonly property var seasonings: App.draftItems.filter(function(c) { return c.group === "seasoning" })
     readonly property var ignored: App.draftItems.filter(function(c) { return c.group === "ignored" })
     signal finished()
+    signal dismissed()
     signal notice(string message)
     function reset() { stage = "choose"; ignoredExpanded = false }
     function cancelled() { stage = "choose" }
@@ -88,7 +89,7 @@ Item {
             spacing: Theme.gap
             Text { width: parent.width; wrapMode: Text.Wrap; text: App.demoMode ? "演示模式不会上传任何内容。" : App.privacyNotice; font.pixelSize: Theme.textControl; color: Theme.ink }
             InkButton { width: parent.width; text: "同意并识别"; onClicked: App.startImport(false) }
-            InkButton { width: parent.width; text: "放弃"; outline: true; onClicked: { App.cancelImport(); flow.finished() } }
+            InkButton { width: parent.width; text: "放弃"; outline: true; onClicked: { App.cancelImport(); flow.dismissed() } }
         }
         Column {
             visible: flow.view === "duplicate"
@@ -96,7 +97,7 @@ Item {
             spacing: Theme.gap
             NoticeBanner { width: parent.width; message: "这些图片或文字与之前的导入相同。仍要识别并入库吗？" }
             InkButton { width: parent.width; text: "仍然识别"; onClicked: App.startImport(true) }
-            InkButton { width: parent.width; text: "放弃"; outline: true; onClicked: { App.cancelImport(); flow.finished() } }
+            InkButton { width: parent.width; text: "放弃"; outline: true; onClicked: { App.cancelImport(); flow.dismissed() } }
         }
         Column {
             visible: flow.view === "recognizing"
@@ -104,13 +105,13 @@ Item {
             spacing: Theme.gap
             BusyIndicator { running: parent.visible; anchors.horizontalCenter: parent.horizontalCenter }
             Text { text: App.demoMode ? "正在读取预设识别结果" : "正在识别，请稍候"; color: Theme.muted; font.pixelSize: Theme.textSubtitle; anchors.horizontalCenter: parent.horizontalCenter }
-            InkButton { text: "取消"; outline: true; anchors.horizontalCenter: parent.horizontalCenter; onClicked: { App.cancelImport(); flow.finished() } }
+            InkButton { text: "取消"; outline: true; anchors.horizontalCenter: parent.horizontalCenter; onClicked: { App.cancelImport(); flow.dismissed() } }
         }
         Column {
             visible: flow.view === "failed"
             width: parent.width
             spacing: Theme.gap
-            NoticeBanner { width: parent.width; message: (App.importError || "识别失败") + "。可以重试，或改为手动添加" }
+            NoticeBanner { width: parent.width; message: (App.importError || "识别失败。") + "可以重试，或改为手动添加" }
             InkButton { width: parent.width; text: "重试"; onClicked: App.startImport(false) }
             InkButton { width: parent.width; text: "改为手动添加"; outline: true; onClicked: { App.cancelImport(); flow.stage = "manual" } }
         }
@@ -221,7 +222,9 @@ Item {
                                             model: [ { key: "purchasedAt", title: "购买" }, { key: "storedAt", title: "入库" }, { key: "producedAt", title: "生产" }, { key: "packageExpiresAt", title: "包装到期" } ]
                                             delegate: Column {
                                                 required property var modelData
+                                                // Equal preferred widths split the row evenly; implicit widths would collapse.
                                                 Layout.fillWidth: true
+                                                Layout.preferredWidth: 1
                                                 Text { text: modelData.title; font.pixelSize: Theme.textSmall; color: Theme.muted }
                                                 TextField {
                                                     width: parent.width

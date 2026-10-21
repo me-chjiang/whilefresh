@@ -254,7 +254,9 @@ private slots:
 
     void demoWithoutPresetForTheInputKindFails()
     {
-        DemoRecognizer recognizer(QStringLiteral(WHILEFRESH_DEMO_ASSETS_DIR));
+        QTemporaryDir empty;
+        QVERIFY(empty.isValid());
+        DemoRecognizer recognizer(empty.path());
         QSignalSpy failed(&recognizer, &RecognitionService::failed);
         recognizer.recognize(requestFor(InputKind::Receipt));
         QTRY_COMPARE(failed.count(), 1);

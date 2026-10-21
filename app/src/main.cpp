@@ -22,6 +22,12 @@ using Application = QApplication;
 
 int main(int argc, char *argv[])
 {
+#ifdef Q_OS_ANDROID
+    // Saving shader program binaries hangs the render thread on the emulator's translated GL
+    // (endless glGetProgramBinary reads); recompiling the few shaders on start is cheap.
+    qputenv("QSG_RHI_DISABLE_DISK_CACHE", "1");
+    qputenv("QT_DISABLE_SHADER_DISK_CACHE", "1");
+#endif
     Application app(argc, argv);
     QGuiApplication::setApplicationName(QStringLiteral("WhileFresh"));
     QGuiApplication::setApplicationDisplayName(QStringLiteral("趁鲜"));

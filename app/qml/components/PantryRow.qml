@@ -73,7 +73,7 @@ Item {
                     Layout.fillWidth: true
                     spacing: Theme.gapSmall
                     Text {
-                        Layout.maximumWidth: parent.width - (row.ingredient.first ? 48 : 0)
+                        Layout.fillWidth: true
                         text: row.ingredient.name || ""
                         font.pixelSize: Theme.textBody
                         font.weight: Theme.weightBold

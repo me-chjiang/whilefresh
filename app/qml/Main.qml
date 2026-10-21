@@ -76,12 +76,13 @@ ApplicationWindow {
     }
     BottomSheet {
         id: importSheet
-        heading: "确认入库"
+        heading: App.importState === "draft" ? "确认入库" : "入库"
         tapeText: "识别结果"
         sheetHeight: 744
         onClosed: if (App.importState !== "idle") App.cancelImport()
         bodyComponent: ImportFlowPage {
             onFinished: { importSheet.close(); window.showTab(0); window.showNotice("已加入冰箱") }
+            onDismissed: importSheet.close()
             onNotice: function(message) { window.showNotice(message) }
         }
     }

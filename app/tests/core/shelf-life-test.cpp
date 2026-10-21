@@ -216,19 +216,18 @@ private slots:
         QCOMPARE(item.shelfLifeSource, ShelfLifeSource::None);
     }
 
-    void referenceRequiresPurchaseDate()
+    void referenceStartsFromEarliestKnownDate()
     {
         auto in = input(QStringLiteral("猪肉"));
         in.productionDate = QDate(2026, 10, 1);
-        auto result = resolveShelfLife(in, context());
-        QVERIFY(!result.expiryDate.isValid());
-        QCOMPARE(result.startBasis, StartBasis::None);
         in.purchaseDate = QDate(2026, 10, 20);
-        QVERIFY(!resolveShelfLife(in, context()).expiryDate.isValid());
-        in.referenceConditionsConfirmed = true;
+        auto result = resolveShelfLife(in, context());
+        QCOMPARE(result.startBasis, StartBasis::ProductionDate);
+        QCOMPARE(result.expiryDate, QDate(2026, 10, 4));
+        in.productionDate = QDate();
         result = resolveShelfLife(in, context());
-        QCOMPARE(result.expiryDate, QDate(2026, 10, 23));
         QCOMPARE(result.startBasis, StartBasis::PurchaseDate);
+        QCOMPARE(result.expiryDate, QDate(2026, 10, 23));
     }
 
     void storageSuggestion()
