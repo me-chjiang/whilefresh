@@ -36,12 +36,14 @@
 ├── tools/                     # Python 离线工具（uv 管理，pytest）
 │   ├── pyproject.toml
 │   ├── whilefresh_tools/      # 包源码：菜谱转换、词表、参考表、合成数据、识别回归
+│   │   ├── synthetic/         # 确定性商品场景、四种购物界面 / 小票 / 文本生成、Chrome 渲染、录制评估
 │   │   └── vocabulary/        # 词表：源数据（vocabulary-source.json、ingredient-map.json，人工维护）与构建 / 校验 / AI 初稿代码
 │   ├── sources/               # 需要存档的第三方原始数据快照及来源说明（如 FoodKeeper）
-│   └── tests/                 # pytest；fixtures/ 放少量第三方原文样例（须许可允许）
+│   └── tests/                 # pytest；fixtures/ 放少量第三方原文样例及合成手工录制夹具
 ├── design/                    # HTML 视觉稿与手机尺寸截图
-├── test-data/                 # 合成样本（PNG / 文本）、标准答案 JSON、合成样本的 DeepSeek 录制回放
-│   ├── recordings/            # 识别录制（请求摘要 + 原始响应），仅限合成数据
+├── test-data/                 # 合成样本（PNG / JPEG / 文本）、标准答案 JSON、合成样本的 DeepSeek 录制回放
+│   ├── synthetic/             # 同名源输入 + 标准答案；screenshots/ 含可重复生成的 HTML/PNG，receipts/ 含 HTML/JPEG，texts/ 含 TXT
+│   ├── recordings/            # 识别录制（请求摘要 + 原始响应），仅限合成数据；synthetic/ 中按样本 ID 同名存储
 │   └── vocabulary/            # 测试用合成词表（正式词表见 app/assets/data/）
 ├── scripts/                   # 构建、安装、取密钥、模拟器启动等 shell 脚本
 ├── build/                     # 不进 Git：构建产物，按目标分子目录（desktop、android-x86_64、android-arm64-v8a）
@@ -62,7 +64,7 @@
 - **第三方原始数据**：难以重新获取或需固定版本的放 `tools/sources/<来源>/`，附 `SOURCE.md` 写明网址、版本、获取日期、许可；可按固定 commit 重新下载的（如 HowToCook）不入库，下载到被忽略的缓存目录。
 - **第三方构建依赖**（如 KDAB android_openssl）不入库：由 `scripts/fetch-deps.sh` 按脚本中记录的固定 commit 下载到 `~/.cache/whilefresh/<名称>/`，CMake 通过变量或环境变量引用。
 - **构建时生成的文件**（如含密钥的 `generated/api-config.h`）只写到 `build/<目标>/`；源码目录只放模板（`*.h.in`）。
-- **测试样本**：合成样本及其标准答案、录制回放放 `test-data/`；真实样例及其识别录制只放 `private/`（录制放 `private/recordings/`），任何内容都不得复制进仓库。
+- **测试样本**：合成输入及其同名标准答案放 `test-data/synthetic/<screenshots|receipts|texts>/`，小票照片采用 JPEG、截图 PNG，HTML 为可重复生成的排版源；录制回放放 `test-data/recordings/synthetic/`（原始 `recognize-cli` format-1 响应 + 补充的 `elapsed_ms`）。生成/录制/评估工具和固定场景放 `tools/whilefresh_tools/synthetic/`，单测的手工录制夹具放 `tools/tests/fixtures/`。真实样例及其识别录制只放 `private/`（录制放 `private/recordings/`），任何内容都不得复制进仓库。
 - **视觉稿** 放 `design/<版本或主题>/`，截图与 HTML 同目录。
 - **一次性探针或实验脚本** 放 `/tmp`，不进仓库；确需保留的转成 `tools/` 或 `scripts/` 中的正式工具。
 - **文档**：产品文档放 `docs/`，MVP 循环文档放 `docs/mvp/`；复杂模块的 `IMPLEMENTATION_NOTE` 写成 `docs/mvp/notes/<模块>.md`。
@@ -81,6 +83,8 @@
 - `.claude/skills/` 下是指向 `.agents/skills/` 的符号链接，不在其中放实体文件。
 
 ## Change log
+
+- 2026-10-21 — T7：增加 `tools/whilefresh_tools/synthetic/`、`test-data/synthetic/` 与 `test-data/recordings/synthetic/`，规定可重复生成的 HTML/PNG/JPEG/TXT、标准答案和合成识别录制的摆放位置。
 
 - 2026-10-21 — 注明 `tools/tests/fixtures/` 存放测试用第三方原文样例。
 - 2026-10-20 — 初版：依据 MVP 工程规划建立 `app/`、`tools/`、`design/`、`test-data/`、`scripts/` 的布局与放置规则。
