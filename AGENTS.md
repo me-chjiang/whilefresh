@@ -5,13 +5,13 @@
 ## 项目概述
 
 - 项目类型：AI 产品探索与 Landing Project。
-- 当前阶段：围绕帮助家庭消耗已购食材的单人手机客户端开展需求验证、产品定义与原型设计；未来可扩展多人协作，尚未确定实际技术栈或生产代码入口。
+- 当前阶段：围绕帮助家庭消耗已购食材的单人手机客户端开展需求验证、产品定义与原型设计；未来可扩展多人协作，已完成 Android MVP 试用版（Qt 6.8.2），下一步为测试迭代与真机验证。
 - 目标：产出可供团队评估和继续实现的产品方案、调研与原型。
-- 考核要求和当前产品定义见 `docs/`，以 `prd-v5.md` 为当前 PRD；MVP 进度见 `docs/mvp/cycle-state.md`。
+- 当前产品定义见 `docs/prd-v5.md`，历史版本在 `docs/archive/`；MVP 进度见 `docs/mvp/cycle-state.md`。
 
 ## 目录结构
 
-- `docs/`：项目要求和当前产品定义。
+- `docs/`：产品定义（`prd-v5.md`）、MVP 过程文档（`mvp/`）、开发文档（`development.md`）与历史版本（`archive/`）。
 - `.agents/skills/`：Codex 项目级 skills 的实际文件；`.claude/skills/` 通过符号链接供 Claude Code 使用。
 - `private/`：个人、敏感资料及已归档材料。AI 工具不得浏览、列举、搜索或读取 `private/pending/` 中的内容；只有用户明确要求处理归档材料时例外。
 - `AGENTS.md`：跨工具共用的项目规则。
@@ -49,11 +49,11 @@ Skill 实际文件保存在 `.agents/skills/`，`.claude/skills/` 通过同名�
 
 ## 开发与验证
 
-- 应用技术栈：Qt 6.8.2（Qt Quick/QML + C++17）、CMake + Ninja，工程在 `app/`；同一工程构建 macOS 桌面开发版和 Android APK（x86_64、arm64-v8a）。命令见 README「开发环境与命令」。
+- 应用技术栈：Qt 6.8.2（Qt Quick/QML + C++17）、CMake + Ninja，工程在 `app/`；同一工程构建 macOS 桌面开发版和 Android APK（x86_64、arm64-v8a）。命令见 `docs/development.md`。
 - 必须使用 `~/Qt/6.8.2/<套件>/bin/qt-cmake`（脚本已处理）；PATH 中的 `qmake`/`qtpaths` 来自 Anaconda，不要使用。
 - 构建一律通过 `scripts/` 中的脚本，产物在被忽略的 `build/<目标>/`；第三方依赖由 `scripts/fetch-deps.sh` 下载到 `~/.cache/whilefresh/` 并固定 commit，不放进仓库。
 - 分层依赖：`core` 只链接 Qt::Core（CMake 中有检查）；`data`、`recognition`、`platform` 依赖 `core`；`ui` 依赖以上各层；QML 只做展示。
 - 测试：Qt Test + CTest，仅桌面构建。改动 C++ 后至少运行 `scripts/build-desktop.sh` 与 `ctest --test-dir build/desktop --output-on-failure`。
 - 密钥：只由构建脚本从钥匙串读取并生成到构建目录的 `generated/api-config.h`；脚本不得打印密钥或开启 `set -x`。需要密钥或更换密钥时，一律通过 `scripts/` 下的构建脚本重新构建，不要在构建目录里直接运行 `ninja`（自动重新配置会得到无密钥构建）。提交前用 `rg -uu -e 'sk-[0-9a-f]{32}' --glob '!build/**' .` 确认无密钥。
-- 新增代码或工具链时，先在 README 中记录用途、运行方式和验证命令，再补充本节。
+- 新增代码或工具链时，先在 `docs/development.md` 中记录用途、运行方式和验证命令，再补充本节。
 - 执行验证前遵循用户当次要求；如未要求测试，不擅自运行会产生大量文件或访问外部服务的操作。

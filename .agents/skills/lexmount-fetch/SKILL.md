@@ -71,18 +71,18 @@ node <skill目录>/fetch.mjs <url> --profile <profile> [--max-chars N] > /tmp/pa
 fetch-profiles:
   example-portal:
     login-url: "https://portal.example.com/"
-    logged-in: '^https://portal\.example\.com/home'     # 登录成功后的 URL（正则）
-    logged-out: 'sso\.example\.com|/client/login'    # 抓取时落到这里说明登录态失效
-    username: example-username                           # 引用本文件里的键名
+    logged-in: '^https://portal\.example\.com/home'   # 登录成功后的 URL（正则）
+    logged-out: 'sso\.example\.com|/client/login'     # 抓取时落到这里说明登录态失效
+    username: example-username                        # 引用本文件里的键名
     password: example-password
     selectors:
       frame: "iframe#loginIframe"                     # 可选：表单所在的 iframe
       username: "input[name=username]"
       password: "input[name=password]"
       submit: "a.login-btn"
-    allow-hosts: [portal.example.com, portal.example.com, sso.example.com]
-    deny-paths: ["/cpteam/create", "logout"]          # 正则；有副作用的 GET 页面
-    warmup: ["https://portal.example.com/module/module/10/"]  # 可选：抓取前先访问，用于单点登录
+    allow-hosts: [portal.example.com, sso.example.com]
+    deny-paths: ["/admin/delete", "logout"]           # 正则；有副作用的 GET 页面
+    warmup: ["https://portal.example.com/module/"]    # 可选：抓取前先访问，用于单点登录
     redact: []                                        # 要打码的字符串，如真实姓名
     context-mode: readOnly                            # 可选，默认 readOnly
 ```

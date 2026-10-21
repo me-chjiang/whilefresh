@@ -12,8 +12,12 @@
 ├── LICENSE                    # BSD-3-Clause
 ├── .agents/skills/            # 项目级 skill 实体；.claude/skills/ 为同名符号链接
 ├── docs/                      # 产品与研究文档（PRD、调研）
+│   ├── archive/               # 历史版本（PRD v3、v4，调研速查）
+│   ├── images/                # README 截图（仅演示模式数据）
+│   ├── development.md         # 开发文档：环境、构建与验证命令、数据工具、调试方法
 │   └── mvp/                   # MVP 循环文档：需求、规划、cycle-state、交付报告
-│       └── notes/             # 复杂模块的实现说明（如 android-integration.md）
+│       ├── notes/             # 复杂模块的实现说明（如 android-integration.md）
+│       └── todo.md            # 未完成事项
 ├── app/                       # Qt 6 CMake 工程（Android APK + macOS 桌面开发版）
 │   ├── CMakeLists.txt
 │   ├── src/
@@ -57,7 +61,6 @@
 - **持久化与 SQL** 只在 `app/src/data/`；迁移集中在 `database.cpp` 的递增列表中，结构变更只追加迁移，不改旧项。`Store` 管理用户数据及导入图片清理，`BuiltinData` 缓存内置只读资源。
 - **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口（`RecognitionService`）；换服务商只新增实现，不改调用方。提示词文本集中在 `prompt-templates.h`，改动含义时同步改 `kPromptVersion`。
 - **桌面开发工具**（需要真实密钥或只在桌面有意义的命令行程序）放 `app/tools/`，仅在非 Android 构建中编译，不注册 ctest。
-- **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口；换服务商只新增实现，不改调用方。
 - **应用服务与视图模型** 放 `app/src/ui/`；`*-service.*` 不依赖 QML，组合领域、持久化、识别与平台载荷；QML 只做展示和交互。
 - **分层测试** 放 `app/tests/{core,data,ui}/`；`ui/` 测普通 C++ 应用服务，用合成录制回放，不需要 QML 界面或真实密钥。
 - **可复用 QML 组件** 放 `app/qml/components/`，页面放 `app/qml/pages/`，主题常量只在 `app/qml/Theme.qml` 定义；页面只通过 `app/src/ui/app-model.*` 暴露的 `App` 单例取数和调用动作。
@@ -82,17 +85,17 @@
 - `app/assets/data/` 中的文件名会被 C++ 加载代码和 qrc 引用，改名需同时改两处。
 - `private/` 整体被 `.gitignore` 排除；`private/pending/` 禁止 AI 工具访问（见 AGENTS.md）。
 - 密钥不得出现在仓库任何位置；构建脚本从 macOS 钥匙串读取，生成文件写到构建目录。
-- `docs/prd_v3.md` 为历史文件名（非 kebab-case），保留不改。
+- 历史版本在 `docs/archive/`，历史文件名保留不改。
 - `.claude/skills/` 下是指向 `.agents/skills/` 的符号链接，不在其中放实体文件。
 
 ## Change log
 
+- 2026-10-21 — 文档整理：开发说明移到 docs/development.md，历史版本移到 docs/archive/。
 - 2026-10-21 — T7：增加 `tools/whilefresh_tools/synthetic/`、`test-data/synthetic/` 与 `test-data/recordings/synthetic/`，规定可重复生成的 HTML/PNG/JPEG/TXT、标准答案和合成识别录制的摆放位置。
 - 2026-10-21 — T5：细化应用服务与视图模型的分工，记录 SQLite 迁移位置与 core/data/ui 分层测试。
-
 - 2026-10-21 — 注明 `tools/tests/fixtures/` 存放测试用第三方原文样例。
-- 2026-10-20 — 初版：依据 MVP 工程规划建立 `app/`、`tools/`、`design/`、`test-data/`、`scripts/` 的布局与放置规则。
 - 2026-10-21 — T0 工程骨架：新增被忽略的 `build/` 构建目录；规定第三方构建依赖下载到 `~/.cache/whilefresh/`、构建生成文件只写入构建目录。
 - 2026-10-21 — 新增 `tools/whilefresh_tools/vocabulary/`（词表源数据与工具）和 `docs/mvp/notes/`（模块复核记录）；放置规则补充词表源数据。
 - 2026-10-21 — 增加 `app/tools/`（桌面开发工具）、`test-data/recordings/`、`test-data/vocabulary/`、`private/recordings/`，并约定识别提示词与录制格式的放置（T6）。
 - 2026-10-21 — T9 Android 桥接：细化 `app/src/platform/`（`android/`、`desktop/` 与根目录的分工）、`app/android/` 的 Java 包路径与 `res/xml/`、`app/tests/` 按层分子目录；新增 `docs/mvp/notes/` 存放实现说明。
+- 2026-10-20 — 初版：依据 MVP 工程规划建立 `app/`、`tools/`、`design/`、`test-data/`、`scripts/` 的布局与放置规则。

@@ -1,18 +1,10 @@
 # Cycle State
 
-> 本文件即 loop-dev-cycle 的 `CYCLE_STATE.md`；[`mvp-requirements.md`](mvp-requirements.md) 即 `REQUIREMENTS.md`，Phase 1 的 `PLAN.md` 将命名为 `mvp-plan.md`。改名原因：项目要求新文件使用 kebab-case，且 `docs/requirements.md` 已是考核要求。每次会话开始先读本文件和需求稿。
-
-## 当前代理成本约束
-
-用户于 2026-10-21 要求模型与 effort 各降一档。当前 T5 使用 Sonnet / medium，T7、T8a 使用 Haiku / medium；原高档代理已停止，复用原 worktree 的已提交与未提交工作。后续不启动 Opus 子代理，未经用户同意不自动升档。代理使用独立上下文（不 fork），只提供任务所需路径、接口与剩余事项；按函数和行范围读取，不整读 PRD 或历史对话，返回简短结论。测试日志写文件，只读取失败行或末尾。
-
-### 当前执行调整
-
-用户追加要求：尽量节省 token，测试先不要，尽快完成。已通知 T5/T7/T8a 暂停新增或运行测试、构建验证、模拟器截图、在线回归与多轮打磨，保留已有测试和结果；优先完成实现和界面接入。新改动明确标记未验证，不把历史通过结果套用到当前改动。先前约定的三轮测试迭代暂缓，未取消。
+> 本文件即 loop-dev-cycle 的 `CYCLE_STATE.md`；[`mvp-requirements.md`](mvp-requirements.md) 即 `REQUIREMENTS.md`，[`mvp-plan.md`](mvp-plan.md) 即 `PLAN.md`（项目要求文件名使用 kebab-case）。每次会话开始先读本文件和需求稿。
 
 ## 当前阶段
 
-Phase 2：执行。已合并 T0–T7、T8a、T9（T5、T7、T8a 未经合并后测试）；Phase 2 全部任务已完成（T0–T11）。模拟器走查发现并修复 6 个问题；签名试用版 APK 已构建，见 trial-release.md。下一步：Phase 3 三轮测试迭代（含 T5/T7/T8 补审查）与 arm64 真机验证。
+Phase 0–2 已完成（T0–T11 已合并，试用版 0.1.0 已构建）。下一步：Phase 3 三轮测试迭代与 arm64 真机验证。未完成事项见 [todo.md](todo.md)。
 
 ## 进度
 
@@ -55,15 +47,7 @@ Phase 2：执行。已合并 T0–T7、T8a、T9（T5、T7、T8a 未经合并后�
 
 ## Agent 分工
 
-| 角色 | 模型 | 职责 |
-| --- | --- | --- |
-| 主会话 | Opus | 对齐、规划、接口定义、审查所有 diff、集成、Gate 汇报 |
-| 子代理 | Opus | Qt 工程骨架；Android 系统分享和相机的原生桥接 |
-| 子代理 | Sonnet | Python 菜谱转换；C++ 数据层与匹配规则；QML 页面；DeepSeek 识别客户端；代码审查 |
-| 子代理 | Haiku | 查文档；生成合成数据的文字内容；用料标准化抽查。产出为初稿，由主会话审查 |
-
-- 同时最多 3 个子代理并行。写代码的子代理在 git worktree 中工作。
-- 本会话中 Haiku 出现过一次配置报错（缺 `base_url`），重跑后成功；如再出现，改用 Sonnet。
+开发由主会话分派子代理完成，过程见决策日志与审查记录。
 
 ## 分支与审阅流程
 
@@ -107,12 +91,11 @@ Phase 2：执行。已合并 T0–T7、T8a、T9（T5、T7、T8a 未经合并后�
 
 ## 偏差日志
 
-| 时间 | 原计划 | 实际 | 原因 |
-| --- | --- | --- | --- |
+暂无。
 
 ## 待解决问题
 
-- DeepSeek 密钥额度限制方式仍未核实。
+未完成事项见 [todo.md](todo.md)。
 
 ## 技术验证记录
 
@@ -135,5 +118,4 @@ Phase 2：执行。已合并 T0–T7、T8a、T9（T5、T7、T8a 未经合并后�
 
 ## 验收记录
 
-| 轮次 | 结果 | 反馈摘要 |
-| --- | --- | --- |
+暂无。

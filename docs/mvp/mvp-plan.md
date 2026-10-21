@@ -1,6 +1,6 @@
 # 趁鲜 MVP 工程规划
 
-> loop-dev-cycle Phase 1 产出（即 skill 的 `PLAN.md`），2026-10-20。依据 [MVP 需求确认稿](mvp-requirements.md) 与 [PRD v5](../prd-v5.md)。状态：**待用户确认**。
+> loop-dev-cycle Phase 1 产出（即 skill 的 `PLAN.md`），2026-10-20。依据 [MVP 需求确认稿](mvp-requirements.md) 与 [PRD v5](../prd-v5.md)。状态：已执行（Phase 1 于 2026-10-20 通过；T0–T11 于 2026-10-21 合并；真机验收未做）。
 
 ## 1. 架构概述
 
@@ -68,7 +68,7 @@ Phase 2 开始前用 build-project-fhs skill 把目录规则写成 `FHS.md`。
 - 按全局规则，新增第三方依赖需你确认。
 
 ### ADR-4 识别：App 直连 DeepSeek，切片 + 固定词表
-- **决定**：`deepseek-flash`，图片切片发送，`response_format: json_object`；提示词附标准食材词表；超时 60 秒，可重试。识别层是接口，实现有 DeepSeek、录制回放、演示三种。
+- **决定**：`deepseek-flash`，图片切片发送，`response_format: json_object`；提示词附标准食材词表；超时 60 秒，可重试。（后续决定改为空闲 150 秒、整体 240 秒，超时不重试。）识别层是接口，实现有 DeepSeek、录制回放、演示三种。
 - **理由**：实测切片转写更准确；词表解决标准名不一致；回放让日常测试不计费。
 - **替代**：整张发送，便宜约一半但有错字；自建后端，用户已决定不部署。
 
@@ -83,7 +83,7 @@ Phase 2 开始前用 build-project-fhs skill 把目录规则写成 `FHS.md`。
 
 ### ADR-7 保质期来源链与新鲜度规则
 - **决定**：识别结果 > 本地记忆 > 参考表 > AI 判断；每项记录来源。起算日：生产日期 > 购买日期 > 入库日期。新鲜度初版规则：剩余天数 ≤ 0 为"超出估计期限"；剩余天数 ≤ max(1, 总天数 × 25%) 为"临期"；其余为"新鲜"。阈值集中在一处，试用后再调。
-- **参考表数据源**：[USDA FoodKeeper](https://catalog.data.gov/dataset/fsis-foodkeeper-data)（CC0 公有领域，可随 APK 再分发）。2026-10-20 经 Lexmount Web Fetch API 取得 v128 数据：661 种食品，按常温 / 冷藏 / 冷冻给出最短 / 最长天数及单位，并区分"从购买日起"（`DOP_*`）与开封后。取"从购买日起"的**最短值**作参考，偏保守。建立"标准食材名 → FoodKeeper 条目 ID"映射表（离线 AI 辅助，人工抽查），保留条目 ID 与来源说明；App 中标注"参考：USDA FoodKeeper"。豆制品、腊肉、速冻饺子等中国常见食材若无对应条目，不硬套，回落到 AI 判断并缓存。
+- **参考表数据源**：[USDA FoodKeeper](https://catalog.data.gov/dataset/fsis-foodkeeper-data)（CC0 公有领域，可随 APK 再分发）。2026-10-20 经 Lexmount Web Fetch API 取得 v128 数据：661 种食品，按常温 / 冷藏 / 冷冻给出最短 / 最长天数及单位，并区分"从购买日起"（`DOP_*`）与开封后。取"从购买日起"的**最短值**作参考，偏保守。（后续决定：最短值 ≤ 2 天且有上限值时改取上限值。）建立"标准食材名 → FoodKeeper 条目 ID"映射表（离线 AI 辅助，人工抽查），保留条目 ID 与来源说明；App 中标注"参考：USDA FoodKeeper"。豆制品、腊肉、速冻饺子等中国常见食材若无对应条目，不硬套，回落到 AI 判断并缓存。
 - **替代**：中文官方来源未找到可再分发的表；转载类表格没有许可说明，不采用。
 
 ### ADR-8 Android 原生能力：Java 桥接
@@ -164,3 +164,5 @@ Phase 2 开始前用 build-project-fhs skill 把目录规则写成 `FHS.md`。
 2. ADR-3：是否同意引入 KDAB `android_openssl` 预编译库。
 3. ADR-10：图标用 Tabler Icons（MIT）是否可以。
 4. 保质期参考表以 USDA FoodKeeper 为底（ADR-7），中国常见食材缺口由 AI 判断补充，是否可以。
+
+以上均已确认，见 cycle-state 决策日志。

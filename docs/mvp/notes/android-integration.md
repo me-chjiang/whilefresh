@@ -23,7 +23,7 @@ C++ 侧唯一入口是 `whilefresh::platform::PlatformServices`（`app/src/platf
 - `ImportPayload`：`kind`（`Images` / `Text`）、`origin`（`Gallery` / `Share` / `Camera`）、`images`、`imageCount`、`text`、`summary`（调试摘要）。
 - `ImportedImage`：`localPath`（App 私有目录 `files/imports/<uuid>.<ext>`，此后归 App 所有）、`mimeType`、`capturedAt`（`QDateTime`，可能无效）、`capturedAtSource`、`capturedAtSourceName`。
 
-T6 可直接把 `localPath` 交给识别；T8 在 `app/src/ui/` 中包一层视图模型即可。
+T6 可直接把 `localPath` 交给识别；`app/src/ui/` 中的 AppModel 已包一层视图模型接线。
 
 ## 生命周期与 intent 缓存
 
@@ -42,7 +42,7 @@ T6 可直接把 `localPath` 交给识别；T8 在 `app/src/ui/` 中包一层视�
 - 相机：照片先写到 `files/captures/<uuid>.jpg`（FileProvider 只暴露这个目录），返回后立即移到 `files/imports/`；每次拍照前清空 `captures/` 中的残留。
 - 安全：只接受 `content://`；拒绝 `file://`；authority 必须与 host 完全一致（`content://0@<authority>/` 这类带 userinfo 的多用户写法、带端口的写法一律拒绝），再用 `PackageManager.resolveContentProvider(host)` 查 provider 所属包，属于本包即拒绝，防止恶意分享让 App 读出自己的私有文件再上传。
 - 相机授权：只授予 WRITE（照片经文件路径读回，不需要 READ）；拍照返回、取消、拉起失败时都 `revokeUriPermission`。
-- 清理：`PlatformServices` 构造时（App 启动）删除 `files/imports/` 中超过 24 小时的 `*.part`。正式导入文件（`<uuid>.<ext>`）的删除责任在入库流程（T5 / T8）：用户确认入库或放弃后删除，平台层不自动删除。
+- 清理：`PlatformServices` 构造时（App 启动）删除 `files/imports/` 中超过 24 小时的 `*.part`。正式导入文件（`<uuid>.<ext>`）由入库流程删除（ImportService / Store）：用户确认入库或放弃后删除，平台层不自动删除。
 - 日志：Java 异常只记录异常类名，不打印堆栈和 URI；C++ 日志不含文字内容和文件路径。
 
 ## 图片日期

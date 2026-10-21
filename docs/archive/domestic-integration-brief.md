@@ -1,6 +1,6 @@
 # 菜谱与买菜接入能力速查
 
-> AI 辅助独立核查（GPT-6 Luna 起草），主会话对照官方资料修正接口链接与状态。2026-10-20。供 Codex/Claude 快速读取；详细证据见[完整报告](domestic-recipe-grocery-integration-research.md)。独立核查时未以完整报告为输入。
+> AI 辅助独立核查（GPT-6 Luna 起草），主会话对照官方资料修正接口链接与状态。2026-10-20。供 Codex/Claude 快速读取；详细证据见[完整报告](../domestic-recipe-grocery-integration-research.md)。独立核查时未以完整报告为输入。
 
 ## 状态定义
 
@@ -25,7 +25,7 @@
 ## 其他数据路径
 
 - [HowToCook](https://github.com/Anduin2017/HowToCook) 是可下载的中文 Markdown 菜谱库，根[许可证](https://github.com/Anduin2017/HowToCook/blob/master/LICENSE)为 Unlicense；它不是托管菜谱 API。使用前核对被引用的外部素材和图片来源。
-- 盒马、叮咚、淘宝、京东、拼多多的官方隐私政策写有消费者“个人信息下载”入口，但下载文件是否含逐项买菜订单尚未测样本；该入口是用户手动导出，不是第三方 API。具体路径见[完整报告](domestic-recipe-grocery-integration-research.md)。
+- 盒马、叮咚、淘宝、京东、拼多多的官方隐私政策写有消费者“个人信息下载”入口，但下载文件是否含逐项买菜订单尚未测样本；该入口是用户手动导出，不是第三方 API。具体路径见[完整报告](../domestic-recipe-grocery-integration-research.md)。
 - 已查公开资料未提供盒马、叮咚、美团闪购/小象、京东到家、朴朴、永辉生活、多多买菜可直接申请的**消费者本人订单 API**；淘宝买家 API 是例外。来源入口：[叮咚](https://open.ddxq.mobi/docs)、[美团闪购](https://developer-lingshou.waimai.meituan.com/docCenter/2)、[京东](https://jos.jd.com/apilist)、[永辉](https://open.yonghui.cn/static/page1.html)、[拼多多](https://open.pinduoduo.com/application/document/api?id=pdd.order.list.get)。商家订单接口不能代替本人已购数据。
 - 已查公开资料没有获准使用的购物车**整单导出或批量导入 API**。平台层商品分享、淘宝政策提及的购物车分享链接，都还需客户端验证实际内容与外部打开效果。
 - 未发现上述买菜平台官方发布的消费者清单 MCP/skill。社区工具只是接口封装，代码许可不授予零售平台数据访问权。
