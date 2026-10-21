@@ -1,6 +1,10 @@
 add_library(whilefresh-ui STATIC
     app-info.cpp
     app-info.h
+    kitchen-service.cpp
+    kitchen-service.h
+    import-service.cpp
+    import-service.h
 )
 
 target_link_libraries(whilefresh-ui PUBLIC

@@ -23,7 +23,7 @@
 │   │   ├── platform/          # 平台适配的 C++ 侧（分享、相机、文件、剪贴板）、导入载荷与日期来源
 │   │   │   ├── android/       # JNI 胶水（只在 Android 构建中编译）
 │   │   │   └── desktop/       # 桌面替代实现（文件对话框、剪贴板）
-│   │   └── ui/                # 暴露给 QML 的视图模型
+│   │   └── ui/                # 不依赖 QML 的应用服务（ImportService / KitchenService）及视图模型
 │   ├── qml/                   # QML 页面与组件；Theme 单例
 │   ├── android/               # AndroidManifest、Java 桥接（src/io/github/mechjiang/whilefresh/）、res（xml/ 为 FileProvider 路径）
 │   ├── tools/                 # 仅桌面可用的 C++ 开发工具（如 recognize-cli 真实识别与录制），不进 ctest、不进 APK
@@ -53,11 +53,12 @@
 ## Placement rules
 
 - **业务规则**（新鲜度、来源优先级、匹配、常备规则）放 `app/src/core/`，不得依赖 QtGui / QtQuick / 网络，以便桌面上直接单测。
-- **持久化与 SQL** 只在 `app/src/data/`；数据库结构变更必须新增迁移，不改旧迁移。
+- **持久化与 SQL** 只在 `app/src/data/`；迁移集中在 `database.cpp` 的递增列表中，结构变更只追加迁移，不改旧项。`Store` 管理用户数据及导入图片清理，`BuiltinData` 缓存内置只读资源。
 - **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口（`RecognitionService`）；换服务商只新增实现，不改调用方。提示词文本集中在 `prompt-templates.h`，改动含义时同步改 `kPromptVersion`。
 - **桌面开发工具**（需要真实密钥或只在桌面有意义的命令行程序）放 `app/tools/`，仅在非 Android 构建中编译，不注册 ctest。
 - **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口；换服务商只新增实现，不改调用方。
-- **视图模型** 放 `app/src/ui/`；QML 不写业务逻辑，只做展示和交互。
+- **应用服务与视图模型** 放 `app/src/ui/`；`*-service.*` 不依赖 QML，组合领域、持久化、识别与平台载荷；QML 只做展示和交互。
+- **分层测试** 放 `app/tests/{core,data,ui}/`；`ui/` 测普通 C++ 应用服务，用合成录制回放，不需要 QML 界面或真实密钥。
 - **可复用 QML 组件** 放 `app/qml/components/`，页面放 `app/qml/pages/`，主题常量只在 `app/qml/Theme.qml` 定义。
 - **内置数据** 只能由 `tools/` 生成到 `app/assets/data/`，不手改；生成物与生成脚本同分支提交。
 - **词表源数据**：标准食材词表和菜谱原料映射的人工维护源数据放 `tools/whilefresh_tools/vocabulary/`，`app/assets/data/vocabulary.json` 与 `recipes.json` 的 `canonical` 由它生成。AI 只用于一次性生成初稿，草稿放缓存目录，审阅后才进入源数据；初稿的原始响应不入库。
@@ -85,6 +86,7 @@
 ## Change log
 
 - 2026-10-21 — T7：增加 `tools/whilefresh_tools/synthetic/`、`test-data/synthetic/` 与 `test-data/recordings/synthetic/`，规定可重复生成的 HTML/PNG/JPEG/TXT、标准答案和合成识别录制的摆放位置。
+- 2026-10-21 — T5：细化应用服务与视图模型的分工，记录 SQLite 迁移位置与 core/data/ui 分层测试。
 
 - 2026-10-21 — 注明 `tools/tests/fixtures/` 存放测试用第三方原文样例。
 - 2026-10-20 — 初版：依据 MVP 工程规划建立 `app/`、`tools/`、`design/`、`test-data/`、`scripts/` 的布局与放置规则。

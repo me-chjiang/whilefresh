@@ -1,6 +1,6 @@
 # 趁鲜（WhileFresh）
 
-AI 产品探索与 Landing Project 材料库。产品名「趁鲜」：帮助家庭趁食材新鲜时用掉已购食材的单人手机客户端，未来可扩展多人协作。仓库包含需求验证、产品定义、MVP 需求，以及 `app/` 下开发中的 Qt 应用（目前为工程骨架）。
+AI 产品探索与 Landing Project 材料库。产品名「趁鲜」：帮助家庭趁食材新鲜时用掉已购食材的单人手机客户端，未来可扩展多人协作。仓库包含需求验证、产品定义、MVP 需求，以及 `app/` 下开发中的 Qt 应用（已包含领域、数据、识别和平台层，正式页面另行接入）。
 
 ## 项目材料
 
@@ -192,3 +192,22 @@ $adb logcat -d | grep 'WhileFresh import:'
 ```
 
 `am` 不能传 `Uri` 列表；`ACTION_SEND_MULTIPLE` 用系统"文件"App 多选后分享到"趁鲜"来测。
+
+### 核心、数据与应用服务（T5）
+
+- `app/src/core/` 只依赖 QtCore：分开的购买/入库/生产/包装到期日期、拍摄日基准的日期解析、带来源的保质期、注入时钟的新鲜度、常备/存量建议、需求组匹配与待买文本。
+- `app/src/data/`：SQLite `Database` + `Store`（`PRAGMA user_version` 版本迁移），以及加载一次的 `BuiltinData`。正式词表、菜谱、FoodKeeper 表嵌入 `:/whilefresh/data`；找不到参考表按无参考值处理。
+- `app/src/ui/{import,kitchen}-service.*` 是普通 C++ 应用服务，不依赖 QML；可替换识别器，用户确认草稿才入库，常备建议/本地记忆需要单独确认。T8 接线、日期语义、迁移和文件删除细节见 [核心领域实现说明](docs/mvp/notes/core-domain.md)。
+- **FoodKeeper 不等于从生产日起的寿命**：参考表只在购买日期已知且用户确认适用条件后计算到期日；否则保留参考天数、显示待确认，不改用较长的 AI 值掩盖未知状态。`basis` 只保留作展示，不据其字符串推断逻辑。
+
+使用已有命令验证，不调用真实 DeepSeek：
+
+```sh
+scripts/build-desktop.sh
+ctest --test-dir build/desktop --output-on-failure
+# 只跑 T5 的九个测试套件（其余套件仍应在提交前全部运行）
+ctest --test-dir build/desktop --output-on-failure -R 'date-text|shelf-life|freshness|recipe-matcher|household-rules|database-test|store-test|builtin-data|application-service'
+scripts/build-android.sh x86_64 --no-key
+```
+
+`builtin-data-test` 用实际 372 道菜、544 项词表、290 项参考数据验证匹配和保质期；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入、事务回滚、建议确认及清冰箱/待买。测试数据库与图片只写临时目录。
