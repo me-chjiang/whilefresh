@@ -13,7 +13,7 @@ ApplicationWindow {
     width: 412
     height: 915
     visible: true
-    title: "趁鲜 · 演示界面"
+    title: "趁鲜"
     color: Theme.paper
 
     function showTab(index) {
@@ -22,10 +22,9 @@ ApplicationWindow {
         stack.clear(StackView.Immediate)
         stack.push([fridgeComponent, recipesComponent, clearComponent, shoppingComponent, profileComponent][index], {}, StackView.Immediate)
     }
-    function showImport(shared) {
+    function showImport() {
+        if (importSheet.bodyItem) importSheet.bodyItem.reset()
         importSheet.open()
-        if (shared) Qt.callLater(function() { if (importSheet.bodyItem) importSheet.bodyItem.sharedImport() })
-        else if (importSheet.bodyItem) importSheet.bodyItem.stage = "choose"
     }
     function goBack() {
         if (importSheet.opened) { importSheet.close(); return }
@@ -40,11 +39,12 @@ ApplicationWindow {
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
-        height: 26
+        height: App.demoMode ? 26 : 0
+        visible: App.demoMode
         color: Theme.tapeSage
         Text {
             anchors.centerIn: parent
-            text: MockData.previewLabel
+            text: "演示模式 · 示例数据，识别为预设结果，不联网"
             color: Theme.ink
             font.pixelSize: Theme.textMeta
             font.weight: Theme.weightBold
@@ -71,7 +71,7 @@ ApplicationWindow {
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         currentTab: window.currentTab
-        nearCount: MockData.items.filter(function(item) { return item.freshness === "nearing" }).length
+        nearCount: App.nearCount
         onTabRequested: function(index) { window.showTab(index) }
     }
     BottomSheet {
@@ -79,9 +79,9 @@ ApplicationWindow {
         heading: "确认入库"
         tapeText: "识别结果"
         sheetHeight: 744
+        onClosed: if (App.importState !== "idle") App.cancelImport()
         bodyComponent: ImportFlowPage {
-            platform: window.platform
-            onFinished: { importSheet.close(); window.showTab(0); window.showNotice("已加入模拟食材") }
+            onFinished: { importSheet.close(); window.showTab(0); window.showNotice("已加入冰箱") }
             onNotice: function(message) { window.showNotice(message) }
         }
     }
@@ -109,35 +109,31 @@ ApplicationWindow {
         sourceComponent: ImportDebugPanel { platform: window.platform }
     }
     Connections {
-        target: window.platform
-        function onImportReceived(payload) {
-            if (!importSheet.opened) window.showImport(true)
-            else if (importSheet.bodyItem) importSheet.bodyItem.picked()
-        }
-        function onImportCancelled(origin) {
-            if (importSheet.bodyItem) importSheet.bodyItem.cancelled()
-        }
-        function onImportFailed(origin, message) {
-            if (importSheet.bodyItem) importSheet.bodyItem.stage = "failed"
-            window.showNotice(message)
-        }
+        target: App
+        function onNotice(message) { window.showNotice(message) }
+        function onPickCancelled() { if (importSheet.bodyItem) importSheet.bodyItem.cancelled() }
+        function onImportChanged() { if (App.importState !== "idle" && !importSheet.opened) importSheet.open() }
+    }
+    Component.onCompleted: {
+        if (App.startupNotice) showNotice(App.startupNotice)
+        else if (!App.recognitionConfigured && !App.demoMode) showNotice("未配置识别服务密钥，可在「我的」开启演示模式")
     }
     Shortcut { sequences: ["Back", "Escape"]; onActivated: window.goBack() }
     Component {
         id: fridgeComponent
         FridgePage {
-            onImportRequested: window.showImport(false)
+            onImportRequested: window.showImport()
             onEditRequested: function(item) { stack.push(editComponent, { ingredient: item }) }
             onNotice: function(message) { window.showNotice(message) }
         }
     }
     Component {
         id: recipesComponent
-        RecipesPage { onRecipeRequested: function(recipe) { stack.push(detailComponent, { recipe: recipe }) } }
+        RecipesPage { onRecipeRequested: function(recipe) { stack.push(detailComponent, { recipe: App.recipeDetail(recipe.id) }) } }
     }
     Component {
         id: clearComponent
-        ClearFridgePage { onRecipeRequested: function(recipe) { stack.push(detailComponent, { recipe: recipe }) } }
+        ClearFridgePage { onRecipeRequested: function(recipe) { stack.push(detailComponent, { recipe: App.recipeDetail(recipe.id) }) } }
     }
     Component {
         id: shoppingComponent

@@ -210,6 +210,6 @@ scripts/build-android.sh x86_64 --no-key
 
 ### 界面资源与模拟预览（T8a）
 
-QML 界面位于 `app/qml/`：`Theme.qml` 管颜色/字体/尺寸；`components/` 放可复用控件；`pages/` 放页面；`mock/MockData.qml` 是唯一演示数据源。**界面目前只接模拟数据**，各页持续标示「演示 · 界面预览」；T8b 再替换为视图模型与真实操作。无需 API 密钥，不向 DeepSeek 发送内容。桌面验证：`scripts/build-desktop.sh`，再运行 `ctest --test-dir build/desktop --output-on-failure`；Android 用 `scripts/build-android.sh x86_64`、`scripts/run-emulator.sh --headless`、`scripts/install-android.sh x86_64`。
+QML 界面位于 `app/qml/`：`Theme.qml` 管颜色/字体/尺寸；`components/` 放可复用控件；`pages/` 放页面；页面通过 `App`（`app/src/ui/app-model.*`，QML 单例）读取真实服务。「我的」中的演示模式使用独立的 `demo.db`、预设识别结果和示例食材，界面顶部持续显示「演示模式」，可断网体验；关闭后回到真实数据。真实识别需构建脚本注入 DeepSeek 密钥，未配置时启动会提示。桌面验证：`scripts/build-desktop.sh`，再运行 `ctest --test-dir build/desktop --output-on-failure`；Android 用 `scripts/build-android.sh x86_64`、`scripts/run-emulator.sh --headless`、`scripts/install-android.sh x86_64`。
 
 字体子集来自 [Noto Serif CJK v2.003（SC Black）](https://github.com/notofonts/noto-cjk/raw/Serif2.003/Serif/SubsetOTF/SC/NotoSerifSC-Black.otf)，SIL OFL 1.1，源文件 SHA-256 `91dde57622845beeb663f300813999febdb7fcd5e451bde199d7c954a9740cb4`；许可见 `app/assets/fonts/OFL.txt`。用 `cd tools && uv run --group assets python -m whilefresh_tools.assets font` 重新下载、校验并生成字体子集；`cd tools && uv run --group assets python -m whilefresh_tools.assets texture` 重建纸纹；工具依赖仅装在项目本地 uv 环境。Tabler 图标（MIT）来自 `design/icons/`，应用内许可见 `app/assets/icons/LICENSE-tabler`。

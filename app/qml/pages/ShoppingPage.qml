@@ -26,7 +26,7 @@ Item {
             width: parent.width - Theme.gap * 2
             spacing: Theme.gap
             EmptyState {
-                visible: MockData.shopping.length === 0
+                visible: App.shopping.length === 0
                 width: content.width
                 height: visible ? implicitHeight + Theme.gapLarge * 3 : 0
                 iconName: "list-check"
@@ -34,11 +34,11 @@ Item {
                 detail: "选择菜谱后，可把缺料加入这里"
             }
             Repeater {
-                model: MockData.shopping.length ? page.categories : []
+                model: App.shopping.length ? page.categories : []
                 delegate: Item {
                     id: group
                     required property var modelData
-                    readonly property var entries: MockData.shopping.filter(function(item) { return item.category === group.modelData.code })
+                    readonly property var entries: App.shopping.filter(function(item) { return item.category === group.modelData.code })
                     visible: entries.length > 0
                     width: content.width
                     height: visible ? groupCard.height + Theme.gapSmall : 0
@@ -67,7 +67,7 @@ Item {
                                         width: Theme.touch
                                         height: parent.height
                                         IconGlyph { name: "x"; tint: Theme.muted; width: 20; height: 20; anchors.centerIn: parent }
-                                        TapHandler { onTapped: MockData.removeShopping(modelData.name) }
+                                        TapHandler { onTapped: App.removeShopping(modelData.id) }
                                     }
                                     Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: Theme.rule }
                                 }
@@ -78,10 +78,10 @@ Item {
                 }
             }
             Row {
-                visible: MockData.shopping.length > 0
+                visible: App.shopping.length > 0
                 spacing: Theme.gapSmall
-                InkButton { text: "复制清单"; iconName: "notes"; onClicked: { if (page.platform) page.platform.copyText(MockData.shoppingText()); page.notice("已复制待买清单") } }
-                InkButton { text: "分享清单"; iconName: "list-check"; outline: true; onClicked: { if (page.platform) page.platform.shareText(MockData.shoppingText()) } }
+                InkButton { text: "复制清单"; iconName: "notes"; onClicked: { if (page.platform) page.platform.copyText(App.shoppingText()); page.notice("已复制待买清单") } }
+                InkButton { text: "分享清单"; iconName: "list-check"; outline: true; onClicked: { if (page.platform) page.platform.shareText(App.shoppingText()) } }
             }
         }
     }

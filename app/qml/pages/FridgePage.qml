@@ -16,7 +16,7 @@ Item {
         x: Theme.gap
         width: parent.width - Theme.gap * 2
         heading: "冰箱"
-        subtitle: "共 " + MockData.items.length + " 件"
+        subtitle: "共 " + App.items.length + " 件"
         actionText: "＋ 入库"
         onActionTriggered: page.importRequested()
     }
@@ -34,7 +34,7 @@ Item {
             spacing: Theme.gapLarge
             Item { width: 1; height: Theme.gapSmall }
             EmptyState {
-                visible: MockData.items.length === 0
+                visible: App.items.length === 0
                 width: content.width
                 height: visible ? implicitHeight + Theme.gapLarge * 2 : 0
                 iconName: "fridge"
@@ -48,7 +48,7 @@ Item {
                 delegate: Item {
                     id: section
                     required property string modelData
-                    readonly property var list: MockData.items.filter(function (item) { return item.location === section.modelData })
+                    readonly property var list: App.items.filter(function (item) { return item.location === section.modelData })
                     visible: list.length > 0
                     width: content.width
                     height: visible ? card.height + Theme.gapSmall : 0
@@ -86,11 +86,11 @@ Item {
                                         page.checkedIds = page.checkedIds.indexOf(item.id) < 0 ? page.checkedIds.concat([item.id]) : page.checkedIds.filter(function(id) { return id !== item.id })
                                     }
                                     onUsed: function(item) {
-                                        if (item.name === "鸡蛋") page.notice("鸡蛋标为默认存量多；需要手动标记家里没有")
-                                        else MockData.removeItem(item.id)
+                                        App.useItem(item.id)
+                                        if (item.bulk) page.notice(item.name + "默认存量多，已保留；需要时请标记家里没有")
                                     }
-                                    onUnavailable: function(item) { MockData.removeItem(item.id) }
-                                    onFirstRequested: function(item) { MockData.setItem(item.id, { first: !item.first }) }
+                                    onUnavailable: function(item) { App.markAbsent(item.id) }
+                                    onFirstRequested: function(item) { App.toggleFirst(item.id, !item.first) }
                                 }
                             }
                         }
@@ -110,7 +110,7 @@ Item {
                 text: "移除选中 " + page.checkedIds.length + " 件"
                 accent: Theme.tomato
                 onClicked: {
-                    page.checkedIds.forEach(function(id) { MockData.removeItem(id) })
+                    App.removeItems(page.checkedIds)
                     page.checkedIds = []
                     page.multiSelect = false
                 }

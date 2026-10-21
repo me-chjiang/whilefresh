@@ -22,7 +22,7 @@ Item {
             x: Theme.gap
             width: parent.width - Theme.gap * 2
             spacing: Theme.gap
-            NoticeBanner { width: content.width; message: "演示 · 界面预览。切换开关不会连接真实服务"; warning: false }
+            NoticeBanner { width: content.width; message: App.demoMode ? "演示模式：使用独立示例数据和预设识别结果，不联网，不影响真实数据" : (App.recognitionConfigured ? "识别服务已配置。入库识别前会再次提示隐私说明" : "未配置识别服务密钥，真实识别不可用；可开启演示模式体验流程"); warning: !App.demoMode && !App.recognitionConfigured }
             Rectangle {
                 width: content.width
                 height: demoRow.height + Theme.gapLarge
@@ -35,7 +35,7 @@ Item {
                     width: parent.width - Theme.gap * 2
                     height: Theme.touch
                     Text { text: "演示模式"; font.pixelSize: Theme.textBody; font.weight: Theme.weightBold; color: Theme.ink; Layout.fillWidth: true }
-                    Switch { checked: MockData.demoMode; onToggled: MockData.demoMode = checked }
+                    Switch { checked: App.demoMode; onToggled: App.setDemoMode(checked) }
                 }
             }
             Text { text: "常备调料 / 常用食材"; font.family: Theme.serif; font.pixelSize: Theme.textPanel; font.weight: Theme.weightBlack; color: Theme.ink }
@@ -52,7 +52,7 @@ Item {
                     width: parent.width - Theme.gap * 2
                     spacing: Theme.gapTiny
                     Repeater {
-                        model: MockData.pantry
+                        model: App.pantry
                         delegate: RowLayout {
                             required property var modelData
                             width: pantryList.width
@@ -64,7 +64,7 @@ Item {
                                 width: Theme.touch
                                 height: Theme.touch
                                 IconGlyph { name: "x"; tint: Theme.muted; width: 20; height: 20; anchors.centerIn: parent }
-                                TapHandler { onTapped: MockData.pantry = MockData.pantry.filter(function(x) { return x.name !== modelData.name }) }
+                                TapHandler { onTapped: App.removePantry(modelData.name) }
                             }
                         }
                     }
@@ -76,8 +76,8 @@ Item {
                             text: "添加"
                             onClicked: {
                                 const value = pantryInput.text.trim()
-                                if (value && !MockData.pantry.some(function(p) { return p.name === value })) {
-                                    MockData.pantry = MockData.pantry.concat([{ name: value, category: "other", bulk: false }])
+                                if (value) {
+                                    App.addPantry(value)
                                     pantryInput.text = ""
                                 }
                             }
@@ -86,9 +86,9 @@ Item {
                 }
             }
             Text { text: "待确认建议"; font.family: Theme.serif; font.pixelSize: Theme.textPanel; font.weight: Theme.weightBlack; color: Theme.ink }
-            NoticeBanner { visible: MockData.suggestions.length === 0; width: content.width; height: visible ? implicitHeight : 0; message: "暂无待确认建议"; warning: false }
+            NoticeBanner { visible: App.suggestions.length === 0; width: content.width; height: visible ? implicitHeight : 0; message: "暂无待确认建议"; warning: false }
             Repeater {
-                model: MockData.suggestions
+                model: App.suggestions
                 delegate: Rectangle {
                     required property var modelData
                     width: content.width
@@ -103,15 +103,15 @@ Item {
                         Text { text: modelData.name + " · " + modelData.note; font.pixelSize: Theme.textSubtitle; color: Theme.ink }
                         Row {
                             spacing: Theme.gapSmall
-                            InkButton { text: "确认变更"; onClicked: MockData.suggestions = MockData.suggestions.filter(function(x) { return x.name !== modelData.name }) }
-                            InkButton { text: "不变更"; outline: true; onClicked: MockData.suggestions = MockData.suggestions.filter(function(x) { return x.name !== modelData.name }) }
+                            InkButton { text: "确认变更"; onClicked: App.decideSuggestion(modelData.id, true) }
+                            InkButton { text: "不变更"; outline: true; onClicked: App.decideSuggestion(modelData.id, false) }
                         }
                     }
                 }
             }
             Text { text: "保质期与存放规则"; font.family: Theme.serif; font.pixelSize: Theme.textPanel; font.weight: Theme.weightBlack; color: Theme.ink }
             Repeater {
-                model: MockData.rules
+                model: App.rules
                 delegate: Rectangle {
                     required property var modelData
                     width: content.width
@@ -129,12 +129,12 @@ Item {
                             height: Theme.touch
                             TextField { id: ruleDays; text: modelData.days; Layout.preferredWidth: 65; placeholderText: "天数"; inputMethodHints: Qt.ImhDigitsOnly; background: Rectangle { color: Theme.note; radius: Theme.radiusTag } }
                             ComboBox { id: rulePlace; model: ["冷藏", "冷冻", "常温"]; currentIndex: model.indexOf(modelData.location); Layout.fillWidth: true }
-                            InkButton { text: "保存"; onClicked: MockData.rules = MockData.rules.map(function(r) { return r.name === modelData.name ? Object.assign({}, r, { days: ruleDays.text, location: rulePlace.currentText }) : r }) }
+                            InkButton { text: "保存"; onClicked: { App.saveRule(modelData.name, modelData.location, rulePlace.currentText, ruleDays.text); page.notice("已保存规则") } }
                             Item {
                                 width: Theme.touch
                                 height: Theme.touch
                                 IconGlyph { anchors.centerIn: parent; name: "x"; tint: Theme.muted; width: 20; height: 20 }
-                                TapHandler { onTapped: MockData.rules = MockData.rules.filter(function(r) { return r.name !== modelData.name }) }
+                                TapHandler { onTapped: App.deleteRule(modelData.name, modelData.location, modelData.kind) }
                             }
                         }
                     }
@@ -142,7 +142,7 @@ Item {
             }
             Text { text: "导入记录与本机数据"; font.family: Theme.serif; font.pixelSize: Theme.textPanel; font.weight: Theme.weightBlack; color: Theme.ink }
             Repeater {
-                model: MockData.imports
+                model: App.imports
                 delegate: RowLayout {
                     required property var modelData
                     width: content.width
@@ -172,6 +172,6 @@ Item {
             }
         }
     }
-    ConfirmDialog { id: deleteOne; message: "删除这次模拟导入记录及其截图？"; confirmText: "删除本次"; destructive: true; onAcceptedAction: MockData.removeImport(page.pendingImportId) }
-    ConfirmDialog { id: deleteAll; message: "删除全部模拟食材、待买、规则和导入记录？"; confirmText: "删除全部"; destructive: true; onAcceptedAction: { MockData.clearAll(); page.notice("已清空模拟数据") } }
+    ConfirmDialog { id: deleteOne; message: "删除这次导入记录及其截图？"; confirmText: "删除本次"; destructive: true; onAcceptedAction: App.deleteImport(page.pendingImportId) }
+    ConfirmDialog { id: deleteAll; message: "删除当前模式下的全部食材、待买、规则和导入记录？"; confirmText: "删除全部"; destructive: true; onAcceptedAction: { App.deleteAllData(); page.notice("已清空数据") } }
 }
