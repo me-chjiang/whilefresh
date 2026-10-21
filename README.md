@@ -66,15 +66,11 @@ security add-generic-password -s landing-project-deepseek -a "$USER" -w   # 按�
 
 ### 验证 HTTPS
 
-Debug 构建启动时会对 `https://api.deepseek.com/models` 发一次不带密钥的 GET（不计费），收到任何 HTTP 状态码（预期 401）即说明 TLS 正常。日志前缀固定为 `WhileFresh tls-smoke:`。
+Debug 构建默认不主动连接 DeepSeek（T8a 仅模拟界面）。仅在单独验证 HTTPS 时，显式设置 `WHILEFRESH_TLS_SMOKE=1` 才对 `https://api.deepseek.com/models` 发一次不带密钥的 GET；预期状态 401，日志前缀 `WhileFresh tls-smoke:`。Android 上需在可注入该进程环境变量的测试环境中单独执行，不作为界面截图流程的一部分。
 
 ```sh
-# 桌面版：日志直接输出到终端
-build/desktop/whilefresh
-
-# Android：安装启动后查看 logcat
-~/Library/Android/sdk/platform-tools/adb logcat -d | grep 'WhileFresh tls-smoke:'
-# 期望看到：WhileFresh tls-smoke: ok http-status=401
+# 桌面版：仅手动 HTTPS 探针时运行
+WHILEFRESH_TLS_SMOKE=1 build/desktop/whilefresh
 ```
 
 ### 离线数据工具（Python）
@@ -211,3 +207,9 @@ scripts/build-android.sh x86_64 --no-key
 ```
 
 `builtin-data-test` 用实际 372 道菜、544 项词表、290 项参考数据验证匹配和保质期；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入、事务回滚、建议确认及清冰箱/待买。测试数据库与图片只写临时目录。
+
+### 界面资源与模拟预览（T8a）
+
+QML 界面位于 `app/qml/`：`Theme.qml` 管颜色/字体/尺寸；`components/` 放可复用控件；`pages/` 放页面；`mock/MockData.qml` 是唯一演示数据源。**界面目前只接模拟数据**，各页持续标示「演示 · 界面预览」；T8b 再替换为视图模型与真实操作。无需 API 密钥，不向 DeepSeek 发送内容。桌面验证：`scripts/build-desktop.sh`，再运行 `ctest --test-dir build/desktop --output-on-failure`；Android 用 `scripts/build-android.sh x86_64`、`scripts/run-emulator.sh --headless`、`scripts/install-android.sh x86_64`。
+
+字体子集来自 [Noto Serif CJK v2.003（SC Black）](https://github.com/notofonts/noto-cjk/raw/Serif2.003/Serif/SubsetOTF/SC/NotoSerifSC-Black.otf)，SIL OFL 1.1，源文件 SHA-256 `91dde57622845beeb663f300813999febdb7fcd5e451bde199d7c954a9740cb4`；许可见 `app/assets/fonts/OFL.txt`。用 `cd tools && uv run --group assets python -m whilefresh_tools.assets font` 重新下载、校验并生成字体子集；`cd tools && uv run --group assets python -m whilefresh_tools.assets texture` 重建纸纹；工具依赖仅装在项目本地 uv 环境。Tabler 图标（MIT）来自 `design/icons/`，应用内许可见 `app/assets/icons/LICENSE-tabler`。

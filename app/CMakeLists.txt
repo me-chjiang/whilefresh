@@ -34,12 +34,61 @@ endforeach()
 
 qt_add_executable(whilefresh src/main.cpp)
 
+set_source_files_properties(qml/Theme.qml qml/mock/MockData.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(whilefresh
     URI WhileFresh
     VERSION 1.0
     QML_FILES
         qml/Main.qml
+        qml/Theme.qml
+        qml/mock/MockData.qml
         qml/components/ImportDebugPanel.qml
+        qml/components/IconGlyph.qml
+        qml/components/PaperBackground.qml
+        qml/components/CategoryDot.qml
+        qml/components/FreshnessStamp.qml
+        qml/components/SectionTape.qml
+        qml/components/InkButton.qml
+        qml/components/PageHeader.qml
+        qml/components/PantryRow.qml
+        qml/components/RecipeCard.qml
+        qml/components/EmptyState.qml
+        qml/components/NoticeBanner.qml
+        qml/components/BottomSheet.qml
+        qml/components/ConfirmDialog.qml
+        qml/components/BottomNav.qml
+        qml/pages/FridgePage.qml
+        qml/pages/ClearFridgePage.qml
+        qml/pages/RecipesPage.qml
+        qml/pages/RecipeDetailPage.qml
+        qml/pages/ShoppingPage.qml
+        qml/pages/ProfilePage.qml
+        qml/pages/ImportFlowPage.qml
+        qml/pages/ItemEditPage.qml
+    RESOURCES
+        assets/fonts/NotoSerifSC-Black-subset.otf
+        assets/fonts/OFL.txt
+        assets/textures/paper-tile.png
+        assets/textures/tape-stripe.png
+        assets/icons/LICENSE-tabler
+        assets/icons/ban.svg
+        assets/icons/book-2.svg
+        assets/icons/check.svg
+        assets/icons/chef-hat.svg
+        assets/icons/chevron-down.svg
+        assets/icons/chevron-right.svg
+        assets/icons/flag-2.svg
+        assets/icons/fridge.svg
+        assets/icons/list-check.svg
+        assets/icons/notes.svg
+        assets/icons/pencil.svg
+        assets/icons/plus.svg
+        assets/icons/snowflake.svg
+        assets/icons/star.svg
+        assets/icons/sun.svg
+        assets/icons/user.svg
+        assets/icons/x.svg
 )
 
 target_link_libraries(whilefresh PRIVATE

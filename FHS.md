@@ -23,14 +23,15 @@
 │   │   ├── platform/          # 平台适配的 C++ 侧（分享、相机、文件、剪贴板）、导入载荷与日期来源
 │   │   │   ├── android/       # JNI 胶水（只在 Android 构建中编译）
 │   │   │   └── desktop/       # 桌面替代实现（文件对话框、剪贴板）
-│   │   └── ui/                # 不依赖 QML 的应用服务（ImportService / KitchenService）及视图模型
-│   ├── qml/                   # QML 页面与组件；Theme 单例
+│   │   └── ui/                # 应用服务（ImportService / KitchenService，不依赖 QML）及暴露给 QML 的视图模型
+│   ├── qml/                   # QML 页面与组件；Theme 单例；mock/ 为 T8a 演示数据源
 │   ├── android/               # AndroidManifest、Java 桥接（src/io/github/mechjiang/whilefresh/）、res（xml/ 为 FileProvider 路径）
 │   ├── tools/                 # 仅桌面可用的 C++ 开发工具（如 recognize-cli 真实识别与录制），不进 ctest、不进 APK
 │   ├── assets/
 │   │   ├── data/              # 内置只读数据（由 tools/ 生成并提交）：菜谱、词表、参考表
 │   │   ├── icons/             # Tabler 线条 SVG（附许可文件）
-│   │   ├── textures/          # 纸纹等拟物质感素材
+│   │   ├── fonts/             # Noto Serif SC Black 子集与 OFL 许可
+│   │   ├── textures/          # 离线生成的可平铺纸纹与胶带纹理
 │   │   └── demo/              # 演示模式的合成截图与对应识别结果（<输入类型>.json，录制格式，嵌入 qrc）
 │   └── tests/                 # Qt Test 单元 / 集成测试，按被测层分子目录（core/、platform/ …）
 ├── tools/                     # Python 离线工具（uv 管理，pytest）
@@ -59,7 +60,8 @@
 - **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口；换服务商只新增实现，不改调用方。
 - **应用服务与视图模型** 放 `app/src/ui/`；`*-service.*` 不依赖 QML，组合领域、持久化、识别与平台载荷；QML 只做展示和交互。
 - **分层测试** 放 `app/tests/{core,data,ui}/`；`ui/` 测普通 C++ 应用服务，用合成录制回放，不需要 QML 界面或真实密钥。
-- **可复用 QML 组件** 放 `app/qml/components/`，页面放 `app/qml/pages/`，主题常量只在 `app/qml/Theme.qml` 定义。
+- **可复用 QML 组件** 放 `app/qml/components/`，页面放 `app/qml/pages/`，主题常量只在 `app/qml/Theme.qml` 定义；T8a 的演示数据与动作集中在 `app/qml/mock/MockData.qml`，T8b 接真实视图模型时移除此依赖。
+- **离线界面资源工具** 放 `tools/whilefresh_tools/assets/`，由 uv 的 `assets` 依赖组运行；生成字体子集到 `app/assets/fonts/`，纹理到 `app/assets/textures/`，许可与资源同行。QML 组件依 Qt 大写类型名使用 PascalCase。
 - **内置数据** 只能由 `tools/` 生成到 `app/assets/data/`，不手改；生成物与生成脚本同分支提交。
 - **词表源数据**：标准食材词表和菜谱原料映射的人工维护源数据放 `tools/whilefresh_tools/vocabulary/`，`app/assets/data/vocabulary.json` 与 `recipes.json` 的 `canonical` 由它生成。AI 只用于一次性生成初稿，草稿放缓存目录，审阅后才进入源数据；初稿的原始响应不入库。
 - **第三方原始数据**：难以重新获取或需固定版本的放 `tools/sources/<来源>/`，附 `SOURCE.md` 写明网址、版本、获取日期、许可；可按固定 commit 重新下载的（如 HowToCook）不入库，下载到被忽略的缓存目录。

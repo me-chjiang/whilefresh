@@ -45,7 +45,8 @@ int main(int argc, char *argv[])
     engine.loadFromModule("WhileFresh", "Main");
 
 #ifdef WHILEFRESH_TLS_SMOKE
-    whilefresh::recognition::startTlsSmokeTest(&app);
+    if (qEnvironmentVariableIntValue("WHILEFRESH_TLS_SMOKE") == 1)
+        whilefresh::recognition::startTlsSmokeTest(&app);
 #endif
 
     return QGuiApplication::exec();

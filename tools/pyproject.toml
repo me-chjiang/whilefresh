@@ -9,6 +9,7 @@ dependencies = [
 
 [dependency-groups]
 dev = ["pytest>=8"]
+assets = ["fonttools>=4.50", "pillow>=10"]
 
 [build-system]
 requires = ["hatchling"]
