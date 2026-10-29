@@ -41,7 +41,7 @@ fi
 build_type=Debug
 variant=debug
 build_dir="$REPO_ROOT/build/android-$abi"
-sign_args=()
+sign_args=(-DQT_ANDROID_SIGN_APK=OFF)
 if [[ $release -eq 1 ]]; then
     build_type=Release
     variant=release
