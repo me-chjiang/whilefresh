@@ -107,6 +107,15 @@ AppModel::~AppModel() = default;
 
 bool AppModel::recognitionConfigured() const { return m_chat->isConfigured(); }
 
+void AppModel::setCredentialProvider(std::shared_ptr<ai::CredentialProvider> credentials)
+{
+    const bool wasConfigured = recognitionConfigured();
+    m_credentials = std::move(credentials);
+    m_chat->setCredentials(m_credentials);
+    if (recognitionConfigured() != wasConfigured)
+        emit recognitionConfiguredChanged();
+}
+
 QString AppModel::demoPath() const
 {
     const QString path = QDir(m_dataDir).filePath(QStringLiteral("demo.db"));

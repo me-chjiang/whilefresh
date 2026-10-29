@@ -36,7 +36,7 @@ class AppModel : public QObject
     Q_PROPERTY(QVariantList rules READ rules NOTIFY changed)
     Q_PROPERTY(QVariantList imports READ imports NOTIFY changed)
     Q_PROPERTY(bool demoMode READ demoMode NOTIFY demoModeChanged)
-    Q_PROPERTY(bool recognitionConfigured READ recognitionConfigured CONSTANT)
+    Q_PROPERTY(bool recognitionConfigured READ recognitionConfigured NOTIFY recognitionConfiguredChanged)
     Q_PROPERTY(QString startupNotice READ startupNotice CONSTANT)
     Q_PROPERTY(QString privacyNotice READ privacyNotice CONSTANT)
     Q_PROPERTY(QString importState READ importState NOTIFY importChanged)
@@ -65,6 +65,8 @@ public:
     QVariantList imports() const;
     bool demoMode() const { return m_active && m_active->demo; }
     bool recognitionConfigured() const;
+    // Where the DeepSeek key comes from (built-in or the user's); takes effect for the next request.
+    void setCredentialProvider(std::shared_ptr<ai::CredentialProvider> credentials);
     QString startupNotice() const { return m_startupNotice; }
     static QString privacyNotice() { return ImportService::privacyNotice(); }
     QString importState() const { return m_importState; }
@@ -113,6 +115,7 @@ public:
 signals:
     void changed();
     void demoModeChanged();
+    void recognitionConfiguredChanged();
     void importChanged();
     void notice(const QString &message);
     void pickCancelled();
@@ -142,8 +145,7 @@ private:
     platform::PlatformServices *m_platform;
     std::shared_ptr<const data::BuiltinData> m_builtin;
     core::SystemClock m_clock;
-    // Swappable at runtime (m_chat->setCredentials); declared before the sessions so their
-    // recognizers never outlive the client.
+    // Declared before the sessions so their recognizers never outlive the client.
     std::shared_ptr<ai::CredentialProvider> m_credentials = std::make_shared<ai::BuiltinCredentialProvider>();
     std::unique_ptr<ai::DeepSeekChatClient> m_chat = std::make_unique<ai::DeepSeekChatClient>(m_credentials);
     std::unique_ptr<Session> m_real;
