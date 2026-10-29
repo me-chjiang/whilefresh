@@ -69,7 +69,7 @@ public:
     // Deletes the import, the items it produced and its image files.
     bool deleteImport(qint64 id);
     // Deletes every row and its files; untracked files are removed only when this store owns the directory.
-    bool deleteAllData();
+    bool deleteAllData(bool *dataDeleted = nullptr);
     // Deletes a file only when it lies directly in the imports directory.
     bool removeImportFile(const QString &path) const;
 

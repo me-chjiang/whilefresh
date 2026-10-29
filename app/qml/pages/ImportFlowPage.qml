@@ -12,6 +12,9 @@ Item {
     readonly property var foods: App.draftItems.filter(function(c) { return c.group === "food" })
     readonly property var seasonings: App.draftItems.filter(function(c) { return c.group === "seasoning" })
     readonly property var ignored: App.draftItems.filter(function(c) { return c.group === "ignored" })
+    function startBasisLabel(basis) {
+        return ({ production: "生产日期", purchase: "购买日期", entry: "入库日期" })[basis] || "起算日期"
+    }
     signal finished()
     signal dismissed()
     signal notice(string message)
@@ -43,7 +46,7 @@ Item {
             width: parent.width
             spacing: Theme.gapSmall
             InkButton { width: parent.width; text: "相册截图 · 可多选"; iconName: "notes"; onClicked: { flow.method = "gallery"; flow.stage = "privacy" } }
-            InkButton { width: parent.width; text: "拍购物小票"; iconName: "pencil"; outline: true; onClicked: { flow.method = "camera"; flow.stage = "privacy" } }
+            InkButton { width: parent.width; text: "拍购物小票"; iconName: "notes"; outline: true; onClicked: { flow.method = "camera"; flow.stage = "privacy" } }
             InkButton { width: parent.width; text: "粘贴订单文字"; iconName: "notes"; outline: true; onClicked: { flow.method = "text"; flow.stage = "privacy" } }
             InkButton { width: parent.width; text: "手动添加"; iconName: "plus"; outline: true; onClicked: flow.stage = "manual" }
         }
@@ -142,6 +145,7 @@ Item {
                 anchors.fill: parent
                 spacing: Theme.gapSmall
                 Text { text: "识别出 " + flow.foods.length + " 项食材 · 核对后入库"; font.pixelSize: Theme.textSubtitle; color: Theme.muted }
+                Text { width: parent.width; wrapMode: Text.Wrap; text: "确认入库会接受下列每项当前显示的保质期估计；可先修改天数和日期，不会逐项询问。"; font.pixelSize: Theme.textMeta; color: Theme.muted }
                 NoticeBanner { visible: App.draftWarning !== ""; width: parent.width; height: visible ? implicitHeight : 0; message: App.draftWarning }
                 NoticeBanner { visible: App.draftDuplicate; width: parent.width; height: visible ? implicitHeight : 0; message: "疑似重复导入：确认入库将再次添加这些食材" }
                 Flickable {
@@ -160,6 +164,8 @@ Item {
                             delegate: Rectangle {
                                 id: ingredient
                                 required property var modelData
+                                property bool editingDate: false
+                                readonly property bool previewPending: editingDate || shelfDaysField.text.trim() !== (modelData.shelfDays || "")
                                 width: groups.width
                                 height: editColumn.height + Theme.gap * 2
                                 radius: Theme.radiusRow
@@ -200,12 +206,21 @@ Item {
                                         }
                                     }
                                     Text {
-                                        text: (ingredient.modelData.source === "package" ? "" : "估计 · ") + Theme.sourceLabel(ingredient.modelData.source) + (ingredient.modelData.shelfDays ? " · 保质 " + ingredient.modelData.shelfDays + " 天" : "")
+                                        text: Theme.sourceLabel(ingredient.modelData.source) + (ingredient.modelData.shelfDays ? (ingredient.modelData.source === "package" ? " · 标注保质 " : " · 建议保质 ") + ingredient.modelData.shelfDays + " 天" : "")
                                         font.pixelSize: Theme.textMeta
                                         color: ingredient.modelData.source === "package" ? Theme.fresh : Theme.nearing
                                     }
+                                    Text { visible: !!ingredient.modelData.shelfLifeNote; width: parent.width; wrapMode: Text.Wrap; text: ingredient.modelData.shelfLifeNote || ""; font.pixelSize: Theme.textMeta; color: Theme.muted }
+                                    Text {
+                                        width: parent.width
+                                        wrapMode: Text.Wrap
+                                        text: ingredient.previewPending ? "修改待应用；到期信息以应用后的结果为准" : ingredient.modelData.source === "package" && ingredient.modelData.expiryDate ? "包装到期：" + ingredient.modelData.expiryDate : (ingredient.modelData.startDate ? "从" + flow.startBasisLabel(ingredient.modelData.startBasis) + " " + ingredient.modelData.startDate + " 起算 · " : "") + "预计到期：" + (ingredient.modelData.expiryDate || "暂无法估计")
+                                        font.pixelSize: Theme.textMeta
+                                        color: Theme.ink
+                                    }
                                     Text { visible: ingredient.modelData.needsDate; text: "日期写法需要拍摄日期才能换算，请在下方填写具体日期"; font.pixelSize: Theme.textMeta; color: Theme.overdue; width: parent.width; wrapMode: Text.Wrap }
                                     TextField {
+                                        id: shelfDaysField
                                         width: parent.width
                                         height: 34
                                         text: ingredient.modelData.shelfDays || ""
@@ -233,10 +248,12 @@ Item {
                                                     placeholderText: "日期"
                                                     font.pixelSize: Theme.textSmall
                                                     background: Rectangle { color: Theme.selectedPaper; radius: Theme.radiusTag; border.color: Theme.rule }
+                                                    onTextEdited: ingredient.editingDate = true
                                                     onEditingFinished: {
                                                         const patch = {}
                                                         patch[modelData.key] = text.trim()
                                                         App.editDraft(ingredient.modelData.index, patch)
+                                                        ingredient.editingDate = false
                                                     }
                                                 }
                                             }

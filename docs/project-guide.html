@@ -209,7 +209,7 @@
         <h1>从一张购物截图，<br>到今晚的一道菜。</h1>
         <p class="lead">这份导览带你顺着用户的一次做饭决策，读懂「趁鲜」的目录、功能链路、关键算法，以及试用版还欠哪些验证。</p>
         <div class="hero-meta"><span class="pill">Qt 6.8.2 · QML + C++17</span><span class="pill">Android MVP · 本机 SQLite</span><span class="pill warm">当前阶段：Phase 4 待最终验收</span></div>
-        <div class="hero-note"><strong>阅读口径：</strong>依据 2026-10-22 的当前工作区源码与文档（含未提交修改）。下面的测试数字来自既有验收记录，本次制作导览<strong>未重新构建、运行测试或复验交互</strong>；Android APK 构建通过不等于真机实测，现有签名 Release 包也不是当前源码版本。<span class="source"><a href="mvp/cycle-state.md">docs/mvp/cycle-state.md:5–16</a> · <a href="mvp/trial-release.md">docs/mvp/trial-release.md:3–18</a></span></div>
+        <div class="hero-note"><strong>阅读口径：</strong>依据 2026-10-22 的当前工作区源码与文档（含未提交修改）。下面的测试数字来自既有验收记录，本次制作导览<strong>未重新构建、运行测试或复验交互</strong>；Android APK 构建通过不等于真机实测，现有签名 Release 包也不是当前源码版本。</div>
       </header>
 
       <section id="orientation" aria-labelledby="orientation-title">
@@ -293,7 +293,7 @@
           <article class="card"><span class="tag">测试与回归</span><h3>离线测试，不调用付费识别</h3><p>Qt Test 覆盖日期、保质期、菜谱匹配、数据库迁移、平台桥接、识别解析及服务链；Python pytest 验证数据构建和合成样本。录制回放让识别链可重复验证；真实付费识别另行手动执行，不属于 CTest。</p><span class="source"><a href="../app/tests/CMakeLists.txt">app/tests/CMakeLists.txt:1–27</a> · <a href="development.md">docs/development.md:91–114, 133–146</a></span></article>
           <article class="card"><span class="tag">构建与交付</span><h3>由脚本统一配置目标与密钥</h3><p><code>scripts/build-desktop.sh</code> 构建开发版；<code>scripts/build-android.sh</code> 构建双 ABI APK。构建脚本从本机钥匙串取试用密钥，仅生成到忽略的构建目录；依赖按固定版本下载到缓存目录，不写入仓库。</p><span class="source"><a href="development.md">docs/development.md:17–41</a> · <a href="../scripts/build-android.sh">scripts/build-android.sh:33–81</a> · <a href="../scripts/fetch-deps.sh">scripts/fetch-deps.sh:6–26</a></span></article>
         </div>
-        <p class="wide-note"><strong>已记录、未在本次重跑的结果：</strong>桌面 CTest 19/19、Python pytest 166/166、双 ABI 无密钥 Debug APK 构建通过；23 份合成录制与基线一致。桌面离屏启动不等于 Android 交互验收。<span class="source"><a href="mvp/cycle-state.md">docs/mvp/cycle-state.md:9–16, 148–166</a></span></p>
+        <p class="wide-note"><strong>已记录、未在本次重跑的结果：</strong>桌面 CTest 19/19、Python pytest 166/166、双 ABI 无密钥 Debug APK 构建通过；23 份合成录制与基线一致。桌面离屏启动不等于 Android 交互验收。</p>
       </section>
 
       <section id="strengths" aria-labelledby="strengths-title">
@@ -308,7 +308,7 @@
 
       <section id="debt" aria-labelledby="debt-title">
         <div class="section-head"><div class="section-kicker">08 / FOLLOW-UP</div><h2 id="debt-title">项目待办入口</h2><p>体验打磨、验证缺口、发布事项、数据质量与后续候选统一维护在 Markdown checklist 中，本导览不再复制任务或状态。</p></div>
-        <p class="wide-note"><a href="mvp/todo.md">打开项目唯一待办 checklist</a>。具体交互与技术依据见 <a href="mvp/polish-requirements.md">MVP 体验打磨规格</a>；已完成工作的验证证据见 <a href="mvp/cycle-state.md">cycle-state</a> 与 <a href="mvp/trial-release.md">试用版交付说明</a>。</p>
+        <p class="wide-note"><a href="mvp/todo.md">打开项目唯一待办 checklist</a>。已完成工作的规格与验证证据已于 2026-10-29 删除，见 Git 历史。</p>
       </section>
 
       <section id="reading" aria-labelledby="reading-title">
@@ -324,7 +324,7 @@
           <li><a href="development.md">08 · docs/development.md</a><span>构建命令、工具、测试和平台注意事项</span></li>
         </ul>
       </section>
-      <footer>趁鲜 · 工程导览 / 基于当前工作区的静态梳理。权威产品需求以 <a href="prd-v5.md">PRD v5</a> 为准；验收状态与待办以 <a href="mvp/cycle-state.md">cycle-state</a>、<a href="mvp/todo.md">todo</a> 为准。</footer>
+      <footer>趁鲜 · 工程导览 / 基于当前工作区的静态梳理。权威产品需求以 <a href="prd-v5.md">PRD v5</a> 为准；待办以 <a href="mvp/todo.md">todo</a> 为准。</footer>
     </main>
   </div>
 </body>

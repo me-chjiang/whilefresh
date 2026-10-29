@@ -76,6 +76,25 @@ private slots:
         QCOMPARE(withPork.match(wantsBelly).missingCount, 1);
     }
 
+    void cookedRiceAndJapaneseTofuRequireTheirOwnIngredients()
+    {
+        IngredientCatalog local = catalog;
+        QVERIFY(local.add({ QStringLiteral("大米"), QStringLiteral("staple"), {}, {}, true, true }));
+        QVERIFY(local.add({ QStringLiteral("米饭"), QStringLiteral("staple"), { QStringLiteral("冷饭") }, {}, false, false }));
+        QVERIFY(local.add({ QStringLiteral("豆腐"), QStringLiteral("soy"), {}, {}, false, false }));
+        QVERIFY(local.add({ QStringLiteral("日本豆腐"), QStringLiteral("soy"), { QStringLiteral("玉子豆腐") }, {}, false, false }));
+
+        const Recipe friedRice = recipe(QStringLiteral("炒饭"), { need(QStringLiteral("冷饭"), { { QStringLiteral("米饭") } }) });
+        const Recipe eggTofu = recipe(QStringLiteral("玉子豆腐料理"), { need(QStringLiteral("日本豆腐"), { { QStringLiteral("日本豆腐") } }) });
+        RecipeMatcher withRaw(&local, { item(QStringLiteral("大米"), 1), item(QStringLiteral("豆腐"), 2) });
+        QCOMPARE(withRaw.match(friedRice).missingCount, 1);
+        QCOMPARE(withRaw.match(eggTofu).missingCount, 1);
+
+        RecipeMatcher withPrepared(&local, { item(QStringLiteral("冷饭"), 3), item(QStringLiteral("玉子豆腐"), 4) });
+        QCOMPARE(withPrepared.match(friedRice).missingCount, 0);
+        QCOMPARE(withPrepared.match(eggTofu).missingCount, 0);
+    }
+
     void optionalPantryAndIgnored()
     {
         const Recipe r = recipe(QStringLiteral("西红柿炒鸡蛋"),

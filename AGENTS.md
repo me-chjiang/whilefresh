@@ -7,7 +7,7 @@
 - 项目类型：AI 产品探索与 Landing Project。
 - 当前阶段：围绕帮助家庭消耗已购食材的单人手机客户端开展需求验证、产品定义与原型设计；未来可扩展多人协作，已完成 Android MVP 试用版（Qt 6.8.2），下一步为测试迭代与真机验证。
 - 目标：产出可供团队评估和继续实现的产品方案、调研与原型。
-- 当前产品定义见 `docs/prd-v5.md`，历史版本在 `docs/archive/`；MVP 进度见 `docs/mvp/cycle-state.md`。
+- 当前产品定义见 `docs/prd-v5.md`，历史版本在 `docs/archive/`；待办见 `docs/mvp/todo.md`，架构与技术决策见 `docs/mvp/mvp-plan.md`。
 
 ## 目录结构
 
@@ -43,7 +43,7 @@ Skill 实际文件保存在 `.agents/skills/`，`.claude/skills/` 通过同名�
 ## Git 约定
 
 - 默认主分支为 `main`，远端为 https://github.com/me-chjiang/whilefresh 。
-- MVP 开发中每个功能使用独立分支（如 `feat/recipe-data`）；经审查和测试后，把摘要交用户，**用户确认后才合并到 `main`**。流程见 `docs/mvp/cycle-state.md`。
+- MVP 开发中每个功能使用独立分支（如 `feat/recipe-data`）；经审查和测试后，把摘要交用户，**用户确认后才合并到 `main`**。
 - 提交信息遵循 Conventional Commits。
 - 提交使用本机 Git 用户配置，不添加 `Co-Authored-By` 等额外署名。
 - 未经明确要求，不创建提交、不推送远端、不改写提交历史。

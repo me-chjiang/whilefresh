@@ -364,10 +364,10 @@ bool KitchenService::deleteImport(qint64 id)
     return ok;
 }
 
-bool KitchenService::deleteAllData()
+bool KitchenService::deleteAllData(bool *dataDeleted)
 {
     emit aboutToDeleteAllData();
-    const bool ok = m_store.deleteAllData();
+    const bool ok = m_store.deleteAllData(dataDeleted);
     emit changed();
     return ok;
 }

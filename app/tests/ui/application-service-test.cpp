@@ -402,7 +402,7 @@ private slots:
         const auto item = store->items().first();
         QCOMPARE(item.productionDate.origin, DateOrigin::User);
         QCOMPARE(item.purchaseDate.origin, DateOrigin::User);
-        QCOMPARE(item.expiryDate, QDate(2026, 11, 8)); // production date wins over purchase date
+        QCOMPARE(item.expiryDate, QDate(2026, 11, 10)); // estimated duration starts from purchase date
         QVERIFY(store->imports().first().images.isEmpty());
         QCOMPARE(store->imports().first().textLength, input.text.size());
     }

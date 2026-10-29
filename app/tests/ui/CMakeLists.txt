@@ -4,5 +4,7 @@ target_compile_definitions(application-service-test PRIVATE
     WHILEFRESH_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/../test-data"
 )
 
-whilefresh_add_test(app-model-test app-model-test.cpp)
+whilefresh_add_test(app-model-test app-model-test.cpp ../recognition/fake-http-server.h)
 target_link_libraries(app-model-test PRIVATE whilefresh-ui)
+target_include_directories(app-model-test PRIVATE ../recognition)
+target_compile_definitions(app-model-test PRIVATE WHILEFRESH_TEST_DATA_DIR="${PROJECT_SOURCE_DIR}/../test-data")

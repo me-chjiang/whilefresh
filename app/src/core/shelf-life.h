@@ -157,8 +157,8 @@ struct ShelfLifeResolution {
 };
 
 // The source chain (ADR-7, user-confirmed priorities):
-//   expiry: package expiry date as is; otherwise start date + days, where start is
-//           production date > purchase date > entry date (except reference values: purchase only);
+//   expiry: package expiry date as is; otherwise start date + days. Package-labelled days
+//           start at production date when known; estimates start at purchase date, else entry date.
 //   days:   manual override > labelled on package > local rule > reference table (with parent
 //           fallback) > cached AI estimate > fresh AI estimate.
 // Reference expiry also requires user confirmation of its applicable conditions.

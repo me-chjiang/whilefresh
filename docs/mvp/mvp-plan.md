@@ -1,6 +1,6 @@
 # 趁鲜 MVP 工程规划
 
-> loop-dev-cycle Phase 1 产出（即 skill 的 `PLAN.md`），2026-10-20。依据 [MVP 需求确认稿](mvp-requirements.md) 与 [PRD v5](../prd-v5.md)。状态：已执行（Phase 1 于 2026-10-20 通过；T0–T11 于 2026-10-21 合并）。本文件保留原实施规划与风险，当前执行 checklist 统一见 [todo.md](todo.md)，实际验证范围见 [cycle-state.md](cycle-state.md)。
+> loop-dev-cycle Phase 1 产出（即 skill 的 `PLAN.md`），2026-10-20。依据 MVP 需求确认稿（已删除，见 Git 历史）与 [PRD v5](../prd-v5.md)。状态：已执行（T0–T11 于 2026-10-21 合并）。2026-10-29 删去已完成的任务拆解、里程碑、确认记录和已解除的风险，见 Git 历史；本文件保留架构、技术决策与仍有效的风险，当前执行 checklist 统一见 [todo.md](todo.md)。
 
 ## 1. 架构概述
 
@@ -47,7 +47,7 @@
 | `test-data/` | 合成样本、标准答案、DeepSeek 录制回放 |
 | `scripts/` | 构建、安装、取密钥等脚本 |
 
-Phase 2 开始前用 build-project-fhs skill 把目录规则写成 `FHS.md`。
+目录放置规则见 [FHS.md](../../FHS.md)。
 
 ## 2. 技术选型决策（ADR）
 
@@ -61,11 +61,11 @@ Phase 2 开始前用 build-project-fhs skill 把目录规则写成 `FHS.md`。
 - **理由**：Android 套件已带 SQLite 驱动；按日期筛选、关联导入记录用 SQL 更直接。只读数据约数百条，放内存足够。
 - **替代**：全部用 JSON 文件，并发写入和迁移不便。
 
-### ADR-3 Android 上的 HTTPS（**需用户决定**）
+### ADR-3 Android 上的 HTTPS
 - **问题**：本机 Qt 6.8.2 Android 套件的 TLS 后端依赖 OpenSSL，但没有附带 OpenSSL 库，App 在手机上无法发起 HTTPS 请求。
 - **推荐**：打包 KDAB 维护的 [android_openssl](https://github.com/KDAB/android_openssl) 预编译库。这是 Qt 官方文档推荐的做法，接入方式是 CMake 中引入一行 `android_openssl.cmake`，桌面版和 Android 共用 `QNetworkAccessManager`。
 - **替代**：通过 JNI 调用 Android 自带的 `HttpsURLConnection`。不引入新依赖，但需要维护两套网络代码（桌面一套、Android 一套）。
-- 按全局规则，新增第三方依赖需你确认。
+- **结果**：用户确认采用 KDAB android_openssl，由 `scripts/fetch-deps.sh` 按固定 commit 下载。
 
 ### ADR-4 识别：App 直连 DeepSeek，切片 + 固定词表
 - **决定**：`deepseek-flash`，图片切片发送，`response_format: json_object`；提示词附标准食材词表；超时 60 秒，可重试。（后续决定改为空闲 150 秒、整体 240 秒，超时不重试。）识别层是接口，实现有 DeepSeek、录制回放、演示三种。
@@ -82,7 +82,7 @@ Phase 2 开始前用 build-project-fhs skill 把目录规则写成 `FHS.md`。
 - **替代**：运行时模糊匹配，结果不稳定，也不可解释。
 
 ### ADR-7 保质期来源链与新鲜度规则
-- **决定**：识别结果 > 本地记忆 > 参考表 > AI 判断；每项记录来源。起算日：生产日期 > 购买日期 > 入库日期。新鲜度初版规则：剩余天数 ≤ 0 为"超出估计期限"；剩余天数 ≤ max(1, 总天数 × 25%) 为"临期"；其余为"新鲜"。阈值集中在一处，试用后再调。
+- **决定**：识别结果 > 本地记忆 > 参考表 > AI 判断；每项记录来源。起算日：生产日期 > 购买日期 > 入库日期（`feat/reliability-data` 未提交改动与此不一致，待对齐，见 [todo](todo.md) A1）。新鲜度初版规则：剩余天数 ≤ 0 为"超出估计期限"；剩余天数 ≤ max(1, 总天数 × 25%) 为"临期"；其余为"新鲜"。阈值集中在一处，试用后再调。
 - **参考表数据源**：[USDA FoodKeeper](https://catalog.data.gov/dataset/fsis-foodkeeper-data)（CC0 公有领域，可随 APK 再分发）。2026-10-20 经 Lexmount Web Fetch API 取得 v128 数据：661 种食品，按常温 / 冷藏 / 冷冻给出最短 / 最长天数及单位，并区分"从购买日起"（`DOP_*`）与开封后。取"从购买日起"的**最短值**作参考，偏保守。（后续决定：最短值 ≤ 2 天且有上限值时改取上限值。）建立"标准食材名 → FoodKeeper 条目 ID"映射表（离线 AI 辅助，人工抽查），保留条目 ID 与来源说明；App 中标注"参考：USDA FoodKeeper"。豆制品、腊肉、速冻饺子等中国常见食材若无对应条目，不硬套，回落到 AI 判断并缓存。
 - **替代**：中文官方来源未找到可再分发的表；转载类表格没有许可说明，不采用。
 
@@ -98,45 +98,10 @@ Phase 2 开始前用 build-project-fhs skill 把目录规则写成 `FHS.md`。
 - **决定**：先在 `design/` 用 HTML 做两版视觉稿，用 Playwright 按手机尺寸截图，由你选定。再把配色、字号、圆角、阴影整理成 `Theme.qml`。图标用 [Tabler Icons](https://github.com/tabler/tabler-icons)（MIT 许可）的线条 SVG；拟物质感用轻纸纹理和 `MultiEffect` 阴影。
 - **替代**：Lucide（ISC 许可），风格相近，作为备选。
 
-## 3. 任务拆解
-
-每个任务一个分支；完成后经主会话审查、Sonnet 代码审查和测试，摘要交你确认后合并。复杂度：低 / 中 / 高。
-
-| # | 分支 | 内容 | 依赖 | 复杂度 | 执行者 |
-| --- | --- | --- | --- | --- | --- |
-| T0 | `feat/app-skeleton` | Qt 工程骨架；macOS 与 Android（x86_64 模拟器、arm64）都能构建运行；HTTPS 冒烟测试；构建脚本与密钥注入；README 写运行与验证命令 | ADR-3 决定 | 高 | Opus 子代理 |
-| T1 | `feat/recipe-data` | Python：HowToCook → `recipes.json`（原用料、步骤、来源链接、难度），区分原料与工具；pytest | — | 中 | Sonnet |
-| T2 | `feat/vocabulary` | 用料抽取与归一，产出 `vocabulary.json`（标准名、别名、品类、默认常备）；抽查报告 | T1 | 中 | Sonnet，Haiku 抽查初稿 |
-| T3 | `feat/shelf-life-table` | 存档 FoodKeeper 数据快照及来源说明；标准名 → FoodKeeper 映射；生成 `shelf_life.json`（标准名 × 存放方式 × 天数 × 来源 ID）；pytest | T2 | 中 | Sonnet，Haiku 抽查映射 |
-| T4 | `feat/visual-drafts` | 两版 HTML 视觉稿（冰箱、清冰箱、入库确认），出手机尺寸截图 | — | 中 | Sonnet；**你选定** |
-| T5 | `feat/core-domain` | C++ 核心与数据层：模型、SQLite 迁移、新鲜度、来源链、本地记忆规则、常备规则、菜谱匹配、待买、导入记录与重复导入检测（图片哈希 + 商品集合）、按导入删除；Qt Test | T0，T2/T3 的数据格式 | 高 | Sonnet |
-| T6 | `feat/recognition` | 切片、提示词、DeepSeek 客户端、解析、跨切片/多图去重、回放与演示实现；粘贴文字解析；Qt Test（回放） | T0、T2 | 高 | Sonnet |
-| T7 | `feat/synthetic-data` | 合成购物车/订单/小票/粘贴文字（4 类平台风格，无 logo）+ 标准答案；小票拍照变体；真实识别回归脚本 | T2 | 中 | Sonnet，Haiku 生成商品文本 |
-| T8 | `feat/ui-pages` | Theme 与全部页面、入库流程、各种空状态与错误状态 | T4 选定、T5 | 高 | Sonnet |
-| T9 | `feat/android-integration` | 接收分享、相机、`content://`、分享出去与剪贴板；冷/热启动；读取图片拍摄 / 修改日期，作为"今天生产"等相对日期的基准 | T0 | 高 | Opus 子代理 |
-| T10 | `feat/demo-mode` | 演示模式：内置合成样本和对应识别结果，断网可走通 | T6、T7、T8 | 低 | Sonnet |
-| T11 | `release/trial-build` | 签名 APK（签名密钥存钥匙串，不进仓库）；模拟器与真机端到端验收；LGPL 告知；交付说明 | 全部 | 中 | 主会话 |
-
-## 4. 迭代策略
-
-每个里程碑结束时向你汇报，并请你确认是否进入下一个。
-
-| 里程碑 | 任务 | 交付 | 并行 |
-| --- | --- | --- | --- |
-| M1 基础与数据 | T0、T1、T4 → T2 → T3、T7 | 可运行的空壳 App（含 HTTPS）；菜谱、词表、参考表数据；视觉稿供你选择 | 首轮 T0、T1、T4 三个并行 |
-| M2 核心逻辑 | T5、T6 | 核心与识别通过单元测试；用合成样本和 `private/bill/` 真实样本跑一次识别回归（计费，小批量） | 2 个并行 |
-| M3 界面与平台 | T8、T9、T10 | 模拟器上走通完整路径，含演示模式 | 3 个并行 |
-| M4 试用包 | T11 | 可发给试用者的 APK 和验收报告 | 主会话 |
-
-同时最多 3 个子代理并行；同一时刻并行的任务不修改相同文件。
-
-## 5. 风险登记
+## 3. 风险登记
 
 | # | 风险 | 影响 | 缓解 |
 | --- | --- | --- | --- |
-| R1 | Android 套件缺 OpenSSL，HTTPS 不可用 | 识别无法工作 | ADR-3；T0 首先在模拟器上做 HTTPS 冒烟测试 |
-| R2 | Qt 6.8 是否正式支持 macOS 12 Intel 作为 Android 构建宿主，文档未确认 | 构建失败 | T0 最先验证；失败时评估升级系统或换构建机 |
-| R3 | Intel Mac 上 x86_64 模拟器的硬件加速是否可用 | 模拟器很慢或无法启动 | T0 验证；不行则以真机为主 |
 | R4 | DeepSeek 视觉为实验性，模型可能变更 | 识别失效 | 识别层可替换；回放测试锁定解析逻辑；备选 Qwen-VL |
 | R5 | 词表随提示词发送，增加每次的 token 消耗 | 费用上升 | 词表按品类精简；观察缓存命中；M2 回归时记录用量 |
 | R6 | FoodKeeper 是美国口径、英文名，中国常见食材覆盖不全；官网对本机网络返回 403 | 部分食材没有参考值；数据更新不便 | 存档快照并记录版本；中文映射人工抽查；未覆盖的回落到 AI 判断并缓存；更新时经 Lexmount API 获取 |
@@ -148,7 +113,7 @@ Phase 2 开始前用 build-project-fhs skill 把目录规则写成 `FHS.md`。
 
 **技术债（已知、接受）**：识别和菜谱都只有单一来源；试用阶段没有后端，无法统计或远程关闭密钥；新鲜度阈值靠经验，需试用数据校准。
 
-## 6. 验证方式
+## 4. 验证方式
 
 - **C++**：Qt Test，在 macOS 桌面上运行，覆盖新鲜度、来源链、规则、匹配、解析（用录制回放）、数据库迁移。
 - **Python**：pytest，覆盖菜谱解析、词表、参考表、合成数据。
@@ -156,8 +121,4 @@ Phase 2 开始前用 build-project-fhs skill 把目录规则写成 `FHS.md`。
 - **Android**：模拟器与真机上用 adb 安装、启动、截图，按需求稿的验收标准逐条走查。
 - **安全**：每次提交前扫描仓库中是否有密钥。
 
-具体命令在 T0 完成后写入 README。
-
-## 7. 规划确认记录
-
-本规划、KDAB android_openssl、Tabler Icons 与 FoodKeeper 参考表方案均已确认，见 [cycle-state 决策日志](cycle-state.md)。
+具体命令见 [开发文档](../development.md)。

@@ -70,12 +70,8 @@ docs/      产品定义、MVP 过程文档、开发文档
 | 文档 | 内容 |
 | --- | --- |
 | [PRD v5](docs/prd-v5.md) | 当前产品定义 |
-| [MVP 需求](docs/mvp/mvp-requirements.md) | 功能范围与验收标准 |
-| [MVP 规划](docs/mvp/mvp-plan.md) | 架构、技术决策、任务拆解 |
-| [进度与决策](docs/mvp/cycle-state.md) | 已完成阶段与决策日志 |
-| [审查记录](docs/mvp/review-log.md) | 每个功能分支的审查与处理 |
-| [项目待办](docs/mvp/todo.md) | 唯一执行 checklist：打磨、验证、发布与后续候选 |
-| [试用版说明](docs/mvp/trial-release.md) | 安装、试用说明、已知限制 |
+| [MVP 规划](docs/mvp/mvp-plan.md) | 架构、技术决策、风险 |
+| [项目待办](docs/mvp/todo.md) | 唯一执行 checklist：业务逻辑待对齐、验证、发布与后续候选 |
 | [项目实现导览](docs/project-guide.html) | 离线 HTML：文件组织、功能链路、算法与技术债 |
 | [开发文档](docs/development.md) | 环境、命令、各模块说明 |
 | [接入调研](docs/domestic-recipe-grocery-integration-research.md) | 菜谱与买菜平台数据来源调研 |

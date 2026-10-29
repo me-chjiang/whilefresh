@@ -67,6 +67,8 @@ QString originName(ImportPayload::Origin origin)
         return QStringLiteral("share");
     case ImportPayload::Origin::Camera:
         return QStringLiteral("camera");
+    case ImportPayload::Origin::Paste:
+        return QStringLiteral("paste");
     }
     return {};
 }
@@ -93,7 +95,7 @@ QString dateSourceName(ImportedImage::DateSource source)
 std::optional<ImportPayload::Origin> originFromName(const QString &name)
 {
     for (auto origin : { ImportPayload::Origin::Gallery, ImportPayload::Origin::Share,
-                         ImportPayload::Origin::Camera }) {
+                         ImportPayload::Origin::Camera, ImportPayload::Origin::Paste }) {
         if (originName(origin) == name)
             return origin;
     }

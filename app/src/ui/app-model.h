@@ -15,6 +15,7 @@
 #include <QVariantMap>
 
 #include <memory>
+#include <functional>
 
 namespace whilefresh::ui {
 
@@ -48,8 +49,10 @@ class AppModel : public QObject
     Q_PROPERTY(int draftFoodCount READ draftFoodCount NOTIFY importChanged)
 
 public:
+    using RecognizerFactory = std::function<std::unique_ptr<recognition::RecognitionService>()>;
     AppModel(platform::PlatformServices *platform, std::shared_ptr<const data::BuiltinData> builtin,
-             const QString &dataDirectory = {}, QObject *parent = nullptr);
+             const QString &dataDirectory = {}, const core::Clock *clock = nullptr,
+             RecognizerFactory recognizerFactory = {}, QObject *parent = nullptr);
     ~AppModel() override;
 
     bool ok() const { return m_real != nullptr; }
@@ -103,7 +106,7 @@ public:
                               const QString &days);
     Q_INVOKABLE void deleteRule(const QString &name, const QString &location, const QString &kind);
     Q_INVOKABLE void deleteImport(qint64 id);
-    Q_INVOKABLE void deleteAllData();
+    Q_INVOKABLE QVariantMap deleteAllData();
     Q_INVOKABLE void setDemoMode(bool enabled);
 
     // Gallery and camera: the user has agreed to the privacy notice before the picker opens.
@@ -129,6 +132,9 @@ signals:
     void pickCancelled();
     void importCommitted();
 
+private slots:
+    void refreshDate();
+
 private:
     struct Session {
         bool demo = false;
@@ -153,7 +159,9 @@ private:
 
     platform::PlatformServices *m_platform;
     std::shared_ptr<const data::BuiltinData> m_builtin;
-    core::SystemClock m_clock;
+    core::SystemClock m_systemClock;
+    const core::Clock &m_clock;
+    RecognizerFactory m_recognizerFactory;
     std::unique_ptr<Session> m_real;
     std::unique_ptr<Session> m_demo;
     Session *m_active = nullptr;

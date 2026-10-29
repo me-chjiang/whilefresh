@@ -80,8 +80,13 @@ private slots:
 
         in.productionDate = QDate(2026, 10, 18);
         result = resolveShelfLife(in, context());
-        QCOMPARE(result.startBasis, StartBasis::ProductionDate);
-        QCOMPARE(result.expiryDate, QDate(2026, 10, 21));
+        QCOMPARE(result.startBasis, StartBasis::PurchaseDate);
+        QCOMPARE(result.expiryDate, QDate(2026, 10, 22));
+
+        in.purchaseDate = QDate();
+        result = resolveShelfLife(in, context());
+        QCOMPARE(result.startBasis, StartBasis::EntryDate);
+        QCOMPARE(result.expiryDate, QDate(2026, 10, 24));
     }
 
     void chainOrder()
@@ -216,18 +221,47 @@ private slots:
         QCOMPARE(item.shelfLifeSource, ShelfLifeSource::None);
     }
 
-    void referenceStartsFromEarliestKnownDate()
+    void estimatesStartFromPurchaseOrEntry()
     {
         auto in = input(QStringLiteral("猪肉"));
         in.productionDate = QDate(2026, 10, 1);
         in.purchaseDate = QDate(2026, 10, 20);
         auto result = resolveShelfLife(in, context());
-        QCOMPARE(result.startBasis, StartBasis::ProductionDate);
-        QCOMPARE(result.expiryDate, QDate(2026, 10, 4));
-        in.productionDate = QDate();
-        result = resolveShelfLife(in, context());
         QCOMPARE(result.startBasis, StartBasis::PurchaseDate);
         QCOMPARE(result.expiryDate, QDate(2026, 10, 23));
+        in.purchaseDate = QDate();
+        result = resolveShelfLife(in, context());
+        QCOMPARE(result.startBasis, StartBasis::EntryDate);
+        QCOMPARE(result.expiryDate, QDate(2026, 10, 24));
+
+        in.purchaseDate = QDate(2026, 10, 20);
+        rules.setShelfLife({ QStringLiteral("猪肉"), Storage::Fridge, 4 });
+        result = resolveShelfLife(in, context());
+        QCOMPARE(result.source, ShelfLifeSource::LocalRule);
+        QCOMPARE(result.expiryDate, QDate(2026, 10, 24));
+
+        in.manualDays = 6;
+        result = resolveShelfLife(in, context());
+        QCOMPARE(result.source, ShelfLifeSource::Manual);
+        QCOMPARE(result.expiryDate, QDate(2026, 10, 26));
+
+        in.packageExpiry = QDate(2026, 11, 1);
+        result = resolveShelfLife(in, context());
+        QCOMPARE(result.source, ShelfLifeSource::Manual);
+        QCOMPARE(result.expiryDate, QDate(2026, 10, 26));
+
+        in.manualDays.reset();
+        result = resolveShelfLife(in, context());
+        QCOMPARE(result.source, ShelfLifeSource::Package);
+        QCOMPARE(result.startBasis, StartBasis::ProductionDate);
+        QCOMPARE(result.expiryDate, QDate(2026, 11, 1));
+
+        in.packageExpiry = QDate();
+        in.labelledDays = 10;
+        result = resolveShelfLife(in, context());
+        QCOMPARE(result.source, ShelfLifeSource::Package);
+        QCOMPARE(result.startBasis, StartBasis::ProductionDate);
+        QCOMPARE(result.expiryDate, QDate(2026, 10, 11));
     }
 
     void storageSuggestion()

@@ -253,6 +253,22 @@ def test_committed_vocabulary_contract_for_other_modules():
     assert 400 <= len(items) <= 700
 
 
+def test_prepared_rice_and_japanese_tofu_are_distinct():
+    items = {i["name"]: i for i in load_json(VOCABULARY_OUT)["items"]}
+    owner = {alias: i["name"] for i in items.values() for alias in i["aliases"]}
+    mapping = load_json(MAP_PATH)["map"]
+    assert owner["冷饭"] == owner["熟米饭"] == "米饭"
+    assert owner["玉子豆腐"] == "日本豆腐"
+    assert not items["米饭"].get("parent") and not items["日本豆腐"].get("parent")
+    assert mapping["冷饭"] == mapping["米饭"] == [["米饭"]]
+    assert mapping["日本豆腐"] == [["日本豆腐"]]
+    recipes = load_json(RECIPES_PATH)["recipes"]
+    for recipe in recipes:
+        for ingredient in recipe["ingredients"]:
+            if ingredient["name"] in ("冷饭", "米饭", "日本豆腐"):
+                assert ingredient["canonical"] == mapping[ingredient["name"]]
+
+
 PANTRY_WHITELIST = {
     "盐", "白糖", "食用油", "酱油", "生抽", "老抽", "醋", "陈醋", "香醋", "米醋", "白醋", "料酒", "大米", "葱", "大葱", "小葱",
     "姜", "蒜", "水", "蚝油", "胡椒粉", "淀粉", "鸡精", "菜籽油", "花生油", "大豆油", "玉米油", "葵花籽油", "玉米淀粉",

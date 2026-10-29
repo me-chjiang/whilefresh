@@ -18,6 +18,7 @@ Item {
     onMultiSelectChanged: if (multiSelect) front.x = 0
 
     Row {
+        visible: front.x < 0 && !row.multiSelect
         anchors.right: parent.right
         anchors.top: parent.top
         width: 150

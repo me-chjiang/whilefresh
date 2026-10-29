@@ -23,7 +23,7 @@
 | 运行桌面版 | `build/desktop/whilefresh` |
 | 单元测试 | `ctest --test-dir build/desktop --output-on-failure` |
 | 构建 Android APK（debug 签名；`--no-key` 不注入密钥） | `scripts/build-android.sh x86_64` 或 `scripts/build-android.sh arm64-v8a` |
-| 构建签名 Release APK（签名密钥库与口令见 [mvp/trial-release.md](mvp/trial-release.md)） | `scripts/build-android.sh arm64-v8a --release` |
+| 构建签名 Release APK（密钥库 `~/.config/whilefresh/release.keystore`，口令在钥匙串 `landing-project-android-keystore`，均不在仓库内） | `scripts/build-android.sh arm64-v8a --release` |
 | 启动模拟器并等待开机（`--headless` 无窗口） | `scripts/run-emulator.sh --headless` |
 | 安装并启动 APK（ABI 默认取设备主 ABI；多设备时设 `ANDROID_SERIAL`） | `scripts/install-android.sh` |
 | 关闭模拟器 | `~/Library/Android/sdk/platform-tools/adb emu kill` |
@@ -58,6 +58,16 @@ WHILEFRESH_TLS_SMOKE=1 build/desktop/whilefresh
 ### 离线数据工具（Python）
 
 独立实验 `recipe-sources-xiachufang-api/` 移植 ruter/xiachufang-api 的公开网页解析接口，使用现代 Python 依赖并保留菜谱 YAML 契约。在该目录执行 `uv sync --group dev`、`uv run pytest`；真实站点验证使用 `uv run pytest -m live --live`，可能受站点限流影响。CLI 和 HTTP 运行方式见该仓库 README。
+
+该独立仓库的 `native/` 是给安卓客户端使用的 Qt/C++ 边界层：校验请求、选择 xiachufang/Lexmount provider，并输出同一份 YAML 契约；API key、project ID 和 CDP 地址只在 provider 内存中使用。它固定 Lexbor v3.0.1、yaml-cpp 0.9.0，并要求 Qt 6.8 的 Core、Network、WebSockets。配置与构建命令：
+
+```bash
+cmake -S recipe-sources-xiachufang-api/native -B /tmp/recipe-source-native \
+  -DCMAKE_PREFIX_PATH="$HOME/Qt/6.8.2/macos"
+cmake --build /tmp/recipe-source-native
+```
+
+安卓构建使用对应 `android_x86_64` 或 `android_arm64_v8a` Qt 套件的 `qt-cmake`。当前本机 Qt 6.8.2 套件未安装 Qt WebSockets，配置会明确失败；补齐组件后再运行上述配置和 Android 构建。provider 的网络/CDP adapter 通过回调注入，离线 fake 测试不访问 Lexmount。
 
 `tools/` 是用 uv 管理的 Python 工具包，用于生成随 App 内置的只读数据（输出到 `app/assets/data/`，生成物需提交）。
 
@@ -178,7 +188,7 @@ $adb logcat -d | grep 'WhileFresh import:'
 - `app/src/core/` 只依赖 QtCore：分开的购买/入库/生产/包装到期日期、拍摄日基准的日期解析、带来源的保质期、注入时钟的新鲜度、常备/存量建议、需求组匹配与待买文本。
 - `app/src/data/`：SQLite `Database` + `Store`（`PRAGMA user_version` 版本迁移），以及加载一次的 `BuiltinData`。正式词表、菜谱、FoodKeeper 表嵌入 `:/whilefresh/data`；找不到参考表按无参考值处理。
 - `app/src/ui/{import,kitchen}-service.*` 是普通 C++ 应用服务，不依赖 QML；可替换识别器，用户确认草稿才入库，常备建议/本地记忆需要单独确认。接线、日期语义、迁移和文件删除细节见 [核心领域实现说明](mvp/notes/core-domain.md)。
-- **FoodKeeper 不等于从生产日起的寿命**：参考表只在购买日期已知且用户确认适用条件后计算到期日；否则保留参考天数、显示待确认，不改用较长的 AI 值掩盖未知状态。`basis` 只保留作展示，不据其字符串推断逻辑。
+- **FoodKeeper 不等于从生产日起的寿命**：参考表和 AI 的建议天数在整单确认前可修改，确认入库即采用当前估计。估计天数从购买日起算，未知时从入库日起算并明确提示；生产日期只用于包装标注期限，不抢占估计起算依据。采用本次估计不自动创建同类规则。`basis` 只保留作展示，不据其字符串推断逻辑。
 
 使用已有命令验证，不调用真实 DeepSeek：
 
@@ -190,7 +200,7 @@ ctest --test-dir build/desktop --output-on-failure -R 'date-text|shelf-life|fres
 scripts/build-android.sh x86_64 --no-key
 ```
 
-`builtin-data-test` 用实际 372 道菜、544 项词表、290 项参考数据验证匹配和保质期；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入、事务回滚、建议确认及清冰箱/待买。测试数据库与图片只写临时目录。
+`builtin-data-test` 用实际 372 道菜、546 项词表、290 项参考数据验证匹配和保质期；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入、事务回滚、建议确认及清冰箱/待买。测试数据库与图片只写临时目录。
 
 ### MVP 体验打磨验证
 
@@ -205,3 +215,5 @@ scripts/build-android.sh x86_64 --no-key
 QML 界面位于 `app/qml/`：`Theme.qml` 管颜色/字体/尺寸；`components/` 放可复用控件；`pages/` 放页面；页面通过 `App`（`app/src/ui/app-model.*`，QML 单例）读取真实服务。「我的」中的演示模式使用独立的 `demo.db`、预设识别结果和示例食材，界面顶部持续显示「演示模式」，可断网体验；关闭后回到真实数据。真实识别需构建脚本注入 DeepSeek 密钥，未配置时启动会提示。桌面验证：`scripts/build-desktop.sh`，再运行 `ctest --test-dir build/desktop --output-on-failure`；Android 用 `scripts/build-android.sh x86_64`、`scripts/run-emulator.sh --headless`、`scripts/install-android.sh x86_64`。
 
 字体子集来自 [Noto Serif CJK v2.003（SC Black）](https://github.com/notofonts/noto-cjk/raw/Serif2.003/Serif/SubsetOTF/SC/NotoSerifSC-Black.otf)，SIL OFL 1.1，源文件 SHA-256 `91dde57622845beeb663f300813999febdb7fcd5e451bde199d7c954a9740cb4`；许可见 `app/assets/fonts/OFL.txt`。用 `cd tools && uv run --group assets python -m whilefresh_tools.assets font` 重新下载、校验并生成字体子集；`cd tools && uv run --group assets python -m whilefresh_tools.assets texture` 重建纸纹；工具依赖仅装在项目本地 uv 环境。Tabler 图标（MIT）来自 `design/icons/`，应用内许可见 `app/assets/icons/LICENSE-tabler`。
+
+本轮可靠性验证复用 AppModel 临时数据目录，增加可选 Clock 与真实模式识别器工厂注入，生产默认仍使用系统时钟和 DeepSeekRecognizer。内部日期刷新入口由定时器与应用恢复前台调用；测试用 FixedClock 直接触发。识别故障由现有 FakeHttpServer 在本机回放，使用测试密钥，不访问付费服务。运行方式仍为 `scripts/build-desktop.sh`、`ctest --test-dir build/desktop --output-on-failure` 和 `uv run --project tools pytest`。粘贴载荷来源新增 `paste`，历史 `share` 不回填，沿用现有文本字段，不增加数据库迁移。

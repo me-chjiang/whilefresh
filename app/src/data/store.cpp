@@ -504,8 +504,9 @@ bool Store::deleteImport(qint64 id)
     return retryFileCleanup();
 }
 
-bool Store::deleteAllData()
+bool Store::deleteAllData(bool *dataDeleted)
 {
+    if (dataDeleted) *dataDeleted = false;
     if (!transaction())
         return false;
     QSqlQuery query(m_database.handle());
@@ -527,6 +528,7 @@ bool Store::deleteAllData()
         rollback();
         return false;
     }
+    if (dataDeleted) *dataDeleted = true;
     return retryFileCleanup();
 }
 

@@ -49,7 +49,7 @@ QString startBasisNote(StartBasis basis)
     case StartBasis::PurchaseDate:
         return QStringLiteral("从购买日期起算");
     case StartBasis::EntryDate:
-        return QStringLiteral("从入库日期起算");
+        return QStringLiteral("购买时间未知，按入库日期估算");
     case StartBasis::None:
         break;
     }
@@ -225,10 +225,7 @@ bool isRuleEligibleName(const QString &name)
 ShelfLifeResolution resolveShelfLife(const ShelfLifeInput &input, const ShelfLifeContext &context)
 {
     ShelfLifeResolution result;
-    if (input.productionDate.isValid()) {
-        result.startBasis = StartBasis::ProductionDate;
-        result.startDate = input.productionDate;
-    } else if (input.purchaseDate.isValid()) {
+    if (input.purchaseDate.isValid()) {
         result.startBasis = StartBasis::PurchaseDate;
         result.startDate = input.purchaseDate;
     } else if (input.entryDate.isValid()) {
@@ -249,6 +246,10 @@ ShelfLifeResolution resolveShelfLife(const ShelfLifeInput &input, const ShelfLif
 
     // A manual override beats everything, including the package expiry it was meant to correct.
     if (!input.manualDays && input.packageExpiry.isValid()) {
+        if (input.productionDate.isValid()) {
+            result.startBasis = StartBasis::ProductionDate;
+            result.startDate = input.productionDate;
+        }
         result.source = ShelfLifeSource::Package;
         result.expiryDate = input.packageExpiry;
         if (result.startDate.isValid())
@@ -264,6 +265,10 @@ ShelfLifeResolution resolveShelfLife(const ShelfLifeInput &input, const ShelfLif
         result.note = QStringLiteral("你为这件食材设置的 %1 天").arg(*days);
     } else if (input.labelledDays && *input.labelledDays > 0) {
         days = input.labelledDays;
+        if (input.productionDate.isValid()) {
+            result.startBasis = StartBasis::ProductionDate;
+            result.startDate = input.productionDate;
+        }
         result.source = ShelfLifeSource::Package;
         result.note = QStringLiteral("包装标注保质期 %1 天").arg(*days);
     } else if (eligible && context.rules && (days = context.rules->shelfLifeDays(input.name, input.storage))) {
@@ -305,8 +310,6 @@ ShelfLifeResolution resolveShelfLife(const ShelfLifeInput &input, const ShelfLif
         return result;
     }
     result.days = days;
-    // FoodKeeper days count from purchase. Starting from an earlier production date is the
-    // conservative side; the entry date stands in for an unknown purchase date (ADR-7).
     if (result.startDate.isValid()) {
         result.expiryDate = result.startDate.addDays(*days);
         result.note += QStringLiteral("，") + startBasisNote(result.startBasis);

@@ -16,7 +16,7 @@
 │   ├── images/                # README 截图（仅演示模式数据）
 │   ├── project-guide.html     # 可离线打开的项目结构与实现导览
 │   ├── development.md         # 开发文档：环境、构建与验证命令、数据工具、调试方法
-│   └── mvp/                   # MVP 循环文档：需求、规划、cycle-state、交付报告
+│   └── mvp/                   # MVP 文档：规划（mvp-plan.md）与唯一待办（todo.md）
 │       ├── notes/             # 复杂模块的实现说明（如 android-integration.md）
 │       └── todo.md            # 项目唯一待办 checklist（含后续候选）
 ├── app/                       # Qt 6 CMake 工程（Android APK + macOS 桌面开发版）

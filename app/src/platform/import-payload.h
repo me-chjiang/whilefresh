@@ -47,7 +47,7 @@ class ImportPayload
 public:
     enum class Kind { Images, Text };
     Q_ENUM(Kind)
-    enum class Origin { Gallery, Share, Camera };
+    enum class Origin { Gallery, Share, Camera, Paste };
     Q_ENUM(Origin)
 
     Kind kind = Kind::Images;

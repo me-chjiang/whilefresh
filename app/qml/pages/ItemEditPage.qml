@@ -9,6 +9,10 @@ Item {
     signal backRequested()
     property var dateEdits: ({})
     property string saveError: ""
+    readonly property bool estimatePending: shelfDays.text.trim() !== (ingredient.shelfDays || "") || location.currentText !== ingredient.location || Object.keys(dateEdits).some(function(key) { return dateEdits[key] !== (ingredient[key] || "") })
+    function startBasisLabel(basis) {
+        return ({ production: "生产日期", purchase: "购买日期", entry: "入库日期" })[basis] || "起算日期"
+    }
     PageHeader { id: header; x: Theme.gap; width: parent.width - Theme.gap * 2; heading: "编辑食材"; backVisible: true; onBackRequested: page.backRequested() }
     Flickable {
         anchors.top: header.bottom
@@ -39,6 +43,14 @@ Item {
                     ComboBox { id: location; width: parent.width; height: Theme.touch; model: ["冷藏", "冷冻", "常温"]; currentIndex: model.indexOf(page.ingredient.location) }
                     Text { text: "保质天数  ·  " + Theme.sourceLabel(page.ingredient.source) + (page.ingredient.source === "package" ? "" : " · 估计"); font.pixelSize: Theme.textSubtitle; color: Theme.muted }
                     TextField { id: shelfDays; width: parent.width; height: Theme.touch; text: page.ingredient.shelfDays || ""; placeholderText: "保质天数"; inputMethodHints: Qt.ImhDigitsOnly; background: Rectangle { color: Theme.selectedPaper; border.color: Theme.rule; radius: Theme.radiusTag } }
+                    Text { visible: !!page.ingredient.shelfLifeNote; width: parent.width; wrapMode: Text.Wrap; text: page.ingredient.shelfLifeNote || ""; font.pixelSize: Theme.textMeta; color: Theme.muted }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.Wrap
+                        text: page.estimatePending ? "修改待保存；到期信息以保存后的结果为准" : page.ingredient.source === "package" && page.ingredient.expiryDate ? "包装到期：" + page.ingredient.expiryDate : (page.ingredient.startDate ? "从" + page.startBasisLabel(page.ingredient.startBasis) + " " + page.ingredient.startDate + " 起算 · " : "") + "预计到期：" + (page.ingredient.expiryDate || "暂无法估计")
+                        font.pixelSize: Theme.textMeta
+                        color: Theme.ink
+                    }
                     Repeater {
                         model: [{ key: "purchasedAt", label: "购买日期" }, { key: "storedAt", label: "入库日期" }, { key: "producedAt", label: "生产日期" }, { key: "packageExpiresAt", label: "包装到期日" }]
                         delegate: RowLayout {

@@ -8,6 +8,7 @@
 
 #include <QDir>
 #include <QFile>
+#include <QGuiApplication>
 #include <QStandardPaths>
 #include <QTimer>
 
@@ -68,8 +69,10 @@ void setDate(core::RecordedDate &recorded, const QString &text)
 }
 
 AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const data::BuiltinData> builtin,
-                   const QString &dataDirectory, QObject *parent)
-    : QObject(parent), m_platform(platform), m_builtin(std::move(builtin))
+                   const QString &dataDirectory, const core::Clock *clock,
+                   RecognizerFactory recognizerFactory, QObject *parent)
+    : QObject(parent), m_platform(platform), m_builtin(std::move(builtin)),
+      m_clock(clock ? *clock : m_systemClock), m_recognizerFactory(std::move(recognizerFactory))
 {
     m_dataDir = dataDirectory.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) : dataDirectory;
     QDir().mkpath(m_dataDir);
@@ -92,14 +95,13 @@ AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const d
     m_lastDate = m_clock.today();
     auto *dateTimer = new QTimer(this);
     dateTimer->setInterval(30000);
-    connect(dateTimer, &QTimer::timeout, this, [this] {
-        const QDate today = m_clock.today();
-        if (today != m_lastDate) {
-            m_lastDate = today;
-            invalidate();
-        }
-    });
+    connect(dateTimer, &QTimer::timeout, this, &AppModel::refreshDate);
     dateTimer->start();
+    if (auto *application = qobject_cast<QGuiApplication *>(QCoreApplication::instance())) {
+        connect(application, &QGuiApplication::applicationStateChanged, this, [this](Qt::ApplicationState state) {
+            if (state == Qt::ApplicationActive) refreshDate();
+        });
+    }
 
     if (m_platform) {
         connect(m_platform, &platform::PlatformServices::importReceived, this,
@@ -118,7 +120,16 @@ AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const d
 
 AppModel::~AppModel() = default;
 
-bool AppModel::recognitionConfigured() const { return rec::isDeepSeekApiKeyConfigured(); }
+bool AppModel::recognitionConfigured() const { return bool(m_recognizerFactory) || rec::isDeepSeekApiKeyConfigured(); }
+
+void AppModel::refreshDate()
+{
+    const QDate today = m_clock.today();
+    if (m_active && today != m_lastDate) {
+        m_lastDate = today;
+        invalidate();
+    }
+}
 
 QString AppModel::demoPath() const
 {
@@ -143,6 +154,8 @@ std::unique_ptr<AppModel::Session> AppModel::openSession(const QString &dbPath, 
     session->kitchen = std::make_unique<KitchenService>(*session->store, m_builtin, m_clock);
     if (demo)
         session->recognizer = std::make_unique<rec::DemoRecognizer>();
+    else if (m_recognizerFactory)
+        session->recognizer = m_recognizerFactory();
     else
         session->recognizer = std::make_unique<rec::DeepSeekRecognizer>();
     session->import = std::make_unique<ImportService>(*session->store, m_builtin, m_clock, *session->recognizer, demo);
@@ -285,6 +298,11 @@ QVariantMap AppModel::itemMap(const core::FridgeItem &item) const
         { "producedAt", dateText(item.productionDate.date) },
         { "packageExpiresAt", dateText(item.packageExpiry.date) },
         { "shelfDays", item.shelfLifeDays ? QString::number(*item.shelfLifeDays) : QString() },
+        { "startBasis", core::startBasisKey(item.startBasis) },
+        { "startDate", dateText(item.startBasis == core::StartBasis::ProductionDate ? item.productionDate.date
+            : item.startBasis == core::StartBasis::PurchaseDate ? item.purchaseDate.date
+            : item.startBasis == core::StartBasis::EntryDate ? item.entryDate : QDate()) },
+        { "expiryDate", dateText(item.expiryDate) }, { "shelfLifeNote", item.shelfLifeNote },
     };
 }
 
@@ -637,6 +655,12 @@ QVariantList AppModel::imports() const
             : r.inputKind == QLatin1String("screenshot") ? QStringLiteral("截图") : QStringLiteral("导入");
         if (!r.images.isEmpty())
             kind += QStringLiteral(" · %1 张").arg(r.images.size());
+        const QString origin = r.origin == QLatin1String("paste") ? QStringLiteral("粘贴文字")
+            : r.origin == QLatin1String("share") ? QStringLiteral("系统分享")
+            : r.origin == QLatin1String("camera") ? QStringLiteral("拍照")
+            : r.origin == QLatin1String("gallery") ? QStringLiteral("相册") : QString();
+        if (!origin.isEmpty())
+            kind += QStringLiteral(" · ") + origin;
         if (r.isDemo)
             kind = QStringLiteral("演示 · ") + kind;
         list.append(QVariantMap { { "id", r.id }, { "name", kind },
@@ -651,12 +675,16 @@ void AppModel::deleteImport(qint64 id)
         emit notice(QStringLiteral("部分图片暂未清理，稍后会自动重试"));
 }
 
-void AppModel::deleteAllData()
+QVariantMap AppModel::deleteAllData()
 {
-    if (!kitchen().deleteAllData())
-        emit notice(QStringLiteral("部分图片暂未清理，稍后会自动重试"));
+    bool deleted = false;
+    const bool cleaned = kitchen().deleteAllData(&deleted);
+    if (!deleted)
+        return { { "ok", false }, { "error", QStringLiteral("删除失败，原有数据已保留，请重试") } };
     m_selected.clear();
+    m_pendingProposals.clear();
     invalidate();
+    return { { "ok", true }, { "warning", cleaned ? QString() : QStringLiteral("部分图片暂未清理，稍后会自动重试") } };
 }
 
 void AppModel::setDemoMode(bool enabled)
@@ -694,7 +722,7 @@ void AppModel::beginText(const QString &text)
 {
     platform::ImportPayload payload;
     payload.kind = platform::ImportPayload::Kind::Text;
-    payload.origin = platform::ImportPayload::Origin::Share;
+    payload.origin = platform::ImportPayload::Origin::Paste;
     payload.text = text;
     m_consented = true;
     if (!m_active->import->receive(payload))
@@ -735,6 +763,11 @@ QVariantList AppModel::draftItems() const
             { "index", i }, { "name", name }, { "quantity", item.quantityText }, { "category", item.category },
             { "location", core::storageDisplayName(item.storage) }, { "source", sourceName(item.shelfLifeSource) },
             { "shelfDays", item.shelfLifeDays ? QString::number(*item.shelfLifeDays) : QString() },
+            { "startBasis", core::startBasisKey(item.startBasis) },
+            { "startDate", dateText(item.startBasis == core::StartBasis::ProductionDate ? item.productionDate.date
+                : item.startBasis == core::StartBasis::PurchaseDate ? item.purchaseDate.date
+                : item.startBasis == core::StartBasis::EntryDate ? item.entryDate : QDate()) },
+            { "expiryDate", dateText(item.expiryDate) }, { "shelfLifeNote", item.shelfLifeNote },
             { "purchasedAt", dateText(item.purchaseDate.date) }, { "storedAt", dateText(item.entryDate) },
             { "producedAt", dateText(item.productionDate.date) },
             { "packageExpiresAt", dateText(item.packageExpiry.date) },

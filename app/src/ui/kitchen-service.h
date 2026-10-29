@@ -68,7 +68,7 @@ public:
 
     QList<data::ImportRecord> imports() const;
     bool deleteImport(qint64 id);
-    bool deleteAllData();
+    bool deleteAllData(bool *dataDeleted = nullptr);
     bool demoMode() const;
     bool setDemoMode(bool enabled);
 

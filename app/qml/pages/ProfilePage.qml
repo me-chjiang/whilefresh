@@ -176,5 +176,15 @@ Item {
         }
     }
     ConfirmDialog { id: deleteOne; message: "删除这次导入记录及其截图？"; confirmText: "删除本次"; destructive: true; onAcceptedAction: App.deleteImport(page.pendingImportId) }
-    ConfirmDialog { id: deleteAll; message: "删除当前模式下的全部食材、待买、规则和导入记录？"; confirmText: "删除全部"; destructive: true; onAcceptedAction: { App.deleteAllData(); page.notice("已清空数据") } }
+    ConfirmDialog {
+        id: deleteAll
+        message: "删除当前模式下的全部食材、待买、规则和导入记录？"
+        confirmText: "删除全部"
+        destructive: true
+        onAcceptedAction: {
+            const result = App.deleteAllData()
+            if (result.ok) page.notice(result.warning ? "已清空数据；" + result.warning : "已清空数据")
+            else page.notice(result.error || "删除失败，请重试")
+        }
+    }
 }
