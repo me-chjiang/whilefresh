@@ -88,9 +88,23 @@ ImportService::~ImportService()
         // The job and its images stay for resume() in the next run.
         if (m_requestId && m_recognizer)
             m_recognizer->cancel(m_requestId);
+        if (m_classifyId && m_classifier)
+            m_classifier->cancel(m_classifyId);
         return;
     }
     discard();
+}
+
+void ImportService::setNameResolution(NameMappingStore *mappings, ai::IngredientClassifier *classifier)
+{
+    if (m_classifier)
+        disconnect(m_classifier, nullptr, this, nullptr);
+    m_mappings = mappings;
+    m_classifier = classifier;
+    if (classifier) {
+        connect(classifier, &ai::IngredientClassifier::classified, this, &ImportService::classified);
+        connect(classifier, &ai::IngredientClassifier::failed, this, &ImportService::classificationFailed);
+    }
 }
 QString ImportService::privacyNotice() { return texts::uploadPrivacyNotice(); }
 
@@ -346,17 +360,66 @@ void ImportService::buildDraft(const rec::RecognitionResult &result)
     m_draft.record.sourceType = rec::enumKey(result.sourceType);
     m_draft.warning = result.truncated ? texts::importMayBeIncomplete() : QString();
     m_draft.ignoredSummary = result.ignoredSummary;
-    const auto rules = m_store.ruleBook();
-    const auto cache = m_store.aiEstimateCache();
-    const ShelfLifeContext context{ m_builtin->catalog.get(), m_builtin->shelfLife.get(), &rules, &cache };
+    const VocabularyResolver resolver(*m_builtin->catalog, m_mappings);
+    QStringList rawNames;
+    QList<NameResolution> resolutions;
     for (const auto &recognized : result.items) {
         DraftItem draft;
         draft.recognized = recognized;
         draft.category = recognized.category;
         draft.selected = recognized.selected && recognized.category != rec::ItemCategory::Irrelevant;
+        const NameResolution resolution = resolver.resolve(recognized.rawName, recognized.canonicalName);
+        draft.item.canonicalName = resolution.resolved() ? resolution.canonical : rec::uncategorizedName();
+        draft.nameSource = resolution.source;
+        if (recognized.category != rec::ItemCategory::Irrelevant) { // non-food is not worth a classification
+            rawNames.append(recognized.rawName);
+            resolutions.append(resolution);
+        }
+        m_draft.items.append(draft);
+    }
+    const QStringList unresolved = VocabularyResolver::unresolvedNames(rawNames, resolutions);
+    if (!unresolved.isEmpty() && m_classifier && m_classifier->isConfigured()) {
+        m_classifyId = m_classifier->classify(unresolved);
+        return;
+    }
+    finishDraft();
+}
+
+void ImportService::classified(quint64 id, const ai::Classification &result)
+{
+    if (id != m_classifyId || !m_received)
+        return;
+    m_classifyId = 0;
+    for (auto &draft : m_draft.items) {
+        if (draft.nameSource != NameSource::Unresolved)
+            continue;
+        const QString canonical = result.canonical.value(NameMappingStore::key(draft.recognized.rawName));
+        if (m_builtin->catalog->contains(canonical)) {
+            draft.item.canonicalName = canonical;
+            draft.nameSource = NameSource::AiClassified;
+        }
+    }
+    finishDraft();
+}
+
+void ImportService::classificationFailed(quint64 id, const ai::ChatError &error)
+{
+    if (id != m_classifyId || !m_received)
+        return;
+    m_classifyId = 0;
+    // The names stay 未归类 for the user to fix; the import itself succeeded.
+    qWarning("import: classification failed (%s)", qUtf8Printable(ai::enumKey(error.kind)));
+    finishDraft();
+}
+
+void ImportService::finishDraft()
+{
+    const auto rules = m_store.ruleBook();
+    const auto cache = m_store.aiEstimateCache();
+    const ShelfLifeContext context{ m_builtin->catalog.get(), m_builtin->shelfLife.get(), &rules, &cache };
+    for (auto &draft : m_draft.items) {
+        const auto &recognized = draft.recognized;
         auto &item = draft.item;
-        item.canonicalName = m_builtin->catalog->contains(recognized.canonicalName)
-            ? recognized.canonicalName : rec::uncategorizedName();
         item.displayName = item.canonicalName == rec::uncategorizedName() ? recognized.rawName : item.canonicalName;
         item.rawName = recognized.rawName;
         item.category = m_builtin->catalog->categoryOf(item.canonicalName);
@@ -369,7 +432,6 @@ void ImportService::buildDraft(const rec::RecognitionResult &result)
         item.storage = storage.storage;
         item.storageSource = storage.source;
         parseDates(draft);
-        m_draft.items.append(draft);
     }
     m_draft.ready = true;
     recalculate();
@@ -431,7 +493,9 @@ bool ImportService::updateItem(int index, DraftItem draft)
     draft.item.id = 0;
     draft.item.importId = 0;
     draft.item.status = ItemStatus::InStock;
+    draft.nameSource = before.nameSource;
     if (draft.item.canonicalName != before.item.canonicalName) {
+        draft.nameSource = NameSource::UserEdited;
         draft.item.aiDays = {};
         draft.item.referenceConditionsConfirmed = false;
     }
@@ -529,6 +593,7 @@ bool ImportService::confirm(bool allowDuplicate)
         m_store.rollback();
         return reject(rec::ErrorKind::Internal, QStringLiteral("无法保存，请重试"));
     }
+    rememberNames(m_draft.items);
     m_received = false;
     m_payload = {};
     m_draft = {};
@@ -540,7 +605,8 @@ bool ImportService::confirm(bool allowDuplicate)
 
 bool ImportService::skipDuplicate()
 {
-    if (!m_received || busy() || !m_draft.duplicate.isDuplicate())
+    // A pending classification does not block the decision; discard() below cancels it.
+    if (!m_received || m_requestId || !m_draft.duplicate.isDuplicate())
         return false;
     auto record = m_draft.record;
     record.images.clear(); // deleted with the draft below; the record only says what was skipped
@@ -553,12 +619,30 @@ bool ImportService::skipDuplicate()
     return true;
 }
 
+void ImportService::rememberNames(const QList<DraftItem> &items)
+{
+    if (!m_mappings)
+        return;
+    // Outside the import transaction: a failed write only means the name is asked again next time.
+    for (const auto &draft : items) {
+        if (!draft.selected || draft.category == rec::ItemCategory::Irrelevant
+            || !m_builtin->catalog->contains(draft.item.canonicalName))
+            continue;
+        if (draft.nameSource == NameSource::AiClassified || draft.nameSource == NameSource::UserEdited)
+            m_mappings->remember(draft.recognized.rawName, draft.item.canonicalName);
+    }
+}
+
 bool ImportService::discard()
 {
     const auto requestId = m_requestId;
     m_requestId = 0;
     if (requestId && m_recognizer)
         m_recognizer->cancel(requestId);
+    const auto classifyId = m_classifyId;
+    m_classifyId = 0;
+    if (classifyId && m_classifier)
+        m_classifier->cancel(classifyId);
     QStringList paths;
     for (const auto &image : m_payload.images)
         paths.append(image.localPath);

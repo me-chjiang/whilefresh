@@ -200,7 +200,7 @@ Item {
                                         }
                                     }
                                     Text {
-                                        text: (ingredient.modelData.source === "package" ? "" : "估计 · ") + Theme.sourceLabel(ingredient.modelData.source) + (ingredient.modelData.shelfDays ? " · 保质 " + ingredient.modelData.shelfDays + " 天" : "")
+                                        text: (ingredient.modelData.aiClassified ? "AI 归类 · " : "") + (ingredient.modelData.source === "package" ? "" : "估计 · ") + Theme.sourceLabel(ingredient.modelData.source) + (ingredient.modelData.shelfDays ? " · 保质 " + ingredient.modelData.shelfDays + " 天" : "")
                                         font.pixelSize: Theme.textMeta
                                         color: ingredient.modelData.source === "package" ? Theme.fresh : Theme.nearing
                                     }

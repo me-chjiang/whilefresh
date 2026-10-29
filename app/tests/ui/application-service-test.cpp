@@ -350,6 +350,111 @@ private slots:
         QCOMPARE(store->items().size(), 3);
     }
 
+    void unresolvedNamesAreClassifiedOnceAndRememberedOnConfirm()
+    {
+        rec::ReplayRecognizer recognizer(recording(QString::fromUtf8(R"(
+          {"raw_name":"冰鲜鸡全腿","canonical_name":"未归类","category":"food","storage":"fridge"},
+          {"raw_name":"花胶 100g","canonical_name":"未归类","category":"food","storage":"fridge"},
+          {"raw_name":"黑猪梅花肉切片 300g","canonical_name":"猪肉","category":"food","storage":"fridge"},
+          {"raw_name":"电热水壶","canonical_name":"未归类","category":"irrelevant"}
+        )")));
+        const QString answer = QString::fromUtf8(R"({"items":[
+            {"index":1,"raw_name":"冰鲜鸡全腿","canonical_name":"鸡腿"},
+            {"index":2,"raw_name":"花胶 100g","canonical_name":"none"}]})");
+        ai::ChatExchange exchange;
+        exchange.response = QJsonDocument(QJsonObject{
+            { "choices", QJsonArray{ QJsonObject{
+                { "message", QJsonObject{ { "role", "assistant" }, { "content", answer } } },
+                { "finish_reason", "stop" } } } } }).toJson();
+        ai::RecordedChatClient client(ai::ChatRecording{ { exchange } });
+        ai::IngredientClassifier classifier(&client, builtin->catalog);
+        MemoryNameMappingStore names;
+        ImportService service(*store, builtin, *clock, recognizer);
+        service.setNameResolution(&names, &classifier);
+        QSignalSpy ready(&service, &ImportService::draftReady);
+
+        QVERIFY(service.receive(payload()));
+        QVERIFY(service.start(true));
+        QTRY_COMPARE(ready.size(), 1);
+        QVERIFY(!service.busy());
+        // One batched call with only the names the vocabulary could not resolve.
+        QCOMPARE(client.requests().size(), 1);
+        const QJsonArray messages = QJsonDocument::fromJson(client.requests().first().body).object()
+                                        .value(QStringLiteral("messages")).toArray();
+        QCOMPARE(messages.at(1).toObject().value(QStringLiteral("content")).toString(),
+                 QStringLiteral("<商品名>\n1. 冰鲜鸡全腿\n2. 花胶 100g\n</商品名>"));
+
+        auto items = service.draft().items;
+        QCOMPARE(items.at(0).item.canonicalName, QStringLiteral("鸡腿"));
+        QVERIFY(items.at(0).aiClassified());
+        QCOMPARE(items.at(0).item.category, QStringLiteral("meat"));
+        QCOMPARE(items.at(1).item.canonicalName, rec::uncategorizedName());
+        QCOMPARE(items.at(1).item.displayName, QStringLiteral("花胶 100g"));
+        QVERIFY(!items.at(1).aiClassified());
+        QCOMPARE(items.at(2).item.canonicalName, QStringLiteral("梅花肉"));
+        QCOMPARE(items.at(2).nameSource, NameSource::Recognized);
+
+        auto corrected = items.at(1);
+        corrected.item.canonicalName = QStringLiteral("鱼");
+        QVERIFY(service.updateItem(1, corrected));
+        QCOMPARE(service.draft().items.at(1).nameSource, NameSource::UserEdited);
+        QVERIFY(service.confirm(true));
+        QCOMPARE(names.mapped(QStringLiteral("冰鲜鸡全腿")), QStringLiteral("鸡腿"));
+        QCOMPARE(names.mapped(QStringLiteral("花胶 100g")), QStringLiteral("鱼"));
+        QCOMPARE(names.size(), 2); // locally resolved names need no memory
+
+        // Next time the same raw names hit directly, without another AI call.
+        QVERIFY(service.receive(payload(true, "another synthetic image")));
+        QVERIFY(service.start(true));
+        QTRY_COMPARE(ready.size(), 2);
+        QCOMPARE(client.requests().size(), 1);
+        items = service.draft().items;
+        QCOMPARE(items.at(0).item.canonicalName, QStringLiteral("鸡腿"));
+        QCOMPARE(items.at(0).nameSource, NameSource::UserMapping);
+        QVERIFY(!items.at(0).aiClassified());
+        QCOMPARE(items.at(1).item.canonicalName, QStringLiteral("鱼"));
+        QVERIFY(service.discard());
+    }
+
+    void aFailedClassificationLeavesNamesUncategorized()
+    {
+        rec::ReplayRecognizer recognizer(recording(QString::fromUtf8(R"(
+          {"raw_name":"花胶 100g","canonical_name":"未归类","category":"food","storage":"fridge"}
+        )")));
+        ai::ChatExchange exchange;
+        exchange.error = ai::ChatError{ ai::ErrorKind::Timeout, QStringLiteral("deadline"), 0 };
+        ai::RecordedChatClient client(ai::ChatRecording{ { exchange } });
+        ai::IngredientClassifier classifier(&client, builtin->catalog);
+        ImportService service(*store, builtin, *clock, recognizer);
+        service.setNameResolution(nullptr, &classifier);
+        QSignalSpy ready(&service, &ImportService::draftReady);
+        QSignalSpy failed(&service, &ImportService::failed);
+        QVERIFY(service.receive(payload()));
+        QVERIFY(service.start(true));
+        QTest::ignoreMessage(QtWarningMsg, "import: classification failed (timeout)");
+        QTRY_COMPARE(ready.size(), 1);
+        QCOMPARE(failed.size(), 0);
+        QCOMPARE(service.draft().items.first().item.canonicalName, rec::uncategorizedName());
+        QVERIFY(service.confirm());
+    }
+
+    void discardCancelsAPendingClassification()
+    {
+        rec::ReplayRecognizer recognizer(recording(QString::fromUtf8(R"(
+          {"raw_name":"花胶 100g","canonical_name":"未归类","category":"food","storage":"fridge"}
+        )")));
+        ai::RecordedChatClient client(ai::ChatRecording{});
+        ai::IngredientClassifier classifier(&client, builtin->catalog);
+        ImportService service(*store, builtin, *clock, recognizer);
+        service.setNameResolution(nullptr, &classifier);
+        QVERIFY(service.receive(payload()));
+        QVERIFY(service.start(true));
+        QTRY_COMPARE(client.requests().size(), 1);
+        QVERIFY(service.busy());
+        QVERIFY(service.discard());
+        QVERIFY(!service.busy());
+    }
+
     void textImportAndManualCorrection()
     {
         rec::ReplayRecognizer recognizer(recording(QString::fromUtf8(R"(
