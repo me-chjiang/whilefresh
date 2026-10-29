@@ -50,8 +50,8 @@
 ├── design/                    # HTML 视觉稿与手机尺寸截图
 ├── test-data/                 # 合成样本（PNG / JPEG / 文本）、标准答案 JSON、合成样本的 DeepSeek 录制回放
 │   ├── synthetic/             # 同名源输入 + 标准答案；screenshots/ 含可重复生成的 HTML/PNG，receipts/ 含 HTML/JPEG，texts/ 含 TXT
-│   ├── recordings/            # 识别录制（请求摘要 + 原始响应），仅限合成数据；synthetic/ 中按样本 ID 同名存储
-│   ├── vocabulary/            # 测试用合成词表（正式词表见 app/assets/data/）
+│   ├── recordings/            # 识别录制（请求摘要 + 原始响应），仅限合成数据；synthetic/ 中按样本 ID 同名存储；classifier/ 为归类服务的 ai 录制（格式 2）
+│   ├── vocabulary/            # 测试用合成词表（正式词表见 app/assets/data/）与词表归类用例 resolve-cases.json
 │   └── recipes/xiachufang/    # 第二轮（T17）：菜谱源子模块返回的 YAML 样例，用于测试与回放
 ├── scripts/                   # 构建、安装、取密钥、模拟器启动等 shell 脚本
 ├── build/                     # 不进 Git：构建产物，按目标分子目录（desktop、android-x86_64、android-arm64-v8a）
@@ -62,6 +62,7 @@
 
 - **业务规则**（新鲜度、来源优先级、匹配、常备规则）放 `app/src/core/`，不得依赖 QtGui / QtQuick / 网络，以便桌面上直接单测。
 - **持久化与 SQL** 只在 `app/src/data/`；迁移集中在 `database.cpp` 的递增列表中，结构变更只追加迁移，不改旧项。`Store` 管理用户数据及导入图片清理，`BuiltinData` 缓存内置只读资源。
+- **词表**：上下位与名称归类逻辑只在 core（`IngredientCatalog::resolveFinest`、`VocabularyResolver`）；识别层不再有自己的词表类型。用户确认的名称映射通过 `core::NameMappingStore` 接口读写，SQLite 实现在 `app/src/data/name-mappings.*`。
 - **AI 服务**（第二轮）放 `app/src/ai/`：只链接 core 和 Qt::Network（CMake 检查）；网络传输只在 `ChatClient`，各服务只通过它调用 DeepSeek、不自己发 HTTP，测试用 `RecordedChatClient` 回放。识别层复用它，不再自带传输。system prompt 用 `SystemPromptBuilder` 组装（偏好摘要在最后），密钥只从 `CredentialProvider` 取。
 - **菜谱源**（第二轮）放 `app/src/recipes/`：只依赖 core；外部子模块 `recipe-sources-xiachufang-api` 不复制进仓库、不修改，只通过 CMake 选项引用。
 - **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口（`RecognitionService`）；换服务商只新增实现，不改调用方。提示词文本集中在 `prompt-templates.h`，改动含义时同步改 `kPromptVersion`。
@@ -94,6 +95,8 @@
 - `.claude/skills/` 下是指向 `.agents/skills/` 的符号链接，不在其中放实体文件。
 
 ## Change log
+
+- 2026-10-30 — T14：删除 `recognition/vocabulary.*`，识别统一使用 `core::IngredientCatalog`；新增 `core/vocabulary-resolver.*`、`core/name-mapping.h`、`ai/ingredient-classifier.*`、`data/name-mappings.*`，`test-data/vocabulary/resolve-cases.json`，预留 `test-data/recordings/classifier/`。
 
 - 2026-10-30 — T13：新增 `app/src/ai/`（ChatClient、录制回放、SystemPromptBuilder、CredentialProvider）与 `app/tests/ai/`；密钥注入从 recognition 移到 ai，`recognition` 改为依赖 `ai`。
 - 2026-10-29 — 第二轮规划（T12）：PRD v5 归档，新增 `docs/prd-v6.md`、`docs/mvp/round-2-plan.md`；预留 `app/src/ai/`、`app/src/recipes/`、`test-data/recipes/xiachufang/`，由 T13、T17 创建。HowToCook 相关目录将在 T18b 移除。

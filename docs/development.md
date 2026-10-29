@@ -92,7 +92,7 @@ uv run --project tools pytest
 - 同一版本的输入，两次生成的 `recipes.json` 应逐字节一致；改动解析规则后需重新生成并一起提交。
 - `recipes.json` 每个原料项带 `canonical`（需求组列表：组内是备选标准名、任一满足即可，组间全部需要；工具和忽略项为空列表，匹配规则见复核报告）。它由 `tools/whilefresh_tools/vocabulary/ingredient-map.json` 决定；菜谱原料写法不在映射里时，`recipes build` 会报错并列出缺失项。改映射或词表后依次运行 `recipes build`、`vocabulary build`、`vocabulary validate`，并一起提交生成物。
 - 词表源数据是 `vocabulary-source.json`（人工维护，每项一行）和 `ingredient-map.json`，都在 `tools/whilefresh_tools/vocabulary/`。AI 只用于 `draft` 生成初稿：响应缓存在 `~/.cache/whilefresh/vocabulary/`（可用 `WHILEFRESH_CACHE` 改位置），草稿输出到缓存目录下的 `draft/`，由人工审阅后手工复制到源数据位置；之后的重建、校验和测试都不联网、不调用 AI。密钥只在进程内读取，不会被打印或缓存。
-- 词表字段约定：`name`（标准名）、`category`（品类代码）、`aliases[]`（全表唯一）为识别层读取的三个固定字段；`parent` 表示"持有子项即可满足父项"；`pantry_default` 默认算家里常备；`bulk_default` 默认存量多。复核记录见 [词表复核报告](mvp/notes/vocabulary-review.md)。
+- 词表字段约定：`name`（标准名）、`category`（品类代码）、`aliases[]`（全表唯一）、`parent` 由 App 的 `core::IngredientCatalog` 读取（识别和匹配共用这一份）；`parent` 表示"持有子项即可满足父项"；`pantry_default` 默认算家里常备；`bulk_default` 默认存量多。复核记录见 [词表复核报告](mvp/notes/vocabulary-review.md)。
 - 保质期参考表的数据源是 USDA FoodKeeper v128 快照（`tools/sources/foodkeeper/`，附 `SOURCE.md`，CC0）。映射源数据是 `tools/whilefresh_tools/shelf_life/foodkeeper-map.json`（标准名 → FoodKeeper 条目 ID，每项一行，含依据说明，人工维护）；`draft` 的草稿和响应缓存在 `~/.cache/whilefresh/shelf-life/`，由人工审阅后复制到源数据位置。取值规则与换算（周 × 7、月 × 30、年 × 365）见 `SOURCE.md`。没有对应条目的食材不列入参考表，由上层回退到 AI 判断。复核记录见 [保质期参考表复核报告](mvp/notes/shelf-life-review.md)。
 - 下载失败时可设置 `WHILEFRESH_CACHE` 指定缓存目录，或把同版本源码压缩包手动放到 `<缓存目录>/snapshot.tar.gz`。
 
@@ -138,12 +138,37 @@ scripts/build-desktop.sh  # 用完密钥后恢复为不带密钥的桌面构建
 - `RecordedChatClient` / `RecordingChatClient`：传输层回放与录制。录制格式 2 只存请求摘要和请求体 SHA-256，不存提示词和图片；也能读 `recognize-cli` 的格式 1（可带 `requestDigests`）。带摘要的录制只回答相同的请求，提示词或输入变了会失败，需要重新录制。
 - `parseJsonContent(ChatResult)`：把 JSON 模式的回答正文（可带 ```json 围栏）解析成对象，失败时返回 BadResponse，供纯文本 JSON 服务使用。
 - `SystemPromptBuilder`：基础文本 + 按顺序追加的段落，偏好摘要永远放最后；空段落省略。
+- `IngredientClassifier`（T14）：把本地对不上词表的商品名一次批量发给 DeepSeek 归类。纯文本 JSON 模式、关闭思考、空闲 30 s / 总时限 60 s，一次最多 80 个名称；system 中附分层词表（`IngredientCatalog::hierarchyText()`），每个回答都用词表校验，词表外的名称丢弃并计数，`none` 保持未归类。只依赖 core，词表由调用方传入。
 
-测试在 `app/tests/ai/`，全部离线：`deepseek-chat-client-test`（本地假 HTTP 服务器 `fake-http-server.h`，与识别测试共用）覆盖重试、超时、截断、无密钥、日志；`chat-types-test` 覆盖请求编码与 `parseJsonContent`；`chat-recording-test` 覆盖回放顺序、摘要校验、取消不占用录制、录制→写入→读取→回放，以及读取 `test-data/recordings/` 与演示预置的格式 1 录制；`system-prompt-builder-test` 覆盖段落顺序。
+测试在 `app/tests/ai/`，全部离线：`ingredient-classifier-test` 覆盖请求形状、回答校验、取消、失败，并回放 `test-data/recordings/classifier/synthetic-names.json`（没有该录制时跳过，见下文"重新录制归类"）；`deepseek-chat-client-test`（本地假 HTTP 服务器 `fake-http-server.h`，与识别测试共用）覆盖重试、超时、截断、无密钥、日志；`chat-types-test` 覆盖请求编码与 `parseJsonContent`；`chat-recording-test` 覆盖回放顺序、摘要校验、取消不占用录制、录制→写入→读取→回放，以及读取 `test-data/recordings/` 与演示预置的格式 1 录制；`system-prompt-builder-test` 覆盖段落顺序。
 
 ```sh
 ctest --test-dir build/desktop --output-on-failure -R 'chat|system-prompt|deepseek-recognizer'
 ```
+
+### 词表与名称归类
+
+- 正式词表 `app/assets/data/vocabulary.json`（581 项，含 `parent` 上下位）由 `IngredientCatalog` 读取，识别请求、匹配和归类共用。识别提示词 v3 用 `hierarchyText()` 按品类分组列出词表，如"猪肉 > 五花肉、前腿肉、里脊"，要求取最细词条、`raw_name` 保留原文；约 3.9k 字符（v2 为 3.5k）。
+- `IngredientCatalog::resolveFinest(标题)`：精确名称 / 别名优先；否则按空格、标点和数字切词，取词内包含的名称或别名。单字名称只在词尾时算数（藕粉 ≠ 莲藕）；同时命中父项和子项时丢掉父项；词内取结束位置最靠后的（中文商品名中心词在后：五香牛肉干 → 牛肉干），再取较长的；跨词取最长的（速冻水饺 猪肉大葱 → 速冻水饺）。
+- `VocabularyResolver`（core）：用户确认过的映射 → 识别给出的标准名（标题里有它的子项，或它是上位词而标题里有同品类更细的词条时改用后者）→ `resolveFinest(原文)` → 未归类。未归类的名称（不含非食品）由 `ImportService` 收集后交 `IngredientClassifier` 一次归类；结果在核对页标"AI 归类"。用户确认入库时，保留的 AI 归类和用户改过的名称写入 `NameMappingStore`，下次同名直接命中。
+- `NameMappingStore`：core 中的接口，测试用 `MemoryNameMappingStore`；App 使用 `data::SqliteNameMappingStore`（`name_mappings` 表，由 T15 的迁移 v5 创建；表不存在时查不到、写入失败只记警告）。
+- 归类用例 `test-data/vocabulary/resolve-cases.json`（55 条，人工复核）由 `catalog-test` 逐条对正式词表运行；改词表或规则后必须全部通过，不能通过的要在用例里写明原因，不得悄悄放宽。
+
+```sh
+ctest --test-dir build/desktop --output-on-failure -R 'catalog|vocabulary-resolver|ingredient-classifier|name-mappings|application-service'
+```
+
+重新录制归类（**调用真实 DeepSeek，计费**；只用合成名称，录制先写到仓库外）：
+
+```sh
+scripts/build-desktop.sh --with-key
+printf '%s\n' 冰鲜鸡全腿 '牛霖 500g' '鲜毛肚 200g' '花胶 100g' '罗汉果 1个' '黑松露酱 80g' '藕粉 500g' '洗衣液 2kg' '电热水壶 1.5L' > /tmp/names.txt
+build/desktop/tools/recognize-cli --vocab app/assets/data/vocabulary.json --classify /tmp/names.txt --record /tmp/synthetic-names.json
+# 检查录制只含请求摘要与回答、不含密钥后复制到 test-data/recordings/classifier/synthetic-names.json
+scripts/build-desktop.sh  # 恢复无密钥构建
+```
+
+录制带请求摘要，归类提示词、词表或名称列表变化后回放会失败，需要重新录制（名称列表须与 `ingredient-classifier-test` 中的 `kRecordedNames` 一致）。
 
 ### 识别层与录制工具
 
@@ -156,6 +181,8 @@ scripts/build-desktop.sh --with-key
 build/desktop/tools/recognize-cli --vocab app/assets/data/vocabulary.json \
     [--kind screenshot|receipt] [--date YYYY-MM-DD] [--no-thinking] [--record <文件>] <图片>...
 build/desktop/tools/recognize-cli --vocab <词表> --text <订单文字文件>
+# 归类服务：每行一个商品名，一次请求（--record / --replay 用 ai 录制格式 2）
+build/desktop/tools/recognize-cli --vocab <词表> --classify <名称文件>
 # 离线回放：同样的输入 + 录制文件，走同一条请求路径，不需要密钥、不联网
 build/desktop/tools/recognize-cli --vocab app/assets/data/vocabulary.json \
     --replay test-data/recordings/synthetic/cart-fresh-01.json test-data/synthetic/screenshots/cart-fresh-01.png
@@ -207,7 +234,7 @@ ctest --test-dir build/desktop --output-on-failure -R 'date-text|shelf-life|fres
 scripts/build-android.sh x86_64 --no-key
 ```
 
-`builtin-data-test` 用实际 372 道菜、544 项词表、290 项参考数据验证匹配和保质期；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入与跳过记录、软删除与清空历史、调料/常备食材入库、扔掉与忽略、事务回滚、建议确认及清冰箱/待买；导入续传用 `DeepSeekRecognizer` + `ai::RecordedChatClient` 验证第 2 批失败后换新服务只重发第 2 批及以后。测试数据库与图片只写临时目录。
+`builtin-data-test` 用实际 372 道菜、581 项词表、290 项参考数据验证匹配和保质期；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入与跳过记录、软删除与清空历史、调料/常备食材入库、扔掉与忽略、事务回滚、建议确认及清冰箱/待买；导入续传用 `DeepSeekRecognizer` + `ai::RecordedChatClient` 验证第 2 批失败后换新服务只重发第 2 批及以后。测试数据库与图片只写临时目录。
 
 ### 界面资源与模拟预览
 
