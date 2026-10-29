@@ -12,10 +12,10 @@
 ├── LICENSE                    # BSD-3-Clause
 ├── .agents/skills/            # 项目级 skill 实体；.claude/skills/ 为同名符号链接
 ├── docs/                      # 产品与研究文档（PRD、调研）
-│   ├── archive/               # 历史版本（PRD v3、v4，调研速查）
+│   ├── archive/               # 历史版本（PRD v3–v5，调研速查）
 │   ├── images/                # README 截图（仅演示模式数据）
 │   ├── development.md         # 开发文档：环境、构建与验证命令、数据工具、调试方法
-│   └── mvp/                   # MVP 循环文档：需求、规划、cycle-state、交付报告
+│   └── mvp/                   # MVP 循环文档：需求、规划（含第二轮 round-2-plan.md）、cycle-state、交付报告
 │       ├── notes/             # 复杂模块的实现说明（如 android-integration.md）
 │       └── todo.md            # 未完成事项
 ├── app/                       # Qt 6 CMake 工程（Android APK + macOS 桌面开发版）
@@ -23,7 +23,9 @@
 │   ├── src/
 │   │   ├── core/              # 领域逻辑，只依赖 QtCore：食材、日期、新鲜度、来源链、规则、匹配
 │   │   ├── data/              # SQLite 存储、迁移、内置只读数据加载
+│   │   ├── ai/                # 第二轮（T13）：DeepSeek 对话传输、录制回放、密钥来源、各 AI 服务（归类、方案、平替、偏好整理）
 │   │   ├── recognition/       # 识别接口与实现（DeepSeek、回放、演示）、切片、解析、去重
+│   │   ├── recipes/           # 第二轮（T17）：菜谱源接口、下厨房 YAML 解析、录制样例回放、子模块适配
 │   │   ├── platform/          # 平台适配的 C++ 侧（分享、相机、文件、剪贴板）、导入载荷与日期来源
 │   │   │   ├── android/       # JNI 胶水（只在 Android 构建中编译）
 │   │   │   └── desktop/       # 桌面替代实现（文件对话框、剪贴板）
@@ -49,7 +51,8 @@
 ├── test-data/                 # 合成样本（PNG / JPEG / 文本）、标准答案 JSON、合成样本的 DeepSeek 录制回放
 │   ├── synthetic/             # 同名源输入 + 标准答案；screenshots/ 含可重复生成的 HTML/PNG，receipts/ 含 HTML/JPEG，texts/ 含 TXT
 │   ├── recordings/            # 识别录制（请求摘要 + 原始响应），仅限合成数据；synthetic/ 中按样本 ID 同名存储
-│   └── vocabulary/            # 测试用合成词表（正式词表见 app/assets/data/）
+│   ├── vocabulary/            # 测试用合成词表（正式词表见 app/assets/data/）
+│   └── recipes/xiachufang/    # 第二轮（T17）：菜谱源子模块返回的 YAML 样例，用于测试与回放
 ├── scripts/                   # 构建、安装、取密钥、模拟器启动等 shell 脚本
 ├── build/                     # 不进 Git：构建产物，按目标分子目录（desktop、android-x86_64、android-arm64-v8a）
 └── private/                   # 不进 Git：个人资料、真实测试样例（bill/）、真实样例的识别录制（recordings/）
@@ -59,6 +62,8 @@
 
 - **业务规则**（新鲜度、来源优先级、匹配、常备规则）放 `app/src/core/`，不得依赖 QtGui / QtQuick / 网络，以便桌面上直接单测。
 - **持久化与 SQL** 只在 `app/src/data/`；迁移集中在 `database.cpp` 的递增列表中，结构变更只追加迁移，不改旧项。`Store` 管理用户数据及导入图片清理，`BuiltinData` 缓存内置只读资源。
+- **AI 服务**（第二轮）放 `app/src/ai/`：只依赖 core 和 Qt::Network；网络传输只在 `ChatClient`，各服务实现接口并通过录制回放测试。识别层复用它，不再自带传输。
+- **菜谱源**（第二轮）放 `app/src/recipes/`：只依赖 core；外部子模块 `recipe-sources-xiachufang-api` 不复制进仓库、不修改，只通过 CMake 选项引用。
 - **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口（`RecognitionService`）；换服务商只新增实现，不改调用方。提示词文本集中在 `prompt-templates.h`，改动含义时同步改 `kPromptVersion`。
 - **桌面开发工具**（需要真实密钥或只在桌面有意义的命令行程序）放 `app/tools/`，仅在非 Android 构建中编译，不注册 ctest。
 - **应用服务与视图模型** 放 `app/src/ui/`；`*-service.*` 不依赖 QML，组合领域、持久化、识别与平台载荷；QML 只做展示和交互。
@@ -90,6 +95,7 @@
 
 ## Change log
 
+- 2026-10-29 — 第二轮规划（T12）：PRD v5 归档，新增 `docs/prd-v6.md`、`docs/mvp/round-2-plan.md`；预留 `app/src/ai/`、`app/src/recipes/`、`test-data/recipes/xiachufang/`，由 T13、T17 创建。HowToCook 相关目录将在 T18b 移除。
 - 2026-10-21 — 文档整理：开发说明移到 docs/development.md，历史版本移到 docs/archive/。
 - 2026-10-21 — T7：增加 `tools/whilefresh_tools/synthetic/`、`test-data/synthetic/` 与 `test-data/recordings/synthetic/`，规定可重复生成的 HTML/PNG/JPEG/TXT、标准答案和合成识别录制的摆放位置。
 - 2026-10-21 — T5：细化应用服务与视图模型的分工，记录 SQLite 迁移位置与 core/data/ui 分层测试。
