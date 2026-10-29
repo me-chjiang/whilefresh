@@ -133,12 +133,13 @@ scripts/build-desktop.sh  # 用完密钥后恢复为不带密钥的桌面构建
 `app/src/ai/`（`whilefresh-ai`，只链接 core 与 Qt::Network，CMake 中有检查）是识别和之后所有 AI 服务共用的 DeepSeek 传输层：
 
 - `ChatClient`：一次 chat-completions 调用的异步接口（请求 id、可取消）。请求为 `ChatRequest`（system/user 消息，user 可含 image_url、JSON 模式、max_tokens、temperature、thinking）；大请求可在工作线程先 `encodeChatRequest` 再 `sendEncoded`。结果为正文、finish_reason、token 用量、耗时、截断标记和原始响应；失败为带类型的 `ChatError`（`ErrorKind` 与 HTTP/网络错误分类也在这里）。
-- `DeepSeekChatClient`：空闲超时 150 s、总时限 240 s；只有 5xx 和服务器断开连接重试一次，超时和 4xx 不重试；`finish_reason=length` 时作为成功返回部分正文并标记 `truncated`。日志只记大小、数量、耗时、token、状态码。密钥在发送时向 `CredentialProvider` 取，没有密钥直接报 `NotConfigured`，不发请求。
-- `CredentialProvider`（`api-keys.h`；文件名避开 `.gitignore` 的 `*credential*`）：`key(Service)`，Service 为 DeepSeek / Lexmount。现有 `BuiltinCredentialProvider`（构建时注入的密钥）和 `StaticCredentialProvider`（测试、工具）；`AppModel` 持有提供者和应用级 `DeepSeekChatClient`，运行时可用 `setCredentials()` 更换。
+- `DeepSeekChatClient`：每次尝试空闲超时 150 s，整次调用（含重试）总时限 240 s，单个请求可用 `ChatRequest::idleTimeoutMs` / `deadlineMs` 覆盖；只有 HTTP 5xx 和服务器断开连接（RemoteHostClosed）重试一次，协议错误、超时和 4xx 不重试；`finish_reason=length` 时作为成功返回部分正文并标记 `truncated`。日志只记大小、数量、耗时、token、状态码。密钥在发送时向 `CredentialProvider` 取，没有密钥直接报 `NotConfigured`，不发请求。
+- `CredentialProvider`（`api-keys.h`；文件名避开 `.gitignore` 的 `*credential*`）：`key(Service)`，Service 为 DeepSeek / Lexmount。现有 `BuiltinCredentialProvider`（构建时注入的密钥）和 `StaticCredentialProvider`（测试、工具）；`AppModel` 持有提供者和应用级 `DeepSeekChatClient`，运行时用 `AppModel::setCredentialProvider()` 更换（同时通知 QML 的 `recognitionConfigured`）。
 - `RecordedChatClient` / `RecordingChatClient`：传输层回放与录制。录制格式 2 只存请求摘要和请求体 SHA-256，不存提示词和图片；也能读 `recognize-cli` 的格式 1（可带 `requestDigests`）。带摘要的录制只回答相同的请求，提示词或输入变了会失败，需要重新录制。
+- `parseJsonContent(ChatResult)`：把 JSON 模式的回答正文（可带 ```json 围栏）解析成对象，失败时返回 BadResponse，供纯文本 JSON 服务使用。
 - `SystemPromptBuilder`：基础文本 + 按顺序追加的段落，偏好摘要永远放最后；空段落省略。
 
-测试在 `app/tests/ai/`，全部离线：`deepseek-chat-client-test`（本地假 HTTP 服务器 `fake-http-server.h`，与识别测试共用）覆盖重试、超时、截断、无密钥、日志；`chat-recording-test` 覆盖回放顺序、摘要校验、录制→写入→读取→回放，以及读取 `test-data/recordings/` 与演示预置的格式 1 录制；`system-prompt-builder-test` 覆盖段落顺序。
+测试在 `app/tests/ai/`，全部离线：`deepseek-chat-client-test`（本地假 HTTP 服务器 `fake-http-server.h`，与识别测试共用）覆盖重试、超时、截断、无密钥、日志；`chat-types-test` 覆盖请求编码与 `parseJsonContent`；`chat-recording-test` 覆盖回放顺序、摘要校验、取消不占用录制、录制→写入→读取→回放，以及读取 `test-data/recordings/` 与演示预置的格式 1 录制；`system-prompt-builder-test` 覆盖段落顺序。
 
 ```sh
 ctest --test-dir build/desktop --output-on-failure -R 'chat|system-prompt|deepseek-recognizer'
