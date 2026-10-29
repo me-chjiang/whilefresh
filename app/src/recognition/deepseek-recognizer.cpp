@@ -1,83 +1,33 @@
 #include "recognition/deepseek-recognizer.h"
 
-#include "recognition/api-key.h"
 #include "recognition/recognition-log.h"
-#include "recognition/request-builder.h"
 #include "recognition/response-parser.h"
 
 #include <QImageWriter>
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QLoggingCategory>
-#include <QNetworkReply>
-#include <QNetworkRequest>
 #include <QPromise>
 #include <QThreadPool>
 #include <QTimer>
 
 namespace whilefresh::recognition {
 
-ErrorKind kindForHttpStatus(int status)
-{
-    if (status == 401 || status == 403)
-        return ErrorKind::AuthFailed;
-    if (status == 402 || status == 429)
-        return ErrorKind::QuotaOrRateLimit;
-    if (status >= 500)
-        return ErrorKind::ServerError;
-    return ErrorKind::RequestRejected;
-}
-
-ErrorKind kindForNetworkError(QNetworkReply::NetworkError error)
-{
-    switch (error) {
-    case QNetworkReply::SslHandshakeFailedError:
-        return ErrorKind::SecureConnectionFailed;
-    case QNetworkReply::TimeoutError:
-    case QNetworkReply::OperationCanceledError: // what a transfer timeout reports on some Qt versions
-        return ErrorKind::Timeout;
-    case QNetworkReply::RemoteHostClosedError:
-    case QNetworkReply::ProtocolFailure:
-    case QNetworkReply::ProtocolInvalidOperationError:
-    case QNetworkReply::ProtocolUnknownError:
-        return ErrorKind::ServerError;
-    default:
-        return ErrorKind::NoNetwork;
-    }
-}
-
 namespace {
 
-constexpr int kMaxRetries = 1;
-constexpr int kDetailSnippetChars = 200;
-
-RecognitionError classifyFailure(QNetworkReply *reply, int status, const QByteArray &body)
-{
-    if (status >= 400) {
-        // Error bodies from the API are short JSON messages that do not echo the request.
-        const QString snippet = QString::fromUtf8(body.left(kDetailSnippetChars)).simplified();
-        return makeError(kindForHttpStatus(status),
-                         QStringLiteral("HTTP %1: %2").arg(status).arg(snippet), status);
-    }
-    return makeError(kindForNetworkError(reply->error()),
-                     QStringLiteral("network error %1: %2").arg(int(reply->error())).arg(reply->errorString()),
-                     status);
-}
-
-// Runs on a worker thread: decoding and encoding tall screenshots takes noticeable time.
+// Runs on a worker thread: decoding and encoding tall screenshots takes noticeable time, and
+// so does serialising megabytes of base64 into the request body.
 PrepareOutcome prepareJob(const RecognitionRequest &request, const BatchLimits &limits,
                           const RequestOptions &options, const std::function<bool()> &isCanceled)
 {
     PrepareOutcome outcome;
     const auto addBatch = [&](const QList<PreparedImage> &images, const QString &text) {
-        const QJsonObject body = buildChatRequest(request.kind, *request.vocabulary, images, text, options);
         BatchSpan span;
         for (const PreparedImage &image : images) {
             if (span.firstImage < 0)
                 span.firstImage = image.imageIndex;
             span.lastImage = image.imageIndex;
         }
-        outcome.batches.append({ QJsonDocument(body).toJson(QJsonDocument::Compact), int(images.size()), span });
+        outcome.batches.append(
+            { ai::encodeChatRequest(buildChatRequest(request.kind, *request.vocabulary, images, text, options)),
+              int(images.size()), span });
     };
 
     if (request.kind == InputKind::OrderText) {
@@ -103,16 +53,12 @@ PrepareOutcome prepareJob(const RecognitionRequest &request, const BatchLimits &
 
 } // namespace
 
-QUrl DeepSeekRecognizer::defaultEndpoint()
-{
-    return QUrl(QStringLiteral("https://api.deepseek.com/chat/completions"));
-}
-
-DeepSeekRecognizer::DeepSeekRecognizer(QObject *parent)
+DeepSeekRecognizer::DeepSeekRecognizer(ai::ChatClient *client, QObject *parent)
     : RecognitionService(parent)
-    , m_apiKey(deepSeekApiKey())
-    , m_endpoint(defaultEndpoint())
+    , m_client(client)
 {
+    connect(m_client, &ai::ChatClient::succeeded, this, &DeepSeekRecognizer::chatSucceeded);
+    connect(m_client, &ai::ChatClient::failed, this, &DeepSeekRecognizer::chatFailed);
 }
 
 DeepSeekRecognizer::~DeepSeekRecognizer()
@@ -120,6 +66,8 @@ DeepSeekRecognizer::~DeepSeekRecognizer()
     for (const Job &job : std::as_const(m_jobs)) {
         if (job.watcher)
             job.watcher->cancel();
+        if (job.chatId)
+            m_client->cancel(job.chatId);
     }
 }
 
@@ -127,8 +75,8 @@ quint64 DeepSeekRecognizer::recognize(const RecognitionRequest &request)
 {
     const quint64 id = nextRequestId();
 
-    if (m_apiKey.isEmpty()) {
-        failLater(id, makeError(ErrorKind::NotConfigured, QStringLiteral("no API key compiled in")));
+    if (!m_client->isConfigured()) {
+        failLater(id, makeError(ErrorKind::NotConfigured, QStringLiteral("no API key configured")));
         return id;
     }
     if (!request.vocabulary || request.vocabulary->isEmpty()) {
@@ -182,16 +130,17 @@ void DeepSeekRecognizer::cancel(quint64 requestId)
     const auto it = m_jobs.find(requestId);
     if (it == m_jobs.end())
         return;
-    QPointer<QNetworkReply> reply = it->reply;
+    const quint64 chatId = it->chatId;
     QFutureWatcher<PrepareOutcome> *watcher = it->watcher;
-    stopDeadline(*it);
     m_jobs.erase(it);
     if (watcher) {
         watcher->cancel(); // lets the worker stop between images
         watcher->deleteLater();
     }
-    if (reply)
-        reply->abort(); // its finished handler finds no job and discards the reply
+    if (chatId) {
+        m_jobByChat.remove(chatId);
+        m_client->cancel(chatId);
+    }
     qCInfo(lcRecognition, "request %llu cancelled", requestId);
 }
 
@@ -213,7 +162,7 @@ void DeepSeekRecognizer::preparationDone(quint64 id)
 
     qint64 bytes = 0;
     for (const PreparedBatch &batch : std::as_const(job.batches))
-        bytes += batch.body.size();
+        bytes += batch.request.body.size();
     qCInfo(lcRecognition, "request %llu prepared: kind=%s images=%d slices=%lld batches=%lld bytes=%lld prepare=%lldms",
            id, qUtf8Printable(enumKey(job.request.kind)), int(job.request.images.size()),
            qint64(outcome.sliceCount), qint64(job.batches.size()), bytes, job.total.elapsed());
@@ -224,95 +173,52 @@ void DeepSeekRecognizer::preparationDone(quint64 id)
 void DeepSeekRecognizer::sendBatch(quint64 id)
 {
     Job &job = m_jobs[id];
-    const PreparedBatch &batch = job.batches.at(job.batchIndex);
-
-    QNetworkRequest request(m_endpoint);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
-    request.setRawHeader("Authorization", "Bearer " + m_apiKey.toUtf8());
-    request.setTransferTimeout(m_idleTimeoutMs);
-
     job.batchTimer.start();
-    job.deadlineHit = false;
-    QNetworkReply *reply = m_network.post(request, batch.body);
-    job.reply = reply;
-
-    auto *deadline = new QTimer(this);
-    deadline->setSingleShot(true);
-    connect(deadline, &QTimer::timeout, this, [this, id] {
-        const auto it = m_jobs.find(id);
-        if (it == m_jobs.end() || !it->reply)
-            return;
-        it->deadlineHit = true;
-        it->reply->abort();
-    });
-    deadline->start(m_deadlineMs);
-    job.deadline = deadline;
-    connect(reply, &QNetworkReply::finished, this, [this, id, reply] { replyFinished(id, reply); });
+    job.chatId = m_client->sendEncoded(job.batches.at(job.batchIndex).request);
+    m_jobByChat.insert(job.chatId, id);
 }
 
-void DeepSeekRecognizer::stopDeadline(Job &job)
+void DeepSeekRecognizer::chatSucceeded(quint64 chatId, const ai::ChatResult &chat)
 {
-    if (job.deadline) {
-        job.deadline->stop();
-        job.deadline->deleteLater();
-        job.deadline = nullptr;
-    }
-}
-
-void DeepSeekRecognizer::replyFinished(quint64 id, QNetworkReply *reply)
-{
-    reply->deleteLater();
-    const auto it = m_jobs.find(id);
-    if (it == m_jobs.end())
+    const auto owner = m_jobByChat.constFind(chatId);
+    if (owner == m_jobByChat.cend())
         return;
-    Job &job = *it;
-    job.reply = nullptr;
-    stopDeadline(job);
+    const quint64 id = owner.value();
+    m_jobByChat.erase(owner);
+    Job &job = m_jobs[id];
+    job.chatId = 0;
 
-    const QByteArray body = reply->readAll();
-    const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     const qint64 elapsed = job.batchTimer.elapsed();
     const int batchNumber = job.batchIndex + 1;
     const qsizetype batchTotal = job.batches.size();
-
-    if (reply->error() != QNetworkReply::NoError || status < 200 || status >= 300) {
-        const RecognitionError error = job.deadlineHit
-            ? makeError(ErrorKind::Timeout, QStringLiteral("no complete answer within the %1 ms deadline").arg(m_deadlineMs))
-            : classifyFailure(reply, status, body);
-        qCWarning(lcRecognition, "request %llu batch %d/%lld failed: kind=%s status=%d elapsed=%lldms attempt=%d",
-                  id, batchNumber, qint64(batchTotal), qUtf8Printable(enumKey(error.kind)), status, elapsed,
-                  job.attempt + 1);
-        if (error.kind == ErrorKind::ServerError && job.attempt < kMaxRetries) {
-            ++job.attempt;
-            QTimer::singleShot(m_retryDelayMs, this, [this, id] {
-                if (m_jobs.contains(id))
-                    sendBatch(id);
-            });
-            return;
-        }
-        fail(id, error);
-        return;
-    }
-
-    ParseOutcome outcome = parseChatCompletion(body, job.request.vocabulary.get(), job.request.kind);
+    ParseOutcome outcome = parseChatCompletion(chat.rawBody, job.request.vocabulary.get(), job.request.kind);
     if (!outcome.result) {
-        qCWarning(lcRecognition, "request %llu batch %d/%lld unparsable: status=%d bytes=%lld elapsed=%lldms: %s",
-                  id, batchNumber, qint64(batchTotal), status, qint64(body.size()), elapsed,
+        qCWarning(lcRecognition, "request %llu batch %d/%lld unparsable: bytes=%lld elapsed=%lldms: %s",
+                  id, batchNumber, qint64(batchTotal), qint64(chat.rawBody.size()), elapsed,
                   qUtf8Printable(outcome.error.detail));
         fail(id, outcome.error);
         return;
     }
-    qCInfo(lcRecognition, "request %llu batch %d/%lld ok: status=%d bytes=%lld elapsed=%lldms items=%lld tokens=%d",
-           id, batchNumber, qint64(batchTotal), status, qint64(body.size()), elapsed,
+    qCInfo(lcRecognition, "request %llu batch %d/%lld ok: bytes=%lld elapsed=%lldms items=%lld tokens=%d",
+           id, batchNumber, qint64(batchTotal), qint64(chat.rawBody.size()), elapsed,
            qint64(outcome.result->items.size()), outcome.result->usage.totalTokens);
 
     outcome.result->batchSpans = { job.batches.at(job.batchIndex).span };
     job.parts.append(*outcome.result);
-    job.attempt = 0;
     if (++job.batchIndex < job.batches.size())
         sendBatch(id);
     else
         succeed(id);
+}
+
+void DeepSeekRecognizer::chatFailed(quint64 chatId, const ai::ChatError &error)
+{
+    const auto owner = m_jobByChat.constFind(chatId);
+    if (owner == m_jobByChat.cend())
+        return;
+    const quint64 id = owner.value();
+    m_jobByChat.erase(owner);
+    fail(id, makeError(error.kind, error.detail, error.httpStatus));
 }
 
 void DeepSeekRecognizer::succeed(quint64 id)

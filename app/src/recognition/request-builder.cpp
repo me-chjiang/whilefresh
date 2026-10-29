@@ -2,8 +2,6 @@
 
 #include "recognition/prompt-templates.h"
 
-#include <QJsonArray>
-
 namespace whilefresh::recognition {
 
 namespace {
@@ -41,18 +39,6 @@ QString imageLabel(const PreparedImage &image)
     return QStringLiteral("[%1]").arg(label);
 }
 
-QJsonObject textBlock(const QString &text)
-{
-    return { { QStringLiteral("type"), QStringLiteral("text") }, { QStringLiteral("text"), text } };
-}
-
-QJsonObject imageBlock(const QByteArray &jpeg)
-{
-    const QString url = QStringLiteral("data:image/jpeg;base64,") + QString::fromLatin1(jpeg.toBase64());
-    return { { QStringLiteral("type"), QStringLiteral("image_url") },
-             { QStringLiteral("image_url"), QJsonObject{ { QStringLiteral("url"), url } } } };
-}
-
 }
 
 QString promptVersion()
@@ -68,33 +54,29 @@ QString buildPrompt(InputKind kind, const Vocabulary &vocabulary)
     return text;
 }
 
-QJsonObject buildChatRequest(InputKind kind, const Vocabulary &vocabulary,
-                             const QList<PreparedImage> &images, const QString &text,
-                             const RequestOptions &options)
+ai::ChatRequest buildChatRequest(InputKind kind, const Vocabulary &vocabulary,
+                                 const QList<PreparedImage> &images, const QString &text,
+                                 const RequestOptions &options)
 {
-    QJsonArray content;
-    content.append(textBlock(buildPrompt(kind, vocabulary)));
+    ai::ChatMessage message;
+    message.parts.append(ai::ChatPart::text(buildPrompt(kind, vocabulary)));
 
     if (kind == InputKind::OrderText) {
-        content.append(textBlock(QStringLiteral("<订单文字>\n%1\n</订单文字>").arg(text)));
+        message.parts.append(ai::ChatPart::text(QStringLiteral("<订单文字>\n%1\n</订单文字>").arg(text)));
     } else {
         for (const PreparedImage &image : images) {
-            content.append(textBlock(imageLabel(image)));
-            content.append(imageBlock(image.jpeg));
+            message.parts.append(ai::ChatPart::text(imageLabel(image)));
+            message.parts.append(ai::ChatPart::jpegImage(image.jpeg));
         }
     }
 
-    const QJsonObject message{ { QStringLiteral("role"), QStringLiteral("user") },
-                               { QStringLiteral("content"), content } };
-    QJsonObject body{ { QStringLiteral("model"), QString::fromLatin1(kDeepSeekModel) },
-                      { QStringLiteral("messages"), QJsonArray{ message } },
-                      { QStringLiteral("response_format"),
-                        QJsonObject{ { QStringLiteral("type"), QStringLiteral("json_object") } } },
-                      { QStringLiteral("max_tokens"), options.maxTokens },
-                      { QStringLiteral("temperature"), 0 } };
-    if (!options.thinking)
-        body.insert(QStringLiteral("thinking"), QJsonObject{ { QStringLiteral("type"), QStringLiteral("disabled") } });
-    return body;
+    ai::ChatRequest request;
+    request.messages = { message };
+    request.jsonMode = true;
+    request.maxTokens = options.maxTokens;
+    request.temperature = 0;
+    request.thinking = options.thinking;
+    return request;
 }
 
 }

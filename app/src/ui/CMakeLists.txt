@@ -11,6 +11,7 @@ add_library(whilefresh-ui STATIC
 
 target_link_libraries(whilefresh-ui PUBLIC
     whilefresh-core
+    whilefresh-ai
     whilefresh-data
     whilefresh-recognition
     whilefresh-platform

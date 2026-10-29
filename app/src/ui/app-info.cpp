@@ -2,7 +2,7 @@
 
 #include "core/app-version.h"
 #include "platform/platform-info.h"
-#include "recognition/api-key.h"
+#include "ai/api-keys.h"
 
 namespace whilefresh::ui {
 
@@ -23,7 +23,7 @@ QString AppInfo::platform() const
 
 bool AppInfo::recognitionConfigured() const
 {
-    return recognition::isDeepSeekApiKeyConfigured();
+    return ai::BuiltinCredentialProvider().isConfigured(ai::Service::DeepSeek);
 }
 
 }

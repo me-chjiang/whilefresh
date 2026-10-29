@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ai/chat-types.h"
+
 #include <QByteArray>
 #include <QDate>
 #include <QList>
@@ -11,6 +13,11 @@
 namespace whilefresh::recognition {
 
 class Vocabulary;
+
+// Transport errors and token counts are those of the chat client (ai layer).
+using ErrorKind = ai::ErrorKind;
+using TokenUsage = ai::TokenUsage;
+using ai::enumKey;
 
 // What the user handed in. Decides which prompt paragraph is used.
 enum class InputKind { Screenshot, Receipt, OrderText };
@@ -60,12 +67,6 @@ struct RecognizedItem {
     int imageIndex = -1;
 };
 
-struct TokenUsage {
-    int promptTokens = 0;
-    int completionTokens = 0;
-    int totalTokens = 0;
-};
-
 // Which original images (0-based indices into RecognitionRequest::images) one request covered;
 // -1 for text input.
 struct BatchSpan {
@@ -88,20 +89,6 @@ struct RecognitionResult {
     bool truncated = false;
 };
 
-enum class ErrorKind {
-    NotConfigured,
-    NoNetwork,
-    Timeout,
-    AuthFailed,
-    QuotaOrRateLimit,
-    ServerError,
-    RequestRejected, // any other 4xx
-    BadResponse,
-    InvalidInput,
-    SecureConnectionFailed, // TLS handshake or certificate trouble (often a wrong system clock)
-    Internal, // a part of the app is broken (e.g. a missing image plugin), not the user or the network
-};
-
 struct RecognitionError {
     ErrorKind kind = ErrorKind::BadResponse;
     QString userMessage; // Chinese, no technical detail
@@ -109,7 +96,6 @@ struct RecognitionError {
     int httpStatus = 0;
 };
 
-QString enumKey(ErrorKind kind);
 QString userMessageFor(ErrorKind kind);
 RecognitionError makeError(ErrorKind kind, const QString &detail, int httpStatus = 0);
 

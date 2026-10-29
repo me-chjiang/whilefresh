@@ -37,20 +37,6 @@ constexpr Name<StorageKind> kStorages[] = {
     { StorageKind::Freezer, "freezer" },
     { StorageKind::Room, "room" },
 };
-constexpr Name<ErrorKind> kErrorKinds[] = {
-    { ErrorKind::NotConfigured, "not-configured" },
-    { ErrorKind::NoNetwork, "no-network" },
-    { ErrorKind::Timeout, "timeout" },
-    { ErrorKind::AuthFailed, "auth-failed" },
-    { ErrorKind::QuotaOrRateLimit, "quota-or-rate-limit" },
-    { ErrorKind::ServerError, "server-error" },
-    { ErrorKind::RequestRejected, "request-rejected" },
-    { ErrorKind::BadResponse, "bad-response" },
-    { ErrorKind::InvalidInput, "invalid-input" },
-    { ErrorKind::SecureConnectionFailed, "secure-connection-failed" },
-    { ErrorKind::Internal, "internal" },
-};
-
 template<typename E, size_t N>
 QString nameOf(const Name<E> (&table)[N], E value)
 {
@@ -82,7 +68,6 @@ QString enumKey(ItemCategory category) { return nameOf(kCategories, category); }
 std::optional<ItemCategory> itemCategoryFromString(const QString &text) { return valueOf(kCategories, text); }
 QString enumKey(StorageKind storage) { return nameOf(kStorages, storage); }
 std::optional<StorageKind> storageKindFromString(const QString &text) { return valueOf(kStorages, text); }
-QString enumKey(ErrorKind kind) { return nameOf(kErrorKinds, kind); }
 
 QString uncategorizedName()
 {

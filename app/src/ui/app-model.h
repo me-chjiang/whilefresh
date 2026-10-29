@@ -1,5 +1,7 @@
 #pragma once
 
+#include "ai/api-keys.h"
+#include "ai/deepseek-chat-client.h"
 #include "core/clock.h"
 #include "data/builtin-data.h"
 #include "data/database.h"
@@ -140,6 +142,10 @@ private:
     platform::PlatformServices *m_platform;
     std::shared_ptr<const data::BuiltinData> m_builtin;
     core::SystemClock m_clock;
+    // Swappable at runtime (m_chat->setCredentials); declared before the sessions so their
+    // recognizers never outlive the client.
+    std::shared_ptr<ai::CredentialProvider> m_credentials = std::make_shared<ai::BuiltinCredentialProvider>();
+    std::unique_ptr<ai::DeepSeekChatClient> m_chat = std::make_unique<ai::DeepSeekChatClient>(m_credentials);
     std::unique_ptr<Session> m_real;
     std::unique_ptr<Session> m_demo;
     Session *m_active = nullptr;
