@@ -14,3 +14,4 @@ whilefresh_add_ai_test(deepseek-chat-client-test deepseek-chat-client-test.cpp a
 whilefresh_add_ai_test(chat-recording-test chat-recording-test.cpp ai-test-support.h fake-http-server.h)
 whilefresh_add_ai_test(chat-types-test chat-types-test.cpp ai-test-support.h)
 whilefresh_add_ai_test(system-prompt-builder-test system-prompt-builder-test.cpp)
+whilefresh_add_ai_test(ingredient-classifier-test ingredient-classifier-test.cpp ai-test-support.h)

@@ -4,6 +4,11 @@
 //                 [--no-thinking] [--record <file>] <image>...
 //   recognize-cli --vocab <vocabulary.json> [--record <file>] --text <order-text-file>
 //   recognize-cli --vocab <vocabulary.json> --replay <recording> (same input as when recorded)
+//   recognize-cli --vocab <vocabulary.json> --classify <names-file> [--record <file> | --replay <file>]
+//
+// --classify sends the product names of a text file (one per line) to the ingredient
+// classifier instead (one text-only call) and prints each name with its standard name; its
+// recordings are ai chat recordings (format 2).
 //
 // Calls the real DeepSeek API (billed) with the key compiled in by
 // `scripts/build-desktop.sh --with-key`, prints a summary of the parsed result, and can save a
@@ -14,6 +19,7 @@
 
 #include "ai/api-keys.h"
 #include "ai/deepseek-chat-client.h"
+#include "ai/ingredient-classifier.h"
 #include "ai/recorded-chat-client.h"
 #include "recognition/deepseek-recognizer.h"
 #include "recognition/recording.h"
@@ -82,6 +88,45 @@ void printSummary(const RecognitionResult &result)
     out().flush();
 }
 
+int classifyNames(QCoreApplication &app, const QCommandLineParser &parser,
+                  whilefresh::ai::RecordingChatClient &recorder,
+                  std::shared_ptr<const whilefresh::core::IngredientCatalog> catalog, const QStringList &names)
+{
+    using whilefresh::ai::Classification;
+    whilefresh::ai::IngredientClassifier classifier(&recorder, std::move(catalog));
+    int exitCode = 1;
+    QObject::connect(&classifier, &whilefresh::ai::IngredientClassifier::classified, &app,
+                     [&](quint64, const Classification &result) {
+                         out() << "elapsed: " << result.elapsedMs << " ms  tokens: " << result.usage.totalTokens
+                               << " (prompt " << result.usage.promptTokens << ", completion "
+                               << result.usage.completionTokens << ")  classified: " << result.canonical.size()
+                               << "/" << names.size() << "  rejected: " << result.rejected << "\n";
+                         for (const QString &name : names)
+                             out() << name << " -> " << result.canonical.value(name, QStringLiteral("none")) << "\n";
+                         exitCode = 0;
+                         if (parser.isSet(QStringLiteral("record"))) {
+                             QString recordError;
+                             const QString path = parser.value(QStringLiteral("record"));
+                             if (whilefresh::ai::writeChatRecording(path, recorder.recording(), &recordError))
+                                 out() << "recorded: " << path << "\n";
+                             else {
+                                 err() << "error: " << recordError << "\n";
+                                 exitCode = 1;
+                             }
+                         }
+                         out().flush();
+                         app.quit();
+                     });
+    QObject::connect(&classifier, &whilefresh::ai::IngredientClassifier::failed, &app,
+                     [&](quint64, const whilefresh::ai::ChatError &failure) {
+                         err() << "failed (" << whilefresh::ai::enumKey(failure.kind) << "): " << failure.detail << "\n";
+                         app.quit();
+                     });
+    classifier.classify(names);
+    app.exec();
+    return exitCode;
+}
+
 }
 
 int main(int argc, char *argv[])
@@ -99,6 +144,7 @@ int main(int argc, char *argv[])
     parser.addOption({ QStringLiteral("no-thinking"), QStringLiteral("Send thinking disabled (default: thinking on, as validated).") });
     parser.addOption({ QStringLiteral("record"), QStringLiteral("Save the raw responses as a recording."), QStringLiteral("file") });
     parser.addOption({ QStringLiteral("replay"), QStringLiteral("Answer from a recording instead of the network."), QStringLiteral("file") });
+    parser.addOption({ QStringLiteral("classify"), QStringLiteral("Classify the product names in a file (one per line)."), QStringLiteral("file") });
     parser.process(app);
 
     if (!parser.isSet(QStringLiteral("vocab"))) {
@@ -112,9 +158,23 @@ int main(int argc, char *argv[])
         return 2;
     }
 
+    const auto catalog = std::make_shared<const whilefresh::core::IngredientCatalog>(*vocabulary);
+    QStringList namesToClassify;
     RecognitionRequest request;
-    request.catalog = std::make_shared<const whilefresh::core::IngredientCatalog>(*vocabulary);
-    if (parser.isSet(QStringLiteral("text"))) {
+    request.catalog = catalog;
+    if (parser.isSet(QStringLiteral("classify"))) {
+        QFile file(parser.value(QStringLiteral("classify")));
+        if (!file.open(QIODevice::ReadOnly)) {
+            err() << "error: cannot read names file: " << file.errorString() << "\n";
+            return 2;
+        }
+        namesToClassify = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        namesToClassify = whilefresh::ai::IngredientClassifier::namesToSend(namesToClassify);
+        if (namesToClassify.isEmpty()) {
+            err() << "error: no names to classify\n";
+            return 2;
+        }
+    } else if (parser.isSet(QStringLiteral("text"))) {
         QFile file(parser.value(QStringLiteral("text")));
         if (!file.open(QIODevice::ReadOnly)) {
             err() << "error: cannot read text file: " << file.errorString() << "\n";
@@ -179,6 +239,9 @@ int main(int argc, char *argv[])
         }
     }
     whilefresh::ai::RecordingChatClient recorder(transport.get());
+
+    if (!namesToClassify.isEmpty())
+        return classifyNames(app, parser, recorder, catalog, namesToClassify);
 
     DeepSeekRecognizer recognizer(&recorder);
     RequestOptions options;
