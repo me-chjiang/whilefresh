@@ -17,6 +17,19 @@ QString enumKey(NameSource source)
     return {};
 }
 
+namespace {
+
+bool hasChildren(const IngredientCatalog &catalog, const QString &name)
+{
+    for (const CatalogEntry &entry : catalog.entries()) {
+        if (entry.parent == name && entry.name != name)
+            return true;
+    }
+    return false;
+}
+
+}
+
 NameResolution VocabularyResolver::resolve(const QString &rawName, const QString &suggested) const
 {
     if (m_mappings) {
@@ -27,7 +40,10 @@ NameResolution VocabularyResolver::resolve(const QString &rawName, const QString
     const QString finest = m_catalog.resolveFinest(rawName);
     const QString model = m_catalog.resolve(suggested);
     if (!model.isEmpty()) {
-        if (!finest.isEmpty() && finest != model && m_catalog.satisfies(finest, model))
+        const bool finer = !finest.isEmpty() && finest != model
+            && (m_catalog.satisfies(finest, model)
+                || (m_catalog.categoryOf(finest) == m_catalog.categoryOf(model) && hasChildren(m_catalog, model)));
+        if (finer)
             return { finest, NameSource::Recognized };
         return { model, NameSource::Recognized };
     }

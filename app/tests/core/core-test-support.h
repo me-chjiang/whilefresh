@@ -20,6 +20,7 @@ inline IngredientCatalog smallCatalog()
         {"name": "土豆", "category": "vegetable", "aliases": []},
         {"name": "猪肉", "category": "meat", "aliases": []},
         {"name": "五花肉", "category": "meat", "aliases": [], "parent": "猪肉"},
+        {"name": "梅花肉", "category": "meat", "aliases": []},
         {"name": "牛奶", "category": "egg_dairy", "aliases": []},
         {"name": "淡奶油", "category": "egg_dairy", "aliases": []},
         {"name": "鸡蛋", "category": "egg_dairy", "aliases": [], "bulk_default": true},

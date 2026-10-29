@@ -40,6 +40,9 @@ private slots:
         // 五花肉 is no descendant of 土豆: the model's reading of the whole title stands.
         resolution = resolver.resolve(QStringLiteral("土豆炖五花肉 料理包"), QStringLiteral("土豆"));
         QCOMPARE(resolution.canonical, QStringLiteral("土豆"));
+        // A generic parent gives way to a same-category entry the title names (梅花肉 has no parent).
+        QCOMPARE(resolver.resolve(QStringLiteral("黑猪梅花肉切片"), QStringLiteral("猪肉")).canonical,
+                 QStringLiteral("梅花肉"));
         resolution = resolver.resolve(QStringLiteral("番茄"), QStringLiteral("番茄"));
         QCOMPARE(resolution.canonical, QStringLiteral("西红柿")); // aliases are normalised
     }
