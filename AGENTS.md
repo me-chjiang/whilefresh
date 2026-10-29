@@ -5,13 +5,13 @@
 ## 项目概述
 
 - 项目类型：AI 产品探索与 Landing Project。
-- 当前阶段：围绕帮助家庭消耗已购食材的单人手机客户端开展需求验证、产品定义与原型设计；未来可扩展多人协作，已完成 Android MVP 试用版（Qt 6.8.2），下一步为测试迭代与真机验证。
+- 当前阶段：围绕帮助家庭消耗已购食材的单人手机客户端开展需求验证、产品定义与原型设计；未来可扩展多人协作，已完成 Android MVP 试用版 0.1.0（Qt 6.8.2），正在按 PRD v6 进行第二轮开发。
 - 目标：产出可供团队评估和继续实现的产品方案、调研与原型。
-- 当前产品定义见 `docs/prd-v5.md`，历史版本在 `docs/archive/`；MVP 进度见 `docs/mvp/cycle-state.md`。
+- 当前产品定义见 `docs/prd-v6.md`，历史版本在 `docs/archive/`；进度见 `docs/mvp/cycle-state.md`，第二轮计划见 `docs/mvp/round-2-plan.md`。
 
 ## 目录结构
 
-- `docs/`：产品定义（`prd-v5.md`）、MVP 过程文档（`mvp/`）、开发文档（`development.md`）与历史版本（`archive/`）。
+- `docs/`：产品定义（`prd-v6.md`）、MVP 过程文档（`mvp/`）、开发文档（`development.md`）与历史版本（`archive/`）。
 - `.agents/skills/`：Codex 项目级 skills 的实际文件；`.claude/skills/` 通过符号链接供 Claude Code 使用。
 - `private/`：个人、敏感资料及已归档材料。AI 工具不得浏览、列举、搜索或读取 `private/pending/` 中的内容；只有用户明确要求处理归档材料时例外。
 - `AGENTS.md`：跨工具共用的项目规则。

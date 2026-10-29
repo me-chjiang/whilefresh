@@ -1,6 +1,6 @@
 # 趁鲜 MVP 工程规划
 
-> loop-dev-cycle Phase 1 产出（即 skill 的 `PLAN.md`），2026-10-20。依据 [MVP 需求确认稿](mvp-requirements.md) 与 [PRD v5](../prd-v5.md)。状态：已执行（Phase 1 于 2026-10-20 通过；T0–T11 于 2026-10-21 合并；真机验收未做）。
+> loop-dev-cycle Phase 1 产出（即 skill 的 `PLAN.md`），2026-10-20。依据 [MVP 需求确认稿](mvp-requirements.md) 与 [PRD v5](../archive/prd-v5.md)。状态：已执行（Phase 1 于 2026-10-20 通过；T0–T11 于 2026-10-21 合并；真机验收未做）。
 
 ## 1. 架构概述
 

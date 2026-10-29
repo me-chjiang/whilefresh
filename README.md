@@ -69,7 +69,7 @@ docs/      产品定义、MVP 过程文档、开发文档
 
 | 文档 | 内容 |
 | --- | --- |
-| [PRD v5](docs/prd-v5.md) | 当前产品定义 |
+| [PRD v6](docs/prd-v6.md) | 当前产品定义 |
 | [MVP 需求](docs/mvp/mvp-requirements.md) | 功能范围与验收标准 |
 | [MVP 规划](docs/mvp/mvp-plan.md) | 架构、技术决策、任务拆解 |
 | [进度与决策](docs/mvp/cycle-state.md) | 已完成阶段与决策日志 |
