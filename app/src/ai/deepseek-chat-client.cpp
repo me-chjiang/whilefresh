@@ -36,6 +36,15 @@ ErrorKind kindForNetworkError(QNetworkReply::NetworkError error)
     }
 }
 
+bool isRetryableFailure(QNetworkReply::NetworkError error, int status)
+{
+    if (status >= 500)
+        return true;
+    // The server hung up without (finishing) an answer. Protocol errors are not retried: a
+    // second attempt would most likely be garbled the same way.
+    return status < 400 && error == QNetworkReply::RemoteHostClosedError;
+}
+
 namespace {
 
 constexpr int kMaxRetries = 1;
@@ -94,6 +103,26 @@ quint64 DeepSeekChatClient::sendEncoded(const EncodedChatRequest &request)
     call.request = request;
     call.key = key;
     call.total.start();
+
+    // One deadline for the whole call, retry included: the user is waiting for all of it.
+    const int deadlineMs = request.deadlineMs.value_or(m_deadlineMs);
+    auto *deadline = new QTimer(this);
+    deadline->setSingleShot(true);
+    connect(deadline, &QTimer::timeout, this, [this, id, deadlineMs] {
+        const auto it = m_calls.find(id);
+        if (it == m_calls.end())
+            return;
+        it->deadlineHit = true;
+        if (it->reply) {
+            it->reply->abort(); // replyFinished() reports the timeout
+            return;
+        }
+        qCWarning(lcAi, "chat %llu failed: kind=timeout while waiting to retry", id);
+        fail(id, { ErrorKind::Timeout, QStringLiteral("no complete answer within the %1 ms deadline").arg(deadlineMs), 0 });
+    });
+    deadline->start(deadlineMs);
+    call.deadline = deadline;
+
     post(id);
     return id;
 }
@@ -104,8 +133,7 @@ void DeepSeekChatClient::cancel(quint64 requestId)
     if (it == m_calls.end())
         return;
     QPointer<QNetworkReply> reply = it->reply;
-    stopDeadline(*it);
-    m_calls.erase(it);
+    remove(requestId);
     if (reply)
         reply->abort(); // its finished handler finds no call and discards the reply
     qCInfo(lcAi, "chat %llu cancelled", requestId);
@@ -118,7 +146,7 @@ void DeepSeekChatClient::post(quint64 id)
     QNetworkRequest request(m_endpoint);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     request.setRawHeader("Authorization", "Bearer " + call.key.toUtf8());
-    request.setTransferTimeout(m_idleTimeoutMs);
+    request.setTransferTimeout(call.request.idleTimeoutMs.value_or(m_idleTimeoutMs));
 
     const ChatRequestSummary &summary = call.request.summary;
     qCInfo(lcAi, "chat %llu sending: model=%s messages=%d images=%d text=%d bytes=%lld json=%d max_tokens=%d attempt=%d",
@@ -126,31 +154,21 @@ void DeepSeekChatClient::post(quint64 id)
            qint64(call.request.body.size()), summary.jsonMode, summary.maxTokens, call.attempt + 1);
 
     call.attemptTimer.start();
-    call.deadlineHit = false;
     QNetworkReply *reply = m_network.post(request, call.request.body);
     call.reply = reply;
-
-    auto *deadline = new QTimer(this);
-    deadline->setSingleShot(true);
-    connect(deadline, &QTimer::timeout, this, [this, id] {
-        const auto it = m_calls.find(id);
-        if (it == m_calls.end() || !it->reply)
-            return;
-        it->deadlineHit = true;
-        it->reply->abort();
-    });
-    deadline->start(m_deadlineMs);
-    call.deadline = deadline;
     connect(reply, &QNetworkReply::finished, this, [this, id, reply] { replyFinished(id, reply); });
 }
 
-void DeepSeekChatClient::stopDeadline(Call &call)
+void DeepSeekChatClient::remove(quint64 id)
 {
-    if (call.deadline) {
-        call.deadline->stop();
-        call.deadline->deleteLater();
-        call.deadline = nullptr;
+    const auto it = m_calls.find(id);
+    if (it == m_calls.end())
+        return;
+    if (it->deadline) {
+        it->deadline->stop();
+        it->deadline->deleteLater();
     }
+    m_calls.erase(it);
 }
 
 void DeepSeekChatClient::replyFinished(quint64 id, QNetworkReply *reply)
@@ -161,7 +179,6 @@ void DeepSeekChatClient::replyFinished(quint64 id, QNetworkReply *reply)
         return;
     Call &call = *it;
     call.reply = nullptr;
-    stopDeadline(call);
 
     const QByteArray body = reply->readAll();
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
@@ -170,11 +187,13 @@ void DeepSeekChatClient::replyFinished(quint64 id, QNetworkReply *reply)
     if (reply->error() != QNetworkReply::NoError || status < 200 || status >= 300) {
         const ChatError error = call.deadlineHit
             ? ChatError{ ErrorKind::Timeout,
-                         QStringLiteral("no complete answer within the %1 ms deadline").arg(m_deadlineMs), status }
+                         QStringLiteral("no complete answer within the %1 ms deadline")
+                             .arg(call.request.deadlineMs.value_or(m_deadlineMs)),
+                         status }
             : classifyFailure(reply, status, body);
         qCWarning(lcAi, "chat %llu failed: kind=%s status=%d elapsed=%lldms attempt=%d", id,
                   qUtf8Printable(enumKey(error.kind)), status, elapsed, call.attempt + 1);
-        if (error.kind == ErrorKind::ServerError && call.attempt < kMaxRetries) {
+        if (!call.deadlineHit && isRetryableFailure(reply->error(), status) && call.attempt < kMaxRetries) {
             ++call.attempt;
             QTimer::singleShot(m_retryDelayMs, this, [this, id] {
                 if (m_calls.contains(id))
@@ -198,13 +217,13 @@ void DeepSeekChatClient::replyFinished(quint64 id, QNetworkReply *reply)
     qCInfo(lcAi, "chat %llu ok: status=%d bytes=%lld elapsed=%lldms finish=%s prompt=%d completion=%d total=%d", id,
            status, qint64(body.size()), elapsed, qUtf8Printable(result->finishReason), result->usage.promptTokens,
            result->usage.completionTokens, result->usage.totalTokens);
-    m_calls.remove(id);
+    remove(id);
     emit succeeded(id, *result);
 }
 
 void DeepSeekChatClient::fail(quint64 id, const ChatError &error)
 {
-    m_calls.remove(id);
+    remove(id);
     emit failed(id, error);
 }
 

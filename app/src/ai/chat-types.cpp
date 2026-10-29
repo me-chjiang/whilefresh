@@ -118,6 +118,8 @@ EncodedChatRequest encodeChatRequest(const ChatRequest &request)
     summary.messageCount = int(request.messages.size());
     summary.jsonMode = request.jsonMode;
     summary.maxTokens = request.maxTokens.value_or(0);
+    encoded.idleTimeoutMs = request.idleTimeoutMs;
+    encoded.deadlineMs = request.deadlineMs;
     for (const ChatMessage &message : request.messages) {
         for (const ChatPart &part : message.parts) {
             if (part.type == ChatPart::Type::ImageUrl)
@@ -163,6 +165,31 @@ std::optional<ChatResult> parseChatResponse(const QByteArray &body, ChatError *e
     result.usage.totalTokens = usage.value(QStringLiteral("total_tokens")).toInt();
     result.rawBody = body;
     return result;
+}
+
+std::optional<QJsonObject> parseJsonContent(const ChatResult &result, ChatError *error)
+{
+    QString text = result.content.trimmed();
+    if (text.startsWith(QLatin1String("```"))) {
+        const qsizetype firstLine = text.indexOf(QLatin1Char('\n'));
+        text = firstLine < 0 ? QString() : text.mid(firstLine + 1);
+        if (text.trimmed().endsWith(QLatin1String("```")))
+            text = text.trimmed().chopped(3);
+    }
+
+    QJsonParseError parseError;
+    const QJsonDocument doc = QJsonDocument::fromJson(text.toUtf8(), &parseError);
+    if (doc.isObject())
+        return doc.object();
+    if (error) {
+        const QString reason = doc.isNull() ? parseError.errorString() : QStringLiteral("not an object");
+        *error = { ErrorKind::BadResponse,
+                   QStringLiteral("model text is not a JSON object (%1, finish_reason=%2, %3 chars)")
+                       .arg(reason, result.finishReason)
+                       .arg(result.content.size()),
+                   0 };
+    }
+    return std::nullopt;
 }
 
 }

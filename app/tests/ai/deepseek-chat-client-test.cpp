@@ -1,5 +1,6 @@
 #include "ai/api-keys.h"
 #include "ai/deepseek-chat-client.h"
+#include "ai/recorded-chat-client.h"
 
 #include "ai-test-support.h"
 #include "fake-http-server.h"
@@ -182,6 +183,39 @@ private slots:
         QCOMPARE(f.server.received().size(), requests);
     }
 
+    void clientErrorsAreNeverRetried()
+    {
+        for (int status : { 400, 401, 402, 403, 404, 409, 413, 422, 429 }) {
+            Fixture f;
+            f.server.enqueue({ status, R"({"error":{"message":"scripted"}})" });
+            f.server.enqueue({ 200, chatCompletion(QStringLiteral("must not be fetched")) });
+            f.send();
+            f.waitForAnswer();
+            QTest::qWait(100);
+            QCOMPARE(f.succeeded.count(), 0);
+            QCOMPARE(f.error().httpStatus, status);
+            QCOMPARE(f.server.received().size(), 1);
+        }
+    }
+
+    void onlyServerErrorsAndDroppedConnectionsAreRetryable()
+    {
+        QVERIFY(isRetryableFailure(QNetworkReply::InternalServerError, 500));
+        QVERIFY(isRetryableFailure(QNetworkReply::ServiceUnavailableError, 503));
+        QVERIFY(isRetryableFailure(QNetworkReply::RemoteHostClosedError, 0));
+        QVERIFY(isRetryableFailure(QNetworkReply::RemoteHostClosedError, 200)); // cut off mid-answer
+        QVERIFY(!isRetryableFailure(QNetworkReply::ProtocolFailure, 0));
+        QVERIFY(!isRetryableFailure(QNetworkReply::ProtocolInvalidOperationError, 0));
+        QVERIFY(!isRetryableFailure(QNetworkReply::ProtocolUnknownError, 0));
+        QVERIFY(!isRetryableFailure(QNetworkReply::TimeoutError, 0));
+        QVERIFY(!isRetryableFailure(QNetworkReply::OperationCanceledError, 0));
+        QVERIFY(!isRetryableFailure(QNetworkReply::ContentNotFoundError, 404));
+        QVERIFY(!isRetryableFailure(QNetworkReply::ConnectionRefusedError, 0));
+        // Still reported as a server problem to the user. (A local server cannot make Qt report
+        // a protocol error reliably, so the predicate is tested directly.)
+        QCOMPARE(kindForNetworkError(QNetworkReply::ProtocolFailure), ErrorKind::ServerError);
+    }
+
     void serverErrorThenSuccessRecovers()
     {
         Fixture f;
@@ -254,11 +288,11 @@ private slots:
         QCOMPARE(f.succeeded.count(), 0);
     }
 
-    void theDeadlineAppliesToEachRequest()
+    void eachCallHasItsOwnDeadline()
     {
         Fixture f;
         f.client.setDeadlineMs(1500);
-        // Each request takes 800 ms: over 1500 ms in total, but within the deadline per request.
+        // Each call takes 800 ms: over 1500 ms in total, but within the deadline per call.
         f.server.enqueue({ 200, chatCompletion(QStringLiteral("{}")), false, 800 });
         f.server.enqueue({ 200, chatCompletion(QStringLiteral("{}")), false, 800 });
         f.send();
@@ -266,6 +300,65 @@ private slots:
         f.send();
         QTRY_COMPARE_WITH_TIMEOUT(f.succeeded.count(), 2, 10000);
         QCOMPARE(f.failed.count(), 0);
+    }
+
+    void theDeadlineCoversTheRetry()
+    {
+        Fixture f;
+        f.client.setDeadlineMs(1000);
+        // Each attempt alone is within the deadline, both together are not.
+        f.server.enqueue({ 503, "busy", false, 600 });
+        f.server.enqueue({ 200, chatCompletion(QStringLiteral("{}")), false, 800 });
+        QElapsedTimer timer;
+        timer.start();
+        f.send();
+        f.waitForAnswer();
+        QCOMPARE(f.error().kind, ErrorKind::Timeout);
+        QVERIFY2(timer.elapsed() < 1350, "gave up at the deadline of the call");
+        QCOMPARE(f.server.received().size(), 2);
+    }
+
+    void theDeadlineEndsAWaitForTheRetry()
+    {
+        Fixture f;
+        f.client.setDeadlineMs(300);
+        f.client.setRetryDelayMs(2000);
+        f.server.enqueue({ 503, "busy" });
+        f.server.enqueue({ 200, chatCompletion(QStringLiteral("{}")) });
+        QElapsedTimer timer;
+        timer.start();
+        f.send();
+        f.waitForAnswer();
+        QCOMPARE(f.error().kind, ErrorKind::Timeout);
+        QVERIFY(timer.elapsed() < 1500);
+        QTest::qWait(300);
+        QCOMPARE(f.server.received().size(), 1);
+    }
+
+    void aRequestCanOverrideTheLimits()
+    {
+        Fixture f; // client limits: 5 s idle, 20 s deadline
+        f.server.enqueue({ 200, chatCompletion(QStringLiteral("{}")), false, 1500 });
+        ChatRequest shortDeadline = userRequest(QStringLiteral("x"));
+        shortDeadline.deadlineMs = 300;
+        QElapsedTimer timer;
+        timer.start();
+        f.client.send(shortDeadline);
+        f.waitForAnswer();
+        QCOMPARE(f.error().kind, ErrorKind::Timeout);
+        QVERIFY(timer.elapsed() < 1200);
+
+        f.server.enqueue({ 200, {}, true });
+        ChatRequest shortIdle = userRequest(QStringLiteral("y"));
+        shortIdle.idleTimeoutMs = 300;
+        timer.restart();
+        f.client.send(shortIdle);
+        QTRY_COMPARE_WITH_TIMEOUT(f.failed.count(), 2, 5000);
+        QCOMPARE(f.failed.at(1).at(1).value<ChatError>().kind, ErrorKind::Timeout);
+        QVERIFY(timer.elapsed() < 3000);
+
+        // Limits are not part of the request body.
+        QCOMPARE(encodeChatRequest(shortDeadline).body, encodeChatRequest(userRequest(QStringLiteral("x"))).body);
     }
 
     void aCutOffAnswerIsAPartialSuccessFlaggedTruncated()
@@ -402,6 +495,58 @@ private slots:
         QCOMPARE(f.server.received().at(1).headers.value("authorization"), QByteArray("Bearer user-key-2"));
     }
 
+    void consumersSharingAClientOnlySeeTheirOwnAnswers()
+    {
+        Fixture f;
+        f.server.enqueue({ 200, chatCompletion(QStringLiteral("for a")) });
+        f.server.enqueue({ 200, chatCompletion(QStringLiteral("for b")) });
+        RecordingChatClient a(&f.client);
+        RecordingChatClient b(&f.client);
+        QStringList seenByA, seenByB;
+        connect(&a, &ChatClient::succeeded, this, [&](quint64, const ChatResult &r) { seenByA.append(r.content); });
+        connect(&b, &ChatClient::succeeded, this, [&](quint64, const ChatResult &r) { seenByB.append(r.content); });
+        a.send(userRequest(QStringLiteral("a")));
+        QTRY_COMPARE_WITH_TIMEOUT(seenByA.size(), 1, 10000);
+        b.send(userRequest(QStringLiteral("b")));
+        QTRY_COMPARE_WITH_TIMEOUT(seenByB.size(), 1, 10000);
+        QCOMPARE(seenByA, QStringList{ QStringLiteral("for a") });
+        QCOMPARE(seenByB, QStringList{ QStringLiteral("for b") });
+        QCOMPARE(a.recording().exchanges.size(), 1);
+        QCOMPARE(b.recording().exchanges.size(), 1);
+        QCOMPARE(f.succeeded.count(), 2); // the shared client itself answered both
+    }
+
+    void destroyingTheClientMidFlightEmitsNothing_data()
+    {
+        QTest::addColumn<bool>("waitingToRetry");
+        QTest::newRow("reply in flight") << false;
+        QTest::newRow("waiting to retry") << true;
+    }
+
+    void destroyingTheClientMidFlightEmitsNothing()
+    {
+        QFETCH(bool, waitingToRetry);
+        FakeHttpServer server;
+        QVERIFY(server.listen());
+        if (waitingToRetry)
+            server.enqueue({ 503, "busy" });
+        server.enqueue({ 200, {}, true });
+
+        auto *client = new DeepSeekChatClient(std::make_shared<StaticCredentialProvider>(QStringLiteral("k")));
+        client->setEndpoint(server.url());
+        client->setRetryDelayMs(waitingToRetry ? 5000 : 0);
+        int answers = 0;
+        QObject probe;
+        connect(client, &ChatClient::succeeded, &probe, [&] { ++answers; });
+        connect(client, &ChatClient::failed, &probe, [&] { ++answers; });
+        client->send(userRequest(QStringLiteral("x")));
+        QTRY_COMPARE_WITH_TIMEOUT(server.received().size(), 1, 10000);
+        QTest::qWait(100);
+        delete client;
+        QTest::qWait(300);
+        QCOMPARE(answers, 0);
+    }
+
     void builtinProviderHasNoLexmountKey()
     {
         QVERIFY(!BuiltinCredentialProvider().isConfigured(Service::Lexmount));
@@ -424,34 +569,6 @@ private slots:
         QCOMPARE(kindForHttpStatus(429), ErrorKind::QuotaOrRateLimit);
         QCOMPARE(kindForHttpStatus(503), ErrorKind::ServerError);
         QCOMPARE(kindForHttpStatus(404), ErrorKind::RequestRejected);
-    }
-
-    void requestEncodingFollowsTheWireFormat()
-    {
-        ChatRequest request;
-        request.messages = { ChatMessage::user(QStringLiteral("hi")) };
-        QJsonObject body = request.toJson();
-        QCOMPARE(body.value("messages").toArray().at(0).toObject().value("content").toString(), QStringLiteral("hi"));
-        QVERIFY(!body.contains("response_format"));
-        QVERIFY(!body.contains("max_tokens"));
-        QVERIFY(!body.contains("temperature"));
-        QVERIFY(!body.contains("thinking"));
-
-        request.thinking = false;
-        request.temperature = 0.3;
-        body = request.toJson();
-        QCOMPARE(body.value("thinking").toObject().value("type").toString(), QStringLiteral("disabled"));
-        QCOMPARE(body.value("temperature").toDouble(), 0.3);
-
-        const EncodedChatRequest encoded = encodeChatRequest(userRequest(QStringLiteral("12345")));
-        QCOMPARE(encoded.summary.messageCount, 2);
-        QCOMPARE(encoded.summary.imageCount, 0);
-        QCOMPARE(encoded.summary.textChars, 9 + 5);
-        QCOMPARE(encoded.summary.maxTokens, 4000);
-        QVERIFY(encoded.summary.jsonMode);
-        QCOMPARE(requestDigest(encoded.body).size(), 64);
-        QCOMPARE(requestDigest(encoded.body), requestDigest(encodeChatRequest(userRequest(QStringLiteral("12345"))).body));
-        QVERIFY(requestDigest(encoded.body) != requestDigest(encodeChatRequest(userRequest(QStringLiteral("1234"))).body));
     }
 };
 

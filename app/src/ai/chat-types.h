@@ -72,6 +72,9 @@ struct ChatRequest {
     std::optional<int> maxTokens;
     std::optional<double> temperature;
     bool thinking = true; // false sends "thinking": {"type": "disabled"}
+    // Override the client's limits for this request (e.g. short text-only JSON calls); not sent.
+    std::optional<int> idleTimeoutMs;
+    std::optional<int> deadlineMs;
 
     QJsonObject toJson() const;
 };
@@ -91,6 +94,8 @@ struct ChatRequestSummary {
 struct EncodedChatRequest {
     QByteArray body;
     ChatRequestSummary summary;
+    std::optional<int> idleTimeoutMs;
+    std::optional<int> deadlineMs;
 };
 
 EncodedChatRequest encodeChatRequest(const ChatRequest &request);
@@ -113,6 +118,10 @@ struct ChatResult {
 // Reads a 2xx chat-completions body. Fails with BadResponse when it is not JSON or has no
 // message content.
 std::optional<ChatResult> parseChatResponse(const QByteArray &body, ChatError *error);
+
+// The model text of a JSON-mode answer as an object; a surrounding ```json fence is tolerated.
+// Fails with BadResponse when it is not a JSON object (a truncated answer usually is not).
+std::optional<QJsonObject> parseJsonContent(const ChatResult &result, ChatError *error = nullptr);
 
 }
 

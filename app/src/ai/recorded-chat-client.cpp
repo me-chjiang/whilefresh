@@ -7,25 +7,28 @@ namespace whilefresh::ai {
 quint64 RecordedChatClient::sendEncoded(const EncodedChatRequest &request)
 {
     const quint64 id = nextRequestId();
-    const qsizetype index = m_requests.size();
+    m_pending.insert(id, m_requests.size());
     m_requests.append(request);
-    m_pending.insert(id);
-    QTimer::singleShot(0, this, [this, id, index] { answer(id, index); });
+    QTimer::singleShot(0, this, [this, id] { answer(id); });
     return id;
 }
 
-void RecordedChatClient::answer(quint64 id, qsizetype index)
+void RecordedChatClient::answer(quint64 id)
 {
-    if (!m_pending.remove(id))
+    const auto pending = m_pending.constFind(id);
+    if (pending == m_pending.cend())
         return;
+    const EncodedChatRequest &request = m_requests.at(pending.value());
+    m_pending.erase(pending);
 
+    const qsizetype index = m_answered++;
     if (index >= m_recording.exchanges.size()) {
         emit failed(id, { ErrorKind::BadResponse,
                           QStringLiteral("the recording has no answer for request %1").arg(index + 1), 0 });
         return;
     }
     const ChatExchange &exchange = m_recording.exchanges.at(index);
-    if (!exchange.requestDigest.isEmpty() && exchange.requestDigest != requestDigest(m_requests.at(index).body)) {
+    if (!exchange.requestDigest.isEmpty() && exchange.requestDigest != requestDigest(request.body)) {
         emit failed(id, { ErrorKind::BadResponse,
                           QStringLiteral("request %1 differs from the recorded one; re-record").arg(index + 1), 0 });
         return;

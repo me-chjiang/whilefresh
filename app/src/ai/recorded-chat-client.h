@@ -4,12 +4,13 @@
 #include "ai/chat-recording.h"
 
 #include <QElapsedTimer>
-#include <QSet>
+#include <QHash>
 
 namespace whilefresh::ai {
 
-// Answers requests from a recording, in order: the n-th request gets the n-th exchange (its
-// response or its error). An exchange with a digest only answers the identical request body;
+// Answers requests from a recording, in order: the n-th answered request gets the n-th exchange
+// (its response or its error). A request cancelled before its answer uses up nothing, matching
+// RecordingChatClient, which leaves cancelled requests out. An exchange with a digest only answers the identical request body;
 // anything else fails with BadResponse so stale recordings show up instead of passing
 // silently. For tests and offline replay of every AI service.
 class RecordedChatClient : public ChatClient
@@ -26,16 +27,17 @@ public:
     void cancel(quint64 requestId) override { m_pending.remove(requestId); }
     bool isConfigured() const override { return true; }
 
-    // Every request received so far, in order.
+    // Every request received so far, in order, cancelled ones included.
     const QList<EncodedChatRequest> &requests() const { return m_requests; }
-    qsizetype remaining() const { return m_recording.exchanges.size() - m_requests.size(); }
+    qsizetype remaining() const { return m_recording.exchanges.size() - m_answered; }
 
 private:
-    void answer(quint64 id, qsizetype index);
+    void answer(quint64 id);
 
     ChatRecording m_recording;
     QList<EncodedChatRequest> m_requests;
-    QSet<quint64> m_pending;
+    QHash<quint64, qsizetype> m_pending; // id -> index into m_requests
+    qsizetype m_answered = 0;
 };
 
 // Passes requests on to another client and keeps what came back, in the order the requests

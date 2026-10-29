@@ -122,19 +122,56 @@ private slots:
         QCOMPARE(succeeded.at(0).at(1).value<ChatResult>().content, QStringLiteral("{\"a\":[1,"));
     }
 
-    void cancelledReplaysStaySilent()
+    void cancelledReplaysStaySilentAndUseUpNothing()
     {
-        RecordedChatClient client(ChatRecording{ { answer(chatCompletion(QStringLiteral("x"))) } });
+        RecordedChatClient client(ChatRecording{ { answer(chatCompletion(QStringLiteral("a"))),
+                                                   answer(chatCompletion(QStringLiteral("b"))) } });
         QSignalSpy succeeded(&client, &ChatClient::succeeded);
-        client.cancel(client.send(userRequest(QStringLiteral("x"))));
+        client.cancel(client.send(userRequest(QStringLiteral("cancelled"))));
         QTest::qWait(50);
         QCOMPARE(succeeded.count(), 0);
+        QCOMPARE(client.remaining(), 2);
+
+        client.send(userRequest(QStringLiteral("next")));
+        QTRY_COMPARE_WITH_TIMEOUT(succeeded.count(), 1, 5000);
+        QCOMPARE(succeeded.at(0).at(1).value<ChatResult>().content, QStringLiteral("a"));
+        QCOMPARE(client.remaining(), 1);
+        QCOMPARE(client.requests().size(), 2);
+    }
+
+    void aCancelledRecordedRequestReplaysConsistently()
+    {
+        // Recording leaves the cancelled request out; replaying the same sequence (cancel
+        // included) must line the remaining answers up with the same requests.
+        const QList<ChatExchange> live{ answer(chatCompletion(QStringLiteral("a"))),
+                                        answer(chatCompletion(QStringLiteral("b"))) };
+        RecordedChatClient inner{ ChatRecording{ live } };
+        RecordingChatClient recorder(&inner);
+        const auto play = [](ChatClient &client) {
+            QStringList outcomes;
+            QObject context;
+            QObject::connect(&client, &ChatClient::succeeded, &context,
+                             [&](quint64, const ChatResult &result) { outcomes.append(result.content); });
+            client.cancel(client.send(userRequest(QStringLiteral("dropped"))));
+            client.send(userRequest(QStringLiteral("kept 1")));
+            client.send(userRequest(QStringLiteral("kept 2")));
+            QTest::qWaitFor([&] { return outcomes.size() == 2; }, 5000);
+            return outcomes;
+        };
+        const QStringList recordedRun = play(recorder);
+        QCOMPARE(recordedRun, (QStringList{ QStringLiteral("a"), QStringLiteral("b") }));
+        QCOMPARE(recorder.recording().exchanges.size(), 2);
+
+        RecordedChatClient replay(recorder.recording());
+        QCOMPARE(play(replay), recordedRun);
+        QCOMPARE(replay.remaining(), 0);
     }
 
     void recordWriteReadReplayRoundTrip()
     {
         FakeHttpServer server;
         QVERIFY(server.listen());
+        server.enqueue({ 503, "busy" }); // retried inside the client: still one exchange
         server.enqueue({ 200, chatCompletion(QStringLiteral("{\"dish\":\"番茄炒蛋\"}"), QStringLiteral("stop"), 120, 30) });
         server.enqueue({ 401, R"({"error":{"message":"bad key"}})" });
         server.enqueue({ 200, chatCompletion(QStringLiteral("{\"dish\":\"清炒"), QStringLiteral("length")) });
@@ -175,7 +212,7 @@ private slots:
         QVERIFY2(loaded, qPrintable(error));
         RecordedChatClient replay(*loaded);
         QCOMPARE(runAll(replay, requests), live);
-        QCOMPARE(server.received().size(), 3); // the replay stayed offline
+        QCOMPARE(server.received().size(), 4); // the replay stayed offline
 
         RecordedChatClient stale(*loaded);
         QCOMPARE(runAll(stale, { userRequest(QStringLiteral("改过的")) }), QStringList{ QStringLiteral("error:bad-response") });
