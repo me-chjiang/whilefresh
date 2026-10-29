@@ -10,17 +10,49 @@ ApplicationWindow {
     required property bool debugTools
     property int currentTab: 0
     property bool debugPanelVisible: false
+    property var tabHistory: []
+    property int pageCount: 5
+    property double navigationStarted: 0
+    property string navigationAction: ""
+    readonly property var rootPages: [fridgeComponent, recipesComponent, clearComponent, shoppingComponent, profileComponent]
+    readonly property var activeStack: tabRepeater.itemAt(currentTab) ? tabRepeater.itemAt(currentTab).item : null
     width: 412
     height: 915
     visible: true
     title: "趁鲜"
     color: Theme.paper
 
+    function traceNavigation(action) {
+        if (!debugTools) return
+        navigationStarted = Date.now()
+        navigationAction = action
+    }
+    onFrameSwapped: {
+        if (navigationAction) {
+            console.debug("WhileFresh navigation: " + navigationAction + " first-frame-ms=" + (Date.now() - navigationStarted))
+            navigationAction = ""
+        }
+    }
     function showTab(index) {
         if (importSheet.opened) importSheet.close()
+        if (index === currentTab) return
+        traceNavigation("tab=" + index + " cached=" + !!tabRepeater.itemAt(index).item)
+        tabHistory = tabHistory.concat([currentTab])
+        tabRepeater.itemAt(index).visited = true
         currentTab = index
-        stack.clear(StackView.Immediate)
-        stack.push([fridgeComponent, recipesComponent, clearComponent, shoppingComponent, profileComponent][index], {}, StackView.Immediate)
+    }
+    function resetPages() {
+        tabHistory = []
+        currentTab = 0
+        pageCount = 0
+        pageCount = 5
+    }
+    function openRecipe(recipe, fromClear) {
+        traceNavigation("recipe-detail")
+        activeStack.push(detailComponent, {
+            recipe: App.recipeDetail(recipe.id),
+            selectionContext: fromClear ? { usedSelected: recipe.usedSelected, unusedSelected: recipe.unusedSelected } : ({})
+        })
     }
     function showImport() {
         if (importSheet.bodyItem) importSheet.bodyItem.reset()
@@ -28,9 +60,16 @@ ApplicationWindow {
     }
     function goBack() {
         if (importSheet.opened) { importSheet.close(); return }
-        if (stack.depth > 1) { stack.pop(); return }
-        if (currentTab !== 0) showTab(0)
-        else close()
+        if (activeStack && activeStack.depth > 1) {
+            traceNavigation("back-page")
+            activeStack.pop()
+            return
+        }
+        if (tabHistory.length > 0) {
+            traceNavigation("back-tab")
+            currentTab = tabHistory[tabHistory.length - 1]
+            tabHistory = tabHistory.slice(0, -1)
+        } else close()
     }
 
     PaperBackground { anchors.fill: parent }
@@ -50,21 +89,35 @@ ApplicationWindow {
             font.weight: Theme.weightBold
         }
     }
-    StackView {
-        id: stack
+    StackLayout {
         anchors.top: previewBadge.bottom
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
         anchors.bottomMargin: Theme.navHeight
-        initialItem: fridgeComponent
-        clip: true
-        pushEnter: null
-        pushExit: null
-        popEnter: null
-        popExit: null
-        replaceEnter: null
-        replaceExit: null
+        currentIndex: window.currentTab
+        Repeater {
+            id: tabRepeater
+            model: window.pageCount
+            delegate: Loader {
+                id: tabLoader
+                required property int index
+                property bool visited: index === 0
+                active: visited
+                sourceComponent: Component {
+                    StackView {
+                        initialItem: window.rootPages[tabLoader.index]
+                        clip: true
+                        pushEnter: null
+                        pushExit: null
+                        popEnter: null
+                        popExit: null
+                        replaceEnter: null
+                        replaceExit: null
+                    }
+                }
+            }
+        }
     }
     BottomNav {
         anchors.left: parent.left
@@ -112,6 +165,12 @@ ApplicationWindow {
     Connections {
         target: App
         function onNotice(message) { window.showNotice(message) }
+        function onDemoModeChanged() { window.resetPages() }
+        function onClearResultsChanged() {
+            const loader = tabRepeater.itemAt(2)
+            if (!App.clearResultsReady && loader && loader.item && loader.item.depth > 1)
+                loader.item.pop(null, StackView.Immediate)
+        }
         function onPickCancelled() { if (importSheet.bodyItem) importSheet.bodyItem.cancelled() }
         function onImportChanged() { if (App.importState !== "idle" && !importSheet.opened) importSheet.open() }
     }
@@ -123,40 +182,64 @@ ApplicationWindow {
     Component {
         id: fridgeComponent
         FridgePage {
+            canGoBack: window.tabHistory.length > 0
+            onBackRequested: window.goBack()
             onImportRequested: window.showImport()
-            onEditRequested: function(item) { stack.push(editComponent, { ingredient: item }) }
+            onEditRequested: function(item) { window.activeStack.push(editComponent, { ingredient: item }) }
             onNotice: function(message) { window.showNotice(message) }
         }
     }
     Component {
         id: recipesComponent
-        RecipesPage { onRecipeRequested: function(recipe) { stack.push(detailComponent, { recipe: App.recipeDetail(recipe.id) }) } }
+        RecipesPage {
+            canGoBack: window.tabHistory.length > 0
+            onBackRequested: window.goBack()
+            onRecipeRequested: function(recipe) { window.openRecipe(recipe, false) }
+        }
     }
     Component {
         id: clearComponent
-        ClearFridgePage { onRecipeRequested: function(recipe) { stack.push(detailComponent, { recipe: App.recipeDetail(recipe.id) }) } }
+        ClearFridgePage {
+            canGoBack: window.tabHistory.length > 0
+            onBackRequested: window.goBack()
+            onResultsRequested: window.activeStack.push(clearResultsComponent)
+        }
     }
     Component {
         id: shoppingComponent
-        ShoppingPage { platform: window.platform; onNotice: function(message) { window.showNotice(message) } }
+        ShoppingPage {
+            platform: window.platform
+            canGoBack: window.tabHistory.length > 0
+            onBackRequested: window.goBack()
+            onNotice: function(message) { window.showNotice(message) }
+        }
     }
     Component {
         id: profileComponent
         ProfilePage {
+            canGoBack: window.tabHistory.length > 0
+            onBackRequested: window.goBack()
             debugTools: window.debugTools
             onDebugRequested: window.debugPanelVisible = !window.debugPanelVisible
             onNotice: function(message) { window.showNotice(message) }
         }
     }
     Component {
+        id: clearResultsComponent
+        ClearResultsPage {
+            onBackRequested: window.goBack()
+            onRecipeRequested: function(recipe) { window.openRecipe(recipe, true) }
+        }
+    }
+    Component {
         id: detailComponent
         RecipeDetailPage {
-            onBackRequested: stack.pop()
+            onBackRequested: window.goBack()
             onShoppingRequested: window.showTab(3)
         }
     }
     Component {
         id: editComponent
-        ItemEditPage { onBackRequested: stack.pop() }
+        ItemEditPage { onBackRequested: window.goBack() }
     }
 }

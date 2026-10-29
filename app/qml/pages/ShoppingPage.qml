@@ -4,6 +4,8 @@ import WhileFresh
 
 Item {
     id: page
+    property bool canGoBack: false
+    signal backRequested()
     property QtObject platform
     signal notice(string text)
     readonly property var categories: [
@@ -13,7 +15,7 @@ Item {
         { code: "staple", label: "主食" }, { code: "seasoning", label: "调料" },
         { code: "processed", label: "加工食品" }, { code: "other", label: "其他" }
     ]
-    PageHeader { id: header; x: Theme.gap; width: parent.width - Theme.gap * 2; heading: "待买"; subtitle: "做菜缺的料" }
+    PageHeader { id: header; x: Theme.gap; width: parent.width - Theme.gap * 2; backVisible: page.canGoBack; onBackRequested: page.backRequested(); heading: "待买"; subtitle: "做菜缺的料" }
     Flickable {
         anchors.top: header.bottom
         anchors.bottom: parent.bottom

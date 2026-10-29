@@ -44,7 +44,7 @@ class Store
 {
 public:
     // `importsDirectory` is the only directory whose files this store may delete.
-    Store(Database &database, const core::Clock &clock, QString importsDirectory);
+    Store(Database &database, const core::Clock &clock, QString importsDirectory, bool cleanUntrackedFiles = true);
 
     bool transaction();
     bool commit();
@@ -68,7 +68,7 @@ public:
     bool discardImportFiles(const QStringList &paths);
     // Deletes the import, the items it produced and its image files.
     bool deleteImport(qint64 id);
-    // Deletes every row and every file in the imports directory. The schema stays.
+    // Deletes every row and its files; untracked files are removed only when this store owns the directory.
     bool deleteAllData();
     // Deletes a file only when it lies directly in the imports directory.
     bool removeImportFile(const QString &path) const;
@@ -118,6 +118,7 @@ private:
     Database &m_database;
     const core::Clock &m_clock;
     QString m_importsDirectory;
+    bool m_cleanUntrackedFiles;
 };
 
 }

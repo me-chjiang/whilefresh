@@ -14,6 +14,13 @@
 namespace whilefresh::ui {
 
 // Dependencies must outlive the service. No QML types or GUI work here.
+struct ClearFridgePreview {
+    int selectedCount = 0;
+    int candidateCount = 0;
+    int completeCount = 0;
+    QStringList uncovered;
+};
+
 class KitchenService : public QObject
 {
     Q_OBJECT
@@ -34,6 +41,7 @@ public:
     QList<core::RuleProposal> proposalsForEdit(const core::FridgeItem &before,
                                               const core::FridgeItem &after) const;
     bool confirmRule(const core::RuleProposal &proposal);
+    bool replaceRule(const core::RuleProposal &proposal, std::optional<core::Storage> oldStorage);
     bool deleteShelfLifeRule(const QString &name, core::Storage storage);
     bool deleteStorageRule(const QString &name);
     QList<core::ShelfLifeRule> shelfLifeRules() const;
@@ -48,6 +56,7 @@ public:
 
     QList<core::RecipeMatch> recipes(const QString &search = {}) const;
     QList<core::RecipeMatch> clearFridge(const QSet<qint64> &selected) const;
+    ClearFridgePreview clearFridgePreview(const QSet<qint64> &selected) const;
     std::optional<core::RecipeMatch> recipe(const QString &id) const;
     const core::RecipeSource &recipeSource() const;
     int addMissingToShopping(const QString &recipeId);
@@ -66,6 +75,7 @@ public:
 signals:
     void aboutToDeleteAllData();
     void changed();
+    void shoppingChanged();
 
 private:
     QList<core::StockEntry> stock(const QSet<qint64> &selected = {}) const;

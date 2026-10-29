@@ -47,7 +47,9 @@ Token：prompt 124784，completion 45879，total 170663；可用时长 23/23，�
 | seasoning | 47 | 47 | 0 | 0 | 0 | 0 |
 | irrelevant | 26 | 26 | 0 | 0 | 0 | 0 |
 
-## 典型错误和待复核样本
+## 典型错误样本
+
+以下保留本次评估证据；修正与复核任务统一见 [项目待办](../todo.md)。
 
 ### receipt-03-perspective-blur（召回 88.9%，精确 88.9%）
 

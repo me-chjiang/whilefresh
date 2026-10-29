@@ -24,7 +24,8 @@ fi
 
 "$emulator" -accel-check || echo "warning: hardware acceleration unavailable, the emulator will be slow" >&2
 
-nohup "$emulator" -avd "$avd" -no-snapshot-save -no-boot-anim "${extra_args[@]+"${extra_args[@]}"}" \
+nohup "$emulator" -avd "$avd" -no-snapshot -no-boot-anim \
+    -feature -Vulkan -gpu swiftshader_indirect "${extra_args[@]+"${extra_args[@]}"}" \
     > "$log" 2>&1 &
 pid=$!
 echo "emulator starting (pid $pid), log: $log"

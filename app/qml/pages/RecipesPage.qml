@@ -5,13 +5,18 @@ import WhileFresh
 Item {
     id: page
     signal recipeRequested(var recipe)
+    signal backRequested()
+    property bool canGoBack: false
     property string query: ""
+    readonly property var filteredRecipes: App.recipes.filter(function(recipe) { return recipe.name.indexOf(page.query) >= 0 })
     PageHeader {
         id: header
         x: Theme.gap
         width: parent.width - Theme.gap * 2
         heading: "菜谱"
-        subtitle: "HowToCook · 按匹配度浏览"
+        subtitle: "按匹配度浏览"
+        backVisible: page.canGoBack
+        onBackRequested: page.backRequested()
     }
     Column {
         anchors.top: header.bottom
@@ -42,32 +47,31 @@ Item {
                 }
             }
         }
-        Flickable {
+        Item {
             width: parent.width
             height: parent.height - y
-            contentHeight: list.height + Theme.gapLarge
-            clip: true
-            boundsBehavior: Flickable.StopAtBounds
-            Column {
-                id: list
+            EmptyState {
+                visible: page.filteredRecipes.length === 0
                 width: parent.width
+                anchors.top: parent.top
+                iconName: "book-2"
+                heading: "没有找到菜谱"
+                detail: "试试别的菜名，或改选食材"
+            }
+            ListView {
+                id: list
+                anchors.fill: parent
+                visible: page.filteredRecipes.length > 0
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
                 spacing: Theme.gapSmall
-                EmptyState {
-                    visible: App.recipes.filter(function(r) { return r.name.indexOf(page.query) >= 0 }).length === 0
-                    width: parent.width
-                    height: visible ? implicitHeight + Theme.gapLarge * 2 : 0
-                    iconName: "book-2"
-                    heading: "没有找到菜谱"
-                    detail: "试试别的菜名，或改选食材"
-                }
-                Repeater {
-                    model: App.recipes.filter(function(r) { return r.name.indexOf(page.query) >= 0 })
-                    delegate: RecipeCard {
-                        required property var modelData
-                        width: list.width
-                        recipe: modelData
-                        onOpened: function(recipe) { page.recipeRequested(recipe) }
-                    }
+                reuseItems: true
+                model: page.filteredRecipes
+                delegate: RecipeCard {
+                    required property var modelData
+                    width: list.width
+                    recipe: modelData
+                    onOpened: function(recipe) { page.recipeRequested(recipe) }
                 }
             }
         }

@@ -5,13 +5,17 @@ import WhileFresh
 
 Item {
     id: page
-    signal recipeRequested(var recipe)
+    property bool canGoBack: false
+    signal backRequested()
+    signal resultsRequested()
     PageHeader {
         id: header
         x: Theme.gap
         width: parent.width - Theme.gap * 2
         heading: "清冰箱"
         subtitle: "用掉临期和先用的食材"
+        backVisible: page.canGoBack
+        onBackRequested: page.backRequested()
     }
     Flickable {
         anchors.top: header.bottom
@@ -108,26 +112,39 @@ Item {
                     }
                 }
             }
-            RowLayout {
-                width: parent.width
-                Text { text: "可以做的菜"; font.family: Theme.serif; font.pixelSize: Theme.textPanel; font.weight: Theme.weightBlack; color: Theme.ink; Layout.fillWidth: true }
-                Text { text: "用到最多 · 缺料最少"; font.pixelSize: Theme.textMeta; color: Theme.muted }
-            }
-            EmptyState {
-                visible: App.selectedIds.length === 0
+            Column {
                 width: content.width
-                height: visible ? implicitHeight + Theme.gapLarge : 0
-                iconName: "chef-hat"
-                heading: "选几样食材试试"
-                detail: "可从上面的便签里增减食材"
+                spacing: Theme.gapSmall
+                Text {
+                    width: parent.width
+                    text: App.selectedIds.length === 0 ? "选几样食材试试" : "按非调料食材计算，预计 " + App.clearPreview.candidateCount + " 道候选菜，其中 " + App.clearPreview.completeCount + " 道用到全部已选食材"
+                    wrapMode: Text.Wrap
+                    font.pixelSize: Theme.textSubtitle
+                    color: Theme.muted
+                }
+                Text {
+                    visible: App.selectedIds.length > 0 && App.clearPreview.uncovered.length > 0
+                    width: parent.width
+                    text: "暂未覆盖：" + App.clearPreview.uncovered.join("、")
+                    wrapMode: Text.Wrap
+                    font.pixelSize: Theme.textMeta
+                    color: Theme.nearing
+                }
             }
-            Repeater {
-                model: App.clearRecipes
-                delegate: RecipeCard {
-                    required property var modelData
-                    width: content.width
-                    recipe: modelData
-                    onOpened: function(recipe) { page.recipeRequested(recipe) }
+            RowLayout {
+                width: content.width
+                spacing: Theme.gapSmall
+                InkButton {
+                    text: "重置推荐选料"
+                    outline: true
+                    onClicked: App.selectDefaults()
+                }
+                InkButton {
+                    Layout.fillWidth: true
+                    text: "查找菜谱"
+                    iconName: "chef-hat"
+                    enabled: App.selectedIds.length > 0
+                    onClicked: if (App.findClearRecipes()) page.resultsRequested()
                 }
             }
         }

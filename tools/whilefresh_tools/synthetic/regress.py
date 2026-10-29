@@ -44,6 +44,10 @@ def _count_responses(tmp: Path) -> int:
     return sum(len(json.loads(p.read_text(encoding="utf-8")).get("responses", [])) for p in tmp.glob("*.json"))
 
 
+def _count_attempts(tmp: Path) -> int:
+    return sum(1 for _ in tmp.glob("*.attempted"))
+
+
 def _audit(sample: Sample, doc: dict) -> None:
     """Only our own generated sample and the corresponding CLI format-1 response may enter git."""
     truth = json.loads(truth_file(sample).read_text(encoding="utf-8"))
@@ -86,8 +90,8 @@ def run(tmp: Path, cli: Path, limit: int = 30, samples: tuple[Sample, ...] = SAM
         if marker.exists() or out.exists() or (RECORDINGS_DIR / out.name).exists():
             print(f"SKIP {sample.id}: already attempted/recorded")
             continue
-        if _count_responses(tmp) >= limit:
-            print(f"STOP before {sample.id}: reached {limit} HTTP responses")
+        if _count_attempts(tmp) >= limit:
+            print(f"STOP before {sample.id}: reached {limit} sample attempts")
             break
         truth = json.loads(truth_file(sample).read_text(encoding="utf-8"))
         source = sample_file(sample)
@@ -122,7 +126,8 @@ def run(tmp: Path, cli: Path, limit: int = 30, samples: tuple[Sample, ...] = SAM
         except (subprocess.TimeoutExpired, ValueError, KeyError, IndexError, json.JSONDecodeError) as exc:
             print(f"FAILED {sample.id}: {exc}")
             # Nothing is reattempted automatically, even when the recording is incomplete.
-    print(f"Finished: {successful} new successful samples; {_count_responses(tmp)} HTTP responses recorded in {tmp}")
+    print(f"Finished: {successful} new successful samples; {_count_attempts(tmp)} attempts, "
+          f"{_count_responses(tmp)} HTTP responses recorded in {tmp}")
     return successful
 
 
@@ -160,7 +165,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("action", choices=("run", "collect", "status"))
     parser.add_argument("--tmp", type=Path, default=TMP_ROOT)
     parser.add_argument("--cli", type=Path, default=REPO_ROOT / "build" / "desktop" / "tools" / "recognize-cli")
-    parser.add_argument("--limit", type=int, default=30, help="Maximum HTTP responses (default 30)")
+    parser.add_argument("--limit", type=int, default=30, help="Maximum sample attempts, including failures (default 30)")
     parser.add_argument("--id", action="append", dest="ids", help="Restrict to sample ID (repeatable)")
     args = parser.parse_args(argv)
     selected = tuple(s for s in SAMPLES if not args.ids or s.id in args.ids)
@@ -174,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Copied {copied} synthetic recordings to {RECORDINGS_DIR}; missing/invalid: {', '.join(failed) if failed else 'none'}")
         return 1 if failed else 0
     _ensure_tmp(args.tmp)
-    print(f"HTTP responses: {_count_responses(args.tmp)}; attempted: {len(list(args.tmp.glob('*.attempted')))}; "
+    print(f"Recorded HTTP responses: {_count_responses(args.tmp)}; attempted: {_count_attempts(args.tmp)}; "
           f"collected: {len(list(RECORDINGS_DIR.glob('*.json'))) if RECORDINGS_DIR.exists() else 0}")
     return 0
 

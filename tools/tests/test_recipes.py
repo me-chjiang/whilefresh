@@ -180,6 +180,21 @@ def test_prefix_optional_applies_to_every_split_piece():
     assert opt == {"盐": True, "糖": True, "柱候酱": False, "叉烧酱": True, "蚝油": False}
 
 
+def test_explicit_optional_phrases_without_step_inference():
+    r = _ingredients(
+        "- 鸡蛋",
+        "- 虾仁（个人口味，可加可不加）",
+        "- 青椒（按喜好可选）",
+        "- 葱花（点缀用）",
+        "- 香菜（用于装饰）",
+        "- 土豆",
+        steps="1. 加入鸡蛋，煮熟。",
+    )
+    assert {i["name"]: i["optional"] for i in r["ingredients"]} == {
+        "鸡蛋": False, "虾仁": True, "青椒": True, "葱花": True, "香菜": True, "土豆": False
+    }
+
+
 def test_ordered_list_ingredients_are_items():
     r = _ingredients("1. 鸡蛋", "2、 西红柿", "3) 盐")
     assert [i["name"] for i in r["ingredients"]] == ["鸡蛋", "西红柿", "盐"]

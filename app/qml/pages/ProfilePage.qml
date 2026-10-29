@@ -7,10 +7,12 @@ Item {
     id: page
     signal notice(string message)
     signal debugRequested()
+    signal backRequested()
+    property bool canGoBack: false
     property bool debugTools: false
     property string pendingImportName: ""
     property int pendingImportId: -1
-    PageHeader { id: header; x: Theme.gap; width: parent.width - Theme.gap * 2; heading: "我的"; subtitle: "习惯与数据" }
+    PageHeader { id: header; x: Theme.gap; width: parent.width - Theme.gap * 2; heading: "我的"; subtitle: "习惯与数据"; backVisible: page.canGoBack; onBackRequested: page.backRequested() }
     Flickable {
         anchors.top: header.bottom
         anchors.bottom: parent.bottom
@@ -129,7 +131,7 @@ Item {
                             height: Theme.touch
                             TextField { id: ruleDays; text: modelData.days; Layout.preferredWidth: 65; placeholderText: "天数"; inputMethodHints: Qt.ImhDigitsOnly; background: Rectangle { color: Theme.note; radius: Theme.radiusTag } }
                             ComboBox { id: rulePlace; model: ["冷藏", "冷冻", "常温"]; currentIndex: model.indexOf(modelData.location); Layout.fillWidth: true }
-                            InkButton { text: "保存"; onClicked: { App.saveRule(modelData.name, modelData.location, rulePlace.currentText, ruleDays.text); page.notice("已保存规则") } }
+                            InkButton { text: "保存"; onClicked: if (App.saveRule(modelData.name, modelData.location, rulePlace.currentText, ruleDays.text)) page.notice("已保存规则") }
                             Item {
                                 width: Theme.touch
                                 height: Theme.touch

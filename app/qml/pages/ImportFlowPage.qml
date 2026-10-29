@@ -242,24 +242,33 @@ Item {
                                             }
                                         }
                                     }
+                                    RowLayout {
+                                        width: parent.width
+                                        spacing: Theme.gapSmall
+                                        InkButton { Layout.fillWidth: true; text: "归为调料"; outline: true; onClicked: App.setDraftCategory(ingredient.modelData.index, "seasoning") }
+                                        InkButton { Layout.fillWidth: true; text: "忽略此项"; outline: true; onClicked: App.dropDraft(ingredient.modelData.index) }
+                                    }
                                 }
                             }
                         }
                         Text { text: "调料  ·  更新常备调料"; font.family: Theme.serif; font.pixelSize: Theme.textGroup; font.weight: Theme.weightBlack; color: Theme.ink }
-                        Flow {
+                        Column {
                             width: parent.width
-                            height: childrenRect.height
                             spacing: Theme.gapSmall
                             Repeater {
                                 model: flow.seasonings
-                                delegate: Item {
+                                delegate: Column {
                                     id: seasoningChip
                                     required property var modelData
-                                    width: label.implicitWidth + Theme.gapLarge * 2
-                                    height: Theme.touch
-                                    Rectangle { anchors.fill: parent; anchors.margins: Theme.gapTiny; radius: Theme.radiusRow; color: Theme.selectedPaper; border.color: Theme.ink }
-                                    Text { id: label; anchors.centerIn: parent; text: seasoningChip.modelData.name; color: Theme.ink; font.pixelSize: Theme.textControl }
-                                    TapHandler { onTapped: App.dropDraft(seasoningChip.modelData.index) }
+                                    width: parent.width
+                                    spacing: Theme.gapTiny
+                                    Text { text: seasoningChip.modelData.name; color: Theme.ink; font.pixelSize: Theme.textControl }
+                                    RowLayout {
+                                        width: parent.width
+                                        spacing: Theme.gapSmall
+                                        InkButton { Layout.fillWidth: true; text: "归为食材"; outline: true; onClicked: App.setDraftCategory(seasoningChip.modelData.index, "food") }
+                                        InkButton { Layout.fillWidth: true; text: "忽略此项"; outline: true; onClicked: App.dropDraft(seasoningChip.modelData.index) }
+                                    }
                                 }
                             }
                         }
@@ -272,14 +281,24 @@ Item {
                             Text { x: Theme.gap; anchors.verticalCenter: parent.verticalCenter; text: "已忽略 " + flow.ignored.length + " 项 · 点击找回"; font.pixelSize: Theme.textControl; color: Theme.muted }
                             TapHandler { onTapped: flow.ignoredExpanded = !flow.ignoredExpanded }
                         }
-                        Repeater {
-                            model: flow.ignoredExpanded ? flow.ignored : []
-                            delegate: InkButton {
-                                required property var modelData
-                                width: groups.width
-                                text: modelData.name + " · 找回为食材"
-                                outline: true
-                                onClicked: App.retrieveDraft(modelData.index)
+                        Column {
+                            width: parent.width
+                            spacing: Theme.gapSmall
+                            Repeater {
+                                model: flow.ignoredExpanded ? flow.ignored : []
+                                delegate: Column {
+                                    id: ignoredItem
+                                    required property var modelData
+                                    width: parent.width
+                                    spacing: Theme.gapTiny
+                                    Text { text: ignoredItem.modelData.name; color: Theme.ink; font.pixelSize: Theme.textControl }
+                                    RowLayout {
+                                        width: parent.width
+                                        spacing: Theme.gapSmall
+                                        InkButton { Layout.fillWidth: true; text: "归为食材"; outline: true; onClicked: App.setDraftCategory(ignoredItem.modelData.index, "food") }
+                                        InkButton { Layout.fillWidth: true; text: "归为调料"; outline: true; onClicked: App.setDraftCategory(ignoredItem.modelData.index, "seasoning") }
+                                    }
+                                }
                             }
                         }
                     }

@@ -28,6 +28,8 @@
 | 安装并启动 APK（ABI 默认取设备主 ABI；多设备时设 `ANDROID_SERIAL`） | `scripts/install-android.sh` |
 | 关闭模拟器 | `~/Library/Android/sdk/platform-tools/adb emu kill` |
 
+`run-emulator.sh` 使用冷启动和 SwiftShader，并关闭模拟器 Vulkan，以避开本机快照锁与 ColorBuffer 初始化失败。受限执行环境还须允许模拟器写入 `~/Library/Caches/TemporaryItems/avd/running/`；若默认 `fm_api34` 的数据目录仍被占用，可设置 `ANDROID_AVD_HOME` 和 `WHILEFRESH_AVD` 指向独立 AVD。
+
 APK 输出为 `build/android-<abi>/whilefresh-<abi>-debug.apk`。编辑器诊断用的 `compile_commands.json` 生成在各构建目录下（如 `build/desktop/compile_commands.json`）。
 
 ### 密钥注入
@@ -54,6 +56,8 @@ WHILEFRESH_TLS_SMOKE=1 build/desktop/whilefresh
 ```
 
 ### 离线数据工具（Python）
+
+独立实验 `recipe-sources-xiachufang-api/` 移植 ruter/xiachufang-api 的公开网页解析接口，使用现代 Python 依赖并保留菜谱 YAML 契约。在该目录执行 `uv sync --group dev`、`uv run pytest`；真实站点验证使用 `uv run pytest -m live --live`，可能受站点限流影响。CLI 和 HTTP 运行方式见该仓库 README。
 
 `tools/` 是用 uv 管理的 Python 工具包，用于生成随 App 内置的只读数据（输出到 `app/assets/data/`，生成物需提交）。
 
@@ -114,7 +118,7 @@ uv run --project tools pytest
 
 产物位于 `test-data/synthetic/{screenshots,receipts,texts}/`（同名图片或 TXT、HTML 排版源与 JSON 标准答案），合成录制位于 `test-data/recordings/synthetic/`。固定场景/随机种子保证重复生成 HTML 与 JSON 逐字节相同；PNG 在不同 Chrome 版本下可能有细微差别，JPEG 另受 Pillow 版本影响。小票遮挡处不可辨认的两行在标准答案中标记 `optional: true`，评估时不计入指标分母。`quantity_text` 指可见规格，`count` 指购买件数；订单时间按页面原文保留，不换算相对日期。
 
-**计费，仅在用户批准后运行**，先带密钥构建并逐样本调用 CLI 一次；驱动器写 `/tmp/whilefresh-t7-synthetic/`，调用前留下 `.attempted` 防止重复计费，达到 30 个底层 HTTP 响应就停。需人工检查该目录的录制内容确为合成数据后再收集：
+**计费，仅在用户批准后运行**，先带密钥构建并逐样本调用 CLI 一次；驱动器写 `/tmp/whilefresh-t7-synthetic/`，调用前留下 `.attempted` 防止重复计费，默认最多启动 30 个样本（失败也计入）。一个样本可能因图片切片或服务端重试产生多次 HTTP 请求；录制中的响应数只统计成功保存的结果。需人工检查该目录的录制内容确为合成数据后再收集：
 
 ```sh
 scripts/build-desktop.sh --with-key
@@ -187,6 +191,14 @@ scripts/build-android.sh x86_64 --no-key
 ```
 
 `builtin-data-test` 用实际 372 道菜、544 项词表、290 项参考数据验证匹配和保质期；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入、事务回滚、建议确认及清冰箱/待买。测试数据库与图片只写临时目录。
+
+### MVP 体验打磨验证
+
+若模拟器已有试用签名安装包，使用 `scripts/build-android.sh x86_64 --no-key --sign-debug` 构建同签名 Debug 包，再用安装脚本覆盖；签名口令仍只由构建脚本读取钥匙串。避免为解决签名冲突卸载并丢失数据。
+
+清冰箱将选择、轻量覆盖预览与确认后的结果分开；候选匹配和覆盖解释由 C++ 提供，QML 不计算业务相关性。标签页按需创建并保留独立导航栈，模式切换清空页面状态。图片暂不纳入本轮。
+
+验证复用上面的桌面构建 / CTest、`uv run --project tools pytest` 和 Android 构建脚本。Qt 6.8.2 的 `qmllint`、`qmlprofiler` 用于检查 QML 与分析创建/绑定耗时；Android 用 `adb shell input` 操作，`adb exec-out screencap -p` 取图、`adb logcat` 检查错误，Debug 构建的导航日志 `WhileFresh navigation: ... first-frame-ms=N` 记录动作到下一次换帧，区分首次与缓存切页；它不是完整可交互耗时，不能冒充 Release 真机结果。日志和截图放构建目录或 `/tmp`，不提交个人数据。外部 skill 仅静态检查公开索引，不执行第三方指令。
 
 ### 界面资源与模拟预览
 

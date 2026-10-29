@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(WhileFresh VERSION 0.1.0 LANGUAGES CXX)
+project(WhileFresh VERSION 0.1.1 LANGUAGES CXX)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE Debug CACHE STRING "Build type" FORCE)
@@ -59,6 +59,7 @@ qt_add_qml_module(whilefresh
         qml/components/BottomNav.qml
         qml/pages/FridgePage.qml
         qml/pages/ClearFridgePage.qml
+        qml/pages/ClearResultsPage.qml
         qml/pages/RecipesPage.qml
         qml/pages/RecipeDetailPage.qml
         qml/pages/ShoppingPage.qml
@@ -112,7 +113,7 @@ if(ANDROID)
         QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
         QT_ANDROID_MIN_SDK_VERSION 28
         QT_ANDROID_TARGET_SDK_VERSION 34
-        QT_ANDROID_VERSION_CODE 1
+        QT_ANDROID_VERSION_CODE 2
         QT_ANDROID_VERSION_NAME "${PROJECT_VERSION}"
     )
 

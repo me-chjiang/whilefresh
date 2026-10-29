@@ -53,7 +53,6 @@ bool KitchenService::saveItem(FridgeItem &item, QString *error)
         if (!before)
             return false;
         item.importId = before->importId;
-        item.entryDate = before->entryDate;
         item.createdAt = before->createdAt;
         if (before->canonicalName != item.canonicalName) {
             item.aiDays = {};
@@ -74,7 +73,8 @@ bool KitchenService::saveItem(FridgeItem &item, QString *error)
         }
     } else {
         item.importId = 0;
-        item.entryDate = m_clock.today();
+        if (!item.entryDate.isValid())
+            item.entryDate = m_clock.today();
         item.productionDate.origin = item.productionDate.isSet() ? DateOrigin::User : DateOrigin::None;
         item.purchaseDate.origin = item.purchaseDate.isSet() ? DateOrigin::User : DateOrigin::None;
         item.packageExpiry.origin = item.packageExpiry.isSet() ? DateOrigin::User : DateOrigin::None;
@@ -173,6 +173,25 @@ bool KitchenService::confirmRule(const RuleProposal &proposal)
                       : m_store.saveStorageRule({ proposal.name, proposal.storage }));
 }
 
+bool KitchenService::replaceRule(const RuleProposal &proposal, std::optional<Storage> oldStorage)
+{
+    if (!m_builtin->catalog->contains(proposal.name) || !m_store.transaction())
+        return false;
+    bool ok;
+    if (proposal.kind == RuleProposal::Kind::ShelfLife) {
+        ok = m_store.saveShelfLifeRule({ proposal.name, proposal.storage, proposal.days });
+        if (ok && oldStorage && *oldStorage != proposal.storage)
+            ok = m_store.deleteShelfLifeRule(proposal.name, *oldStorage);
+    } else {
+        ok = m_store.saveStorageRule({ proposal.name, proposal.storage });
+    }
+    if (!ok || !m_store.commit()) {
+        m_store.rollback();
+        return false;
+    }
+    return finish(true);
+}
+
 bool KitchenService::deleteShelfLifeRule(const QString &name, Storage storage)
 { return finish(m_store.deleteShelfLifeRule(name, storage)); }
 bool KitchenService::deleteStorageRule(const QString &name) { return finish(m_store.deleteStorageRule(name)); }
@@ -263,6 +282,31 @@ QList<RecipeMatch> KitchenService::clearFridge(const QSet<qint64> &selected) con
     return rankForClearFridge(RecipeMatcher(m_builtin->catalog.get(), stock(selected)).matchAll(m_builtin->recipes->recipes()));
 }
 
+ClearFridgePreview KitchenService::clearFridgePreview(const QSet<qint64> &selected) const
+{
+    ClearFridgePreview preview;
+    QSet<QString> covered;
+    const RecipeMatcher matcher(m_builtin->catalog.get(), stock(selected));
+    const auto &selectedNames = matcher.selectedNames();
+    const QSet<QString> names(selectedNames.cbegin(), selectedNames.cend());
+    preview.selectedCount = names.size();
+    if (names.isEmpty())
+        return preview;
+    for (const auto &recipe : m_builtin->recipes->recipes()) {
+        const auto match = matcher.match(recipe);
+        if (match.usedSelected.isEmpty())
+            continue;
+        ++preview.candidateCount;
+        if (match.unusedSelected.isEmpty())
+            ++preview.completeCount;
+        for (const auto &name : match.usedSelected)
+            covered.insert(name);
+    }
+    preview.uncovered = (names - covered).values();
+    preview.uncovered.sort();
+    return preview;
+}
+
 std::optional<RecipeMatch> KitchenService::recipe(const QString &id) const
 {
     const auto *recipe = m_builtin->recipes->find(id);
@@ -282,7 +326,7 @@ int KitchenService::addMissingToShopping(const QString &recipeId)
     for (auto entry : shoppingEntriesForMissing(*match, m_builtin->catalog.get()))
         count += m_store.addShoppingEntry(entry) > 0;
     if (count)
-        emit changed();
+        emit shoppingChanged();
     return count;
 }
 
@@ -294,7 +338,8 @@ qint64 KitchenService::addShopping(const QStringList &names)
     }
     auto entry = makeShoppingEntry(names, ShoppingOrigin::Manual, {}, m_builtin->catalog.get());
     const auto id = m_store.addShoppingEntry(entry);
-    finish(id > 0);
+    if (id > 0)
+        emit shoppingChanged();
     return id;
 }
 
@@ -302,7 +347,13 @@ QList<ShoppingEntry> KitchenService::shopping() const { return m_store.shoppingE
 QList<ShoppingSection> KitchenService::shoppingSections() const
 { return groupShoppingEntries(shopping(), m_builtin->catalog.get()); }
 QString KitchenService::shoppingText() const { return shoppingListText(shopping(), m_builtin->catalog.get()); }
-bool KitchenService::removeShopping(qint64 id) { return finish(m_store.removeShoppingEntry(id)); }
+bool KitchenService::removeShopping(qint64 id)
+{
+    const bool ok = m_store.removeShoppingEntry(id);
+    if (ok)
+        emit shoppingChanged();
+    return ok;
+}
 QList<data::ImportRecord> KitchenService::imports() const { return m_store.imports(); }
 bool KitchenService::deleteImport(qint64 id)
 {

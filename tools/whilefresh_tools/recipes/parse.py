@@ -60,6 +60,7 @@ _BULLET_RE = re.compile(r"^(?:[-*+]|\d+[.、)])\s+(.*)$")
 _EMPTY_MARKER_RE = re.compile(r"^(?:>\s*)+$|^[-*+]$")
 _EXACT_HEADERS = frozenset(_INGREDIENT_WORDS + _TOOL_WORDS)
 _FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
+_OPTIONAL_RE = re.compile(r"可选|可加可不加|按(?:个人)?喜好可选|(?:装饰|点缀)(?:用|使用)|用于(?:装饰|点缀)|用作(?:装饰|点缀)")
 
 
 def category_zh(category: str) -> str:
@@ -297,7 +298,7 @@ def _parse_ingredients(lines: list[str], quantity_names: list[str]):
                 {
                     "raw": raw,
                     "name": name,
-                    "optional": ctx_optional or bool(prefix) or "可选" in raw,
+                    "optional": ctx_optional or bool(prefix) or bool(_OPTIONAL_RE.search(raw)),
                     "kind": kind,
                 }
             )

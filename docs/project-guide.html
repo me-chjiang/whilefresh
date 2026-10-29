@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="趁鲜 WhileFresh 项目导览：文件组织、业务路径、架构算法、工程优点与技术债。">
+  <title>趁鲜 · 项目实现导览</title>
+  <style>
+    :root {
+      --paper: #f8f5ec;
+      --surface: #fffdf7;
+      --surface-warm: #f1eadb;
+      --ink: #222b28;
+      --muted: #58625d;
+      --line: #d9d8cc;
+      --green: #284f46;
+      --green-soft: #e7eee8;
+      --orange: #a94326;
+      --orange-soft: #f8e9df;
+      --gold: #d9b86d;
+      --shadow: 0 18px 48px rgba(41, 47, 38, .065);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; scroll-padding-top: 28px; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.7;
+    }
+    a { color: var(--green); text-underline-offset: .2em; }
+    a:hover { color: var(--orange); }
+    a:focus-visible, summary:focus-visible { outline: 3px solid var(--orange); outline-offset: 3px; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { overflow-wrap: anywhere; font-size: .91em; }
+    ::selection { background: #edd6ae; }
+    .shell { display: grid; grid-template-columns: 260px minmax(0, 1fr); min-height: 100vh; }
+    .rail {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      height: 100vh;
+      overflow-y: auto;
+      border-right: 1px solid var(--line);
+      background: #f1eee4;
+      padding: 36px 24px 28px;
+    }
+    .brand { display: flex; align-items: center; gap: 11px; text-decoration: none; color: var(--ink); }
+    .brand-mark {
+      width: 39px;
+      height: 39px;
+      display: grid;
+      place-items: center;
+      border-radius: 11px;
+      background: var(--green);
+      color: #fffdf7;
+      font-family: Georgia, serif;
+      font-size: 25px;
+      line-height: 1;
+    }
+    .brand strong { display: block; font-size: 17px; letter-spacing: .06em; line-height: 1.2; }
+    .brand small { display: block; margin-top: 3px; color: var(--muted); font-size: 10px; letter-spacing: .16em; }
+    .rail-label, .eyebrow, .section-kicker, .tag, .step-index, .source-label {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: .11em;
+      text-transform: uppercase;
+    }
+    .rail-label { margin: 56px 8px 13px; color: var(--muted); font-size: 10px; }
+    .rail nav { display: grid; gap: 3px; }
+    .rail nav a {
+      padding: 8px 10px;
+      border-radius: 7px;
+      color: #48554e;
+      font-size: 13px;
+      text-decoration: none;
+      transition: background .15s, color .15s;
+    }
+    .rail nav a:hover, .rail nav a:focus-visible { color: var(--green); background: #e5e9df; }
+    .rail-foot { margin: 48px 8px 0; padding-top: 18px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }
+    .rail-foot a { display: block; margin-top: 9px; }
+    main { min-width: 0; max-width: 1250px; width: 100%; padding: 0 clamp(24px, 6.8vw, 105px) 110px; margin: 0 auto; }
+    .hero { position: relative; padding: 86px 0 72px; border-bottom: 1px solid var(--line); }
+    .hero::after { content: "鲜"; position: absolute; right: 0; top: 80px; color: #e8e8db; font: 900 clamp(120px, 19vw, 245px)/1 Georgia, "Songti SC", serif; z-index: -1; }
+    .eyebrow, .section-kicker { font-size: 11px; font-weight: 700; color: var(--orange); }
+    .hero h1 { max-width: 810px; margin: 18px 0 16px; font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif; font-size: clamp(38px, 5vw, 66px); line-height: 1.2; letter-spacing: -.035em; }
+    .hero .lead { max-width: 670px; margin: 0; font-size: clamp(17px, 2vw, 21px); line-height: 1.75; color: #3f4d46; }
+    .hero-meta { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 30px; }
+    .pill { padding: 6px 11px; border: 1px solid #c7d5c7; border-radius: 99px; background: var(--green-soft); font-size: 12px; color: var(--green); }
+    .pill.warm { background: var(--orange-soft); border-color: #ebd1bf; color: #84371f; }
+    .hero-note { margin-top: 26px; max-width: 780px; padding: 16px 18px; border-left: 3px solid var(--gold); background: #fffaf0; color: #4e5146; font-size: 13px; }
+    section { margin-top: 94px; scroll-margin-top: 25px; }
+    .section-head { margin-bottom: 30px; }
+    .section-head h2 { margin: 9px 0 9px; font-family: Georgia, "Songti SC", "Noto Serif CJK SC", serif; font-size: clamp(29px, 3vw, 42px); line-height: 1.3; letter-spacing: -.03em; }
+    .section-head p { max-width: 740px; margin: 0; color: var(--muted); font-size: 15px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px; }
+    .card { min-width: 0; padding: 25px 25px 22px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+    .card h3, .detail-card h3 { margin: 0 0 10px; font-size: 18px; line-height: 1.4; }
+    .card p, .detail-card p { margin: 0 0 12px; color: #47544d; font-size: 14px; }
+    .card p:last-child, .detail-card p:last-child { margin-bottom: 0; }
+    .tag { display: inline-block; margin: 0 0 14px; font-size: 10px; color: var(--orange); font-weight: 700; }
+    .source { display: block; margin-top: 15px; color: var(--muted); font-size: 11px; line-height: 1.7; }
+    .source a { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
+    .source-label { margin-right: 7px; color: #67756c; font-size: 10px; }
+    .wide-note { margin: 17px 0 0; padding: 18px 21px; border-radius: 9px; background: var(--green-soft); color: #304b3c; font-size: 14px; }
+    .tree {
+      border: 1px solid #395c51;
+      border-radius: 12px;
+      background: #1e3732;
+      color: #eff5e9;
+      overflow: hidden;
+      box-shadow: 0 22px 55px rgba(28, 52, 44, .16);
+    }
+    .tree-head { padding: 13px 21px; background: #27463c; border-bottom: 1px solid #49685b; color: #d6e3d6; font-size: 11px; letter-spacing: .09em; }
+    .tree-body { display: grid; grid-template-columns: 1fr 1fr; gap: 0 30px; padding: 18px 22px 22px; }
+    .tree-col { min-width: 0; }
+    .tree-row { padding: 7px 0; border-bottom: 1px solid rgba(233, 244, 229, .105); font-size: 12px; }
+    .tree-row:last-child { border-bottom: 0; }
+    .tree-row a { color: #e9f6e5; text-decoration: none; font-weight: 700; }
+    .tree-row a:hover { color: #f2cd83; text-decoration: underline; }
+    .tree-row span { display: block; color: #bccfc4; font-size: 11px; line-height: 1.5; }
+    .tree-row.indent { padding-left: 21px; }
+    .tree-row.indent::before { content: "↳ "; color: #a9c1ac; }
+    .architecture { display: grid; gap: 11px; }
+    .layer { display: grid; grid-template-columns: 140px 1fr; gap: 20px; align-items: start; padding: 17px 20px; border-left: 4px solid var(--green); border-radius: 0 8px 8px 0; background: var(--surface); }
+    .layer:nth-child(even) { background: #f0f0e5; }
+    .layer-label { color: var(--green); font-weight: 750; font-size: 13px; }
+    .layer p { margin: 0; color: #435149; font-size: 13px; }
+    .flow { counter-reset: flow; display: grid; gap: 12px; }
+    .flow-step { display: grid; grid-template-columns: 45px minmax(0, 1fr); gap: 13px; padding: 19px 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+    .step-index { color: var(--orange); font-size: 15px; font-weight: 700; }
+    .flow-step h3 { margin: 0 0 5px; font-size: 16px; }
+    .flow-step p { margin: 0; color: #4a574e; font-size: 13px; }
+    .flow-step .source { margin-top: 7px; }
+    .detail-list { display: grid; gap: 15px; }
+    .detail-card { padding: 24px 26px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); }
+    .detail-card h3 { display: flex; align-items: baseline; gap: 12px; }
+    .detail-card h3 small { color: var(--orange); font: 700 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .detail-card ul { margin: 9px 0 0; padding-left: 21px; font-size: 14px; color: #435149; }
+    .detail-card li + li { margin-top: 5px; }
+    .formula { margin-top: 14px; padding: 14px 16px; border-radius: 7px; background: #ecefe9; color: #244b3f; font-size: 12px; line-height: 1.8; overflow-wrap: anywhere; }
+    .split-title { margin: 37px 0 16px; font-size: 17px; }
+    .status-list { display: grid; gap: 12px; }
+    .status-item { border-left: 3px solid var(--orange); background: #fff9f4; padding: 14px 18px; font-size: 13px; color: #4d524a; }
+    .status-item strong { color: #863a25; }
+    .status-item p { margin: 4px 0 0; }
+    .ref-list { columns: 2; column-gap: 24px; padding: 0; list-style: none; }
+    .ref-list li { break-inside: avoid; margin: 0 0 11px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 7px; font-size: 13px; }
+    .ref-list a { display: block; font-weight: 700; }
+    .ref-list span { color: var(--muted); font-size: 11px; }
+    footer { margin-top: 90px; padding-top: 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+    @media (max-width: 980px) {
+      .shell { display: block; }
+      .rail { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 16px 24px; }
+      .rail-label, .rail-foot { display: none; }
+      .rail nav { display: flex; gap: 7px; overflow-x: auto; margin-top: 13px; padding-bottom: 4px; }
+      .rail nav a { flex: 0 0 auto; padding: 5px 9px; font-size: 12px; }
+      .hero { padding-top: 63px; }
+    }
+    @media (max-width: 670px) {
+      main { padding: 0 19px 65px; }
+      .hero { padding: 55px 0 50px; }
+      .hero::after { right: 5px; top: 52px; opacity: .5; }
+      section { margin-top: 69px; }
+      .grid-2, .tree-body { grid-template-columns: 1fr; }
+      .tree-body { gap: 0; }
+      .tree-col:first-child .tree-row:last-child { border-bottom: 1px solid rgba(233, 244, 229, .105); }
+      .layer { grid-template-columns: 1fr; gap: 3px; }
+      .ref-list { columns: 1; }
+      .card, .detail-card { padding: 20px; }
+    }
+    @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .rail nav a { transition: none; } }
+    @media print {
+      body { background: white; }
+      .shell { display: block; }
+      .rail { display: none; }
+      main { max-width: none; padding: 0; }
+      .hero { padding: 20px 0; }
+      .hero::after { display: none; }
+      section { margin-top: 35px; break-inside: avoid; }
+      .card, .tree, .detail-card { box-shadow: none; }
+      a { color: inherit; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="rail" aria-label="页面导航">
+      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">鲜</span><span><strong>趁鲜 / WhileFresh</strong><small>PROJECT FIELD GUIDE</small></span></a>
+      <p class="rail-label">INDEX / 目录</p>
+      <nav aria-label="本页章节">
+        <a href="#orientation">01 · 项目是什么</a>
+        <a href="#structure">02 · 文件放在哪里</a>
+        <a href="#architecture">03 · 代码如何协作</a>
+        <a href="#journey">04 · 功能走一遍</a>
+        <a href="#algorithms">05 · 核心算法</a>
+        <a href="#toolchain">06 · 工具与验证</a>
+        <a href="#strengths">07 · 做得好的地方</a>
+        <a href="#debt">08 · 项目待办入口</a>
+        <a href="#reading">09 · 继续阅读</a>
+      </nav>
+      <div class="rail-foot">离线可读 · 无外部依赖<br>按当前源码与项目文档整理，2026-10-22。<a href="../README.md">返回 README ↗</a></div>
+    </aside>
+
+    <main id="top">
+      <header class="hero">
+        <div class="eyebrow">ENGINEERING TOUR / 项目实现导览</div>
+        <h1>从一张购物截图，<br>到今晚的一道菜。</h1>
+        <p class="lead">这份导览带你顺着用户的一次做饭决策，读懂「趁鲜」的目录、功能链路、关键算法，以及试用版还欠哪些验证。</p>
+        <div class="hero-meta"><span class="pill">Qt 6.8.2 · QML + C++17</span><span class="pill">Android MVP · 本机 SQLite</span><span class="pill warm">当前阶段：Phase 4 待最终验收</span></div>
+        <div class="hero-note"><strong>阅读口径：</strong>依据 2026-10-22 的当前工作区源码与文档（含未提交修改）。下面的测试数字来自既有验收记录，本次制作导览<strong>未重新构建、运行测试或复验交互</strong>；Android APK 构建通过不等于真机实测，现有签名 Release 包也不是当前源码版本。<span class="source"><a href="mvp/cycle-state.md">docs/mvp/cycle-state.md:5–16</a> · <a href="mvp/trial-release.md">docs/mvp/trial-release.md:3–18</a></span></div>
+      </header>
+
+      <section id="orientation" aria-labelledby="orientation-title">
+        <div class="section-head"><div class="section-kicker">01 / PRODUCT</div><h2 id="orientation-title">项目是什么</h2><p>重点不是精确盘点冰箱，而是降低记录食材的成本，提醒「先用什么」，再帮助决定「做什么」。</p></div>
+        <div class="grid-2">
+          <article class="card"><span class="tag">目标用户</span><h3>一个人买菜，也负责做饭</h3><p>购物记录能说明买过，却不能证明现在还在冰箱；因此产品把 AI 识别当作<strong>低成本录入草稿</strong>，仍允许逐项纠错、手动标记用掉或家里没有。</p><span class="source"><span class="source-label">依据</span><a href="prd-v5.md">docs/prd-v5.md:18–28</a> · <a href="prd-v5.md">:40–45</a></span></article>
+          <article class="card"><span class="tag">产品边界</span><h3>估计有来源，菜谱有出处</h3><p>保质期估计不等于食品安全结论；用户确认过的规则优先于通用参考。菜谱从有来源的离线数据导入，AI 只识别购物材料，不生成或改写菜谱。</p><span class="source"><span class="source-label">依据</span><a href="prd-v5.md">docs/prd-v5.md:30–38</a> · <a href="prd-v5.md">:61–75</a></span></article>
+        </div>
+        <p class="wide-note"><strong>交付边界：</strong>首版是单人 Android 客户端，无账号、无后端，数据存在本机 SQLite；桌面版用于开发和自动化测试，家庭协作、iOS、自动下单及门店库存不属于当前实现。<span class="source"><a href="prd-v5.md">docs/prd-v5.md:59–59</a> · <a href="prd-v5.md">:86–93</a></span></p>
+      </section>
+
+      <section id="structure" aria-labelledby="structure-title">
+        <div class="section-head"><div class="section-kicker">02 / FILE SYSTEM</div><h2 id="structure-title">文件放在哪里</h2><p>先认两个世界：<code>app/</code> 是运行在手机上的产品，<code>tools/</code> 在开发时离线生产随包数据与测试样本。</p></div>
+        <div class="tree" aria-label="项目目录说明">
+          <div class="tree-head mono">whilefresh / 导航式目录地图</div>
+          <div class="tree-body">
+            <div class="tree-col">
+              <div class="tree-row"><a href="../app/CMakeLists.txt">app/</a><span>Qt/CMake 工程；同一源码构建 Android 与 macOS 开发版</span></div>
+              <div class="tree-row indent"><a href="../app/src/core/">src/core/</a><span>食材、日期、保质期、新鲜度、菜谱匹配；只依赖 QtCore</span></div>
+              <div class="tree-row indent"><a href="../app/src/data/">src/data/</a><span>SQLite、迁移、用户数据与随包只读数据</span></div>
+              <div class="tree-row indent"><a href="../app/src/recognition/">src/recognition/</a><span>DeepSeek / 回放 / 演示识别器、图片处理、响应解析</span></div>
+              <div class="tree-row indent"><a href="../app/src/platform/">src/platform/</a><span>Android Java/JNI 与桌面文件、相机、分享、剪贴板适配</span></div>
+              <div class="tree-row indent"><a href="../app/src/ui/">src/ui/</a><span>ImportService、KitchenService 与 QML 可调用的 AppModel</span></div>
+              <div class="tree-row indent"><a href="../app/qml/">qml/</a><span>五个主页面、入库弹层、详情页、可复用组件与主题</span></div>
+              <div class="tree-row indent"><a href="../app/assets/data/">assets/data/</a><span>打进安装包的菜谱、标准食材词表与保质期参考表</span></div>
+              <div class="tree-row indent"><a href="../app/tests/">tests/</a><span>按 core / data / recognition / platform / ui 分层的 Qt Test</span></div>
+            </div>
+            <div class="tree-col">
+              <div class="tree-row"><a href="../tools/">tools/</a><span>uv 管理的 Python 离线数据工具与 pytest</span></div>
+              <div class="tree-row indent"><a href="../tools/whilefresh_tools/">whilefresh_tools/</a><span>菜谱转换、词表、参考表、合成样本、识别评估、资源生成</span></div>
+              <div class="tree-row"><a href="../scripts/">scripts/</a><span>构建、取依赖、安装与模拟器启动；产物在忽略的 build/</span></div>
+              <div class="tree-row"><a href="../test-data/">test-data/</a><span>虚构购物截图 / 小票 / 文字、标准答案和合成识别录制</span></div>
+              <div class="tree-row"><a href="../design/">design/</a><span>HTML 视觉稿与「厨房手账」设计参数</span></div>
+              <div class="tree-row"><a href="../docs/">docs/</a><span>PRD、开发说明、MVP 过程与验收资料；本页也在此处</span></div>
+              <div class="tree-row"><a href="../AGENTS.md">AGENTS.md</a> / <a href="../FHS.md">FHS.md</a><span>项目协作规则与权威文件放置规则</span></div>
+              <div class="tree-row"><span>private/（不链接）</span><span>敏感资料不入 Git；本次导览未读取该目录</span></div>
+            </div>
+          </div>
+        </div>
+        <span class="source"><span class="source-label">目录依据</span><a href="../FHS.md">FHS.md:7–76</a> · <a href="../app/CMakeLists.txt">app/CMakeLists.txt:9–35</a></span>
+      </section>
+
+      <section id="architecture" aria-labelledby="architecture-title">
+        <div class="section-head"><div class="section-kicker">03 / RESPONSIBILITIES</div><h2 id="architecture-title">代码如何协作</h2><p>按职责往下看：QML 处理触摸与展示；C++ 服务编排动作；领域层只回答规则问题；平台与识别层隔离外部世界。</p></div>
+        <div class="architecture">
+          <div class="layer"><div class="layer-label">01　界面 / QML</div><p><code>Main.qml</code> 用 <code>StackView</code> 切换冰箱、菜谱、清冰箱、待买、我的；<code>BottomSheet</code> 承载入库。页面通过 <code>App</code> 单例读属性、调用动作，不直接写 SQL。<span class="source"><a href="../app/qml/Main.qml">app/qml/Main.qml:19–35</a> · <a href="../app/qml/components/BottomSheet.qml">app/qml/components/BottomSheet.qml:5–49</a></span></p></div>
+          <div class="layer"><div class="layer-label">02　应用 / UI 服务</div><p><code>AppModel</code> 将对象投影成 <code>QVariantList/Map</code> 并通知 QML 更新；<code>ImportService</code> 管导入草稿与确认，<code>KitchenService</code> 管库存、选料、菜谱与待买。<span class="source"><a href="../app/src/ui/app-model.h">app/src/ui/app-model.h:21–111</a> · <a href="../app/src/ui/import-service.cpp">app/src/ui/import-service.cpp:313–400</a> · <a href="../app/src/ui/kitchen-service.cpp">app/src/ui/kitchen-service.cpp:241–305</a></span></p></div>
+          <div class="layer"><div class="layer-label">03　领域 / Core</div><p>纯规则判断：标准名和上位食材、日期解释、保质期来源、新鲜度、常备规则、菜谱需求匹配、重复导入。<code>core</code> 的 CMake 依赖受约束为 QtCore。<span class="source"><a href="../app/src/core/CMakeLists.txt">app/src/core/CMakeLists.txt:1–30</a> · <a href="../app/CMakeLists.txt">app/CMakeLists.txt:20–33</a></span></p></div>
+          <div class="layer"><div class="layer-label">04　边界 / Adapters</div><p><code>data</code> 持久化到 SQLite；<code>recognition</code> 把图片/文字送至可替换的识别器；<code>platform</code> 接系统分享、选图、拍照与剪贴板。内置菜谱、词表、参考表由 <code>assets/data</code> 加载。<span class="source"><a href="../app/src/data/store.h">app/src/data/store.h:41–113</a> · <a href="../app/src/recognition/recognition-service.h">app/src/recognition/recognition-service.h:9–33</a> · <a href="../app/src/main.cpp">app/src/main.cpp:45–64</a></span></p></div>
+        </div>
+        <p class="wide-note"><strong>一条数据怎么走：</strong>Android 分享 / 本地选图 → 平台桥接 → AppModel → ImportService → RecognitionService → 草稿纠错 → 事务写入 Store → KitchenService 按实时日期与冰箱内容计算 → QML 展示。演示模式改用独立 <code>demo.db</code> 与预置识别器，不污染真实数据。<span class="source"><a href="../app/src/ui/app-model.cpp">app/src/ui/app-model.cpp:104–151</a> · <a href="../app/src/ui/app-model.cpp">:584–603</a></span></p>
+      </section>
+
+      <section id="journey" aria-labelledby="journey-title">
+        <div class="section-head"><div class="section-kicker">04 / USER JOURNEY</div><h2 id="journey-title">跟着一次做饭，走完功能</h2><p>这是用户可见动作与背后实现的对应关系；入库不是「一识别就落库」，而是先生成可修改的草稿。</p></div>
+        <div class="flow">
+          <article class="flow-step"><div class="step-index">01</div><div><h3>入库：多图 / 系统分享 / 小票 / 文字 / 手动</h3><p>平台接收输入并拷贝图片到应用私有目录；隐私告知后识别商品与可见日期，草稿区分食材、调料和忽略项。用户可以纠错、重试或放弃；确认时事务性保存导入记录和食材，并提示疑似重复。</p><span class="source"><a href="../app/qml/pages/ImportFlowPage.qml">app/qml/pages/ImportFlowPage.qml:20–135</a> · <a href="../app/src/platform/platform-services.cpp">app/src/platform/platform-services.cpp:69–109</a> · <a href="../app/src/ui/import-service.cpp">app/src/ui/import-service.cpp:79–164, 313–400</a></span></div></article>
+          <article class="flow-step"><div class="step-index">02</div><div><h3>看冰箱：冷藏 / 冷冻 / 常温</h3><p>物资按存放位置展示，标出新鲜度和保质期依据；可编辑日期和天数，滑动标「先用」「用掉」「家里没有」。新鲜度按当前日期计算，而不是存一个会过时的固定标签。</p><span class="source"><a href="../app/qml/pages/FridgePage.qml">app/qml/pages/FridgePage.qml:14–124</a> · <a href="../app/qml/components/PantryRow.qml">app/qml/components/PantryRow.qml:18–44, 108–133</a> · <a href="../app/src/core/freshness.cpp">app/src/core/freshness.cpp:39–52</a></span></div></article>
+          <article class="flow-step"><div class="step-index">03</div><div><h3>清冰箱：先选食材，再推荐菜谱</h3><p>默认选择临期和手动标记先用的食材，也可增减；菜谱根据冰箱与常备品匹配。详情保留原菜谱用料、步骤和来源，并分别标出有料、缺料。</p><span class="source"><a href="../app/src/ui/kitchen-service.cpp">app/src/ui/kitchen-service.cpp:241–305</a> · <a href="../app/qml/pages/RecipeDetailPage.qml">app/qml/pages/RecipeDetailPage.qml:41–115</a></span></div></article>
+          <article class="flow-step"><div class="step-index">04</div><div><h3>补缺料：归类待买，复制或分享</h3><p>缺少的原料可以加入待买清单，用户能复制文本或调用系统分享。App 不声称能代下单，也不提供门店库存。</p><span class="source"><a href="../app/src/core/shopping-list.cpp">app/src/core/shopping-list.cpp:45–99</a> · <a href="../app/qml/pages/ShoppingPage.qml">app/qml/pages/ShoppingPage.qml:36–84</a> · <a href="prd-v5.md">docs/prd-v5.md:86–93</a></span></div></article>
+        </div>
+        <p class="wide-note"><strong>横向能力：</strong>「我的」页管理常备品、用户确认的本地保质期/存放规则、待确认建议、导入记录与删除；演示开关可断网走通合成流程，且顶部有模式标识。<span class="source"><a href="../app/qml/pages/ProfilePage.qml">app/qml/pages/ProfilePage.qml:25–177</a> · <a href="../app/qml/Main.qml">app/qml/Main.qml:38–52</a></span></p>
+      </section>
+
+      <section id="algorithms" aria-labelledby="algorithms-title">
+        <div class="section-head"><div class="section-kicker">05 / UNDER THE HOOD</div><h2 id="algorithms-title">值得读的五组算法</h2><p>下面写的是实际代码路径与边界，而非「AI 自动解决一切」。</p></div>
+        <div class="detail-list">
+          <article class="detail-card"><h3><small>A / INPUT</small> 从图片 / 文字到可信草稿</h3><p>导入端先检查文件路径、数量和体积；超长图像本机缩放、切片，再按批次请求 DeepSeek。识别响应经过 JSON 解析、字段范围限制、标准名映射；截断响应只保留完整商品，原始识别结果需要用户确认才能入库。</p><ul><li>相对日期以截图拍摄日解释，不能把「今天生产」理解为导入当天。</li><li>相同图片按 SHA-256 判重；近 3 天导入的商品按「标准名 + 数量」多重集合比较，至少两项且重合达到 80% 才提示疑似重复。</li><li>识别器接口同一套，可切换真实 API、录制回放和演示预置。</li></ul><span class="source"><a href="../app/src/platform/import-files.h">app/src/platform/import-files.h:22–25</a> · <a href="../app/src/recognition/image-preprocessor.cpp">app/src/recognition/image-preprocessor.cpp:100–190</a> · <a href="../app/src/recognition/response-parser.cpp">app/src/recognition/response-parser.cpp:91–170, 315–395</a> · <a href="../app/src/core/import-duplicates.cpp">app/src/core/import-duplicates.cpp:48–80</a></span></article>
+          <article class="detail-card"><h3><small>B / EXPIRY</small> 保质期是「依据链」，不是一个魔法数字</h3><p>人工修改与包装可见信息优先，其后是用户确认过的本地规则、内置参考表、已缓存 AI 估计、新 AI 估计；没有可信期限则显示未知。日期保留「生产 / 购买 / 入库 / 包装到期」的区别，起算日依次取生产日、购买日、入库日，并在界面标明估计来源。</p><div class="formula mono">期限来源：人工 / 包装 → 本地规则 → 参考表 → AI 缓存 / 新估计<br>起算日期：生产日 → 购买日 → 入库日（依次回退）</div><span class="source"><a href="../app/src/core/shelf-life.cpp">app/src/core/shelf-life.cpp:225–315</a> · <a href="../app/src/core/fridge-item.cpp">app/src/core/fridge-item.cpp:64–87</a> · <a href="../app/src/ui/import-service.cpp">app/src/ui/import-service.cpp:167–224</a></span></article>
+          <article class="detail-card"><h3><small>C / TIME</small> 新鲜度按天重算</h3><p>过了估计到期日（含到期当天）标「超出估计」；剩余天数不超过 <code>max(1 天, 总保质天数 × 25%)</code> 为临期；无日期为未知。它是帮助决定先用什么的提示，不是食用安全鉴定。</p><div class="formula mono">remaining = expiryDate − today<br>remaining ≤ 0 → 超出估计；remaining ≤ max(1, totalDays × 0.25) → 临期</div><span class="source"><a href="../app/src/core/freshness.h">app/src/core/freshness.h:17–21</a> · <a href="../app/src/core/freshness.cpp">app/src/core/freshness.cpp:39–52</a> · <a href="prd-v5.md">docs/prd-v5.md:69–70</a></span></article>
+          <article class="detail-card"><h3><small>D / MATCH</small> 食材集合匹配菜谱需求组</h3><p>一道菜的用料是「组间 AND、组内 OR」：例如某组可由 A 或 B 满足，子食材也可满足上位名称需求；库存和默认常备品都参与判断。清冰箱优先使用更多选中食材，再比较缺料；普通菜谱浏览优先缺料更少，不使用 AI 临时生成菜谱。</p><span class="source"><a href="../app/src/core/catalog.cpp">app/src/core/catalog.cpp:126–142</a> · <a href="../app/src/core/recipe.cpp">app/src/core/recipe.cpp:129–194, 206–230</a> · <a href="../app/src/ui/kitchen-service.cpp">app/src/ui/kitchen-service.cpp:241–305</a></span></article>
+          <article class="detail-card"><h3><small>E / CONSISTENCY</small> 确认之后才改动持久数据</h3><p>导入记录、食材、AI 天数缓存和待确认建议在数据库事务中写入；清理导入图片通过持久化队列处理，避免数据已提交却遗留无引用文件。常备品状态与保质期规则不因一次识别而静默覆盖，须经过用户操作。</p><span class="source"><a href="../app/src/ui/import-service.cpp">app/src/ui/import-service.cpp:313–400</a> · <a href="../app/src/data/store.cpp">app/src/data/store.cpp:446–466</a> · <a href="../app/src/ui/kitchen-service.cpp">app/src/ui/kitchen-service.cpp:148–174, 189–239</a></span></article>
+        </div>
+      </section>
+
+      <section id="toolchain" aria-labelledby="toolchain-title">
+        <div class="section-head"><div class="section-kicker">06 / ENGINEERING</div><h2 id="toolchain-title">框架、数据工具与验证</h2><p>应用在 C++/Qt 中运行；Python 是离线工厂，不在用户手机上执行。</p></div>
+        <div class="grid-2">
+          <article class="card"><span class="tag">应用运行时</span><h3>Qt Quick + CMake</h3><p>Qt 6.8.2、QML 页面、C++17 领域与服务、Qt SQL/SQLite、Qt Network；Android Java/JNI 承接系统入口，桌面适配用于开发。CMake 控制各层依赖，并在桌面启用 Qt Test / CTest。</p><span class="source"><a href="../app/CMakeLists.txt">app/CMakeLists.txt:9–35, 109–135</a> · <a href="../app/src/platform/android/android-platform-services.cpp">app/src/platform/android/android-platform-services.cpp:16–35</a></span></article>
+          <article class="card"><span class="tag">离线数据工厂</span><h3>先生成、审阅，再随包发布</h3><p>HowToCook 来源菜谱经固定映射转成结构化菜谱；词表的 AI 草稿须审阅，正式构建可复现；FoodKeeper 快照生成参考表。<code>tools/</code> 的 Python/uv 产出放在 <code>app/assets/data/</code>，运行时不用访问这些上游来源。</p><span class="source"><a href="../tools/whilefresh_tools/recipes/build.py">tools/whilefresh_tools/recipes/build.py:19–66</a> · <a href="../tools/whilefresh_tools/vocabulary/build.py">tools/whilefresh_tools/vocabulary/build.py:23–90</a> · <a href="../tools/whilefresh_tools/shelf_life/build.py">tools/whilefresh_tools/shelf_life/build.py:37–119</a></span></article>
+          <article class="card"><span class="tag">测试与回归</span><h3>离线测试，不调用付费识别</h3><p>Qt Test 覆盖日期、保质期、菜谱匹配、数据库迁移、平台桥接、识别解析及服务链；Python pytest 验证数据构建和合成样本。录制回放让识别链可重复验证；真实付费识别另行手动执行，不属于 CTest。</p><span class="source"><a href="../app/tests/CMakeLists.txt">app/tests/CMakeLists.txt:1–27</a> · <a href="development.md">docs/development.md:91–114, 133–146</a></span></article>
+          <article class="card"><span class="tag">构建与交付</span><h3>由脚本统一配置目标与密钥</h3><p><code>scripts/build-desktop.sh</code> 构建开发版；<code>scripts/build-android.sh</code> 构建双 ABI APK。构建脚本从本机钥匙串取试用密钥，仅生成到忽略的构建目录；依赖按固定版本下载到缓存目录，不写入仓库。</p><span class="source"><a href="development.md">docs/development.md:17–41</a> · <a href="../scripts/build-android.sh">scripts/build-android.sh:33–81</a> · <a href="../scripts/fetch-deps.sh">scripts/fetch-deps.sh:6–26</a></span></article>
+        </div>
+        <p class="wide-note"><strong>已记录、未在本次重跑的结果：</strong>桌面 CTest 19/19、Python pytest 166/166、双 ABI 无密钥 Debug APK 构建通过；23 份合成录制与基线一致。桌面离屏启动不等于 Android 交互验收。<span class="source"><a href="mvp/cycle-state.md">docs/mvp/cycle-state.md:9–16, 148–166</a></span></p>
+      </section>
+
+      <section id="strengths" aria-labelledby="strengths-title">
+        <div class="section-head"><div class="section-kicker">07 / WHAT WORKS</div><h2 id="strengths-title">值得保留的设计</h2><p>这些是从实现可直接看到的优点，而不只是架构图上的口号。</p></div>
+        <div class="grid-2">
+          <article class="card"><h3>规则能单测，不绑 UI</h3><p>日期、保质期和匹配逻辑沉在 <code>core</code>，有 QtCore 依赖检查；UI 服务做编排，QML 不承担业务规则和 SQL。</p><span class="source"><a href="../app/CMakeLists.txt">app/CMakeLists.txt:20–33</a> · <a href="../FHS.md">FHS.md:58–66</a></span></article>
+          <article class="card"><h3>真实、回放、演示共享入口</h3><p>识别器实现同一个异步接口，允许离线回归与断网演示；演示数据库与真实数据库隔离，避免测试数据混入个人冰箱。</p><span class="source"><a href="../app/src/recognition/recognition-service.h">app/src/recognition/recognition-service.h:9–33</a> · <a href="../app/src/ui/app-model.cpp">app/src/ui/app-model.cpp:130–151, 584–603</a></span></article>
+          <article class="card"><h3>有来源、可纠错、可复现</h3><p>保质期带来源标签，菜谱保留原文与来源；离线词表/菜谱/参考表由工具生成和校验，而不是运行时临时让 AI 编造。</p><span class="source"><a href="../app/src/core/shelf-life.cpp">app/src/core/shelf-life.cpp:225–315</a> · <a href="../tools/whilefresh_tools/recipes/build.py">tools/whilefresh_tools/recipes/build.py:100–133</a></span></article>
+          <article class="card"><h3>对失败与数据清理有边界</h3><p>草稿、重复提醒、取消和失败重试显式进入入库流程；导入使用事务，图片文件删除由持久化清理队列兜住。</p><span class="source"><a href="../app/qml/pages/ImportFlowPage.qml">app/qml/pages/ImportFlowPage.qml:137–306</a> · <a href="../app/src/data/store.cpp">app/src/data/store.cpp:446–466</a></span></article>
+        </div>
+      </section>
+
+      <section id="debt" aria-labelledby="debt-title">
+        <div class="section-head"><div class="section-kicker">08 / FOLLOW-UP</div><h2 id="debt-title">项目待办入口</h2><p>体验打磨、验证缺口、发布事项、数据质量与后续候选统一维护在 Markdown checklist 中，本导览不再复制任务或状态。</p></div>
+        <p class="wide-note"><a href="mvp/todo.md">打开项目唯一待办 checklist</a>。具体交互与技术依据见 <a href="mvp/polish-requirements.md">MVP 体验打磨规格</a>；已完成工作的验证证据见 <a href="mvp/cycle-state.md">cycle-state</a> 与 <a href="mvp/trial-release.md">试用版交付说明</a>。</p>
+      </section>
+
+      <section id="reading" aria-labelledby="reading-title">
+        <div class="section-head"><div class="section-kicker">09 / READING PATH</div><h2 id="reading-title">接下来从哪里读源码</h2><p>建议按「入口 → 入库 → 规则 → 匹配 → 持久化」的顺序，而不是从目录第一行开始看。</p></div>
+        <ul class="ref-list">
+          <li><a href="../app/src/main.cpp">01 · app/src/main.cpp</a><span>服务如何创建，QML 的 App 单例从哪来</span></li>
+          <li><a href="../app/qml/Main.qml">02 · app/qml/Main.qml</a><span>导航、入库弹层与页面装配</span></li>
+          <li><a href="../app/src/ui/app-model.h">03 · app/src/ui/app-model.h</a><span>QML 可读的状态与可调用动作</span></li>
+          <li><a href="../app/src/ui/import-service.cpp">04 · app/src/ui/import-service.cpp</a><span>识别草稿、纠错、确认与事务</span></li>
+          <li><a href="../app/src/core/shelf-life.cpp">05 · app/src/core/shelf-life.cpp</a><span>日期起算、依据优先级与存放建议</span></li>
+          <li><a href="../app/src/core/recipe.cpp">06 · app/src/core/recipe.cpp</a><span>需求组匹配与清冰箱排序</span></li>
+          <li><a href="../app/src/data/database.cpp">07 · app/src/data/database.cpp</a><span>SQLite 打开、迁移与事务</span></li>
+          <li><a href="development.md">08 · docs/development.md</a><span>构建命令、工具、测试和平台注意事项</span></li>
+        </ul>
+      </section>
+      <footer>趁鲜 · 工程导览 / 基于当前工作区的静态梳理。权威产品需求以 <a href="prd-v5.md">PRD v5</a> 为准；验收状态与待办以 <a href="mvp/cycle-state.md">cycle-state</a>、<a href="mvp/todo.md">todo</a> 为准。</footer>
+    </main>
+  </div>
+</body>
+</html>

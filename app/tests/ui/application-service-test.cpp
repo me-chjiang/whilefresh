@@ -130,9 +130,13 @@ private slots:
         QVERIFY(store->imports().isEmpty());
         QCOMPARE(service.draft().ignoredCount(), 1);
         QCOMPARE(service.draft().items.first().item.productionDate.date, QDate(2026, 10, 21));
+        auto edited = service.draft().items.first();
+        edited.item.entryDate = QDate(2026, 10, 18);
+        QVERIFY(service.updateItem(0, edited));
         QVERIFY(service.confirm());
         QCOMPARE(committed.size(), 1);
         QCOMPARE(store->items().size(), 6);
+        QCOMPARE(store->items().first().entryDate, QDate(2026, 10, 18));
         const auto record = store->imports().first();
         QVERIFY(!record.isDemo);
         QCOMPARE(record.sourceType, QStringLiteral("cart"));
@@ -141,6 +145,38 @@ private slots:
         QVERIFY(kitchen->deleteImport(record.id));
         QVERIFY(store->items().isEmpty());
         QVERIFY(!QFile::exists(input.images.first().localPath));
+    }
+
+    void emptyTextDoesNotBlockNextImport()
+    {
+        rec::DemoRecognizer recognizer;
+        ImportService service(*store, builtin, *clock, recognizer, true);
+        platform::ImportPayload input;
+        input.kind = platform::ImportPayload::Kind::Text;
+        input.text = QStringLiteral("   ");
+        QVERIFY(!service.receive(input));
+        input.text = QStringLiteral("鸡蛋 10枚");
+        QVERIFY(service.receive(input));
+        QCOMPARE(service.draft().record.textLength, input.text.size());
+    }
+
+    void draftCategoryCorrection()
+    {
+        rec::ReplayRecognizer recognizer(mixedRecording());
+        ImportService service(*store, builtin, *clock, recognizer);
+        QSignalSpy ready(&service, &ImportService::draftReady);
+        QVERIFY(service.receive(payload()));
+        QVERIFY(service.start(true));
+        QTRY_COMPARE(ready.size(), 1);
+        auto egg = service.draft().items.at(0);
+        egg.category = rec::ItemCategory::Seasoning;
+        QVERIFY(service.updateItem(0, egg));
+        auto soySauce = service.draft().items.at(1);
+        soySauce.category = rec::ItemCategory::Food;
+        QVERIFY(service.updateItem(1, soySauce));
+        QVERIFY(service.confirm());
+        QCOMPARE(store->items().size(), 1);
+        QCOMPARE(store->items().first().canonicalName, QStringLiteral("生抽"));
     }
 
     void noPhotoDateNeedsConfirmation()
@@ -394,6 +430,9 @@ private slots:
     {
         auto item = manual(QStringLiteral("鸡蛋"));
         QVERIFY(kitchen->saveItem(item));
+        item.entryDate = QDate(2026, 10, 18);
+        QVERIFY(kitchen->saveItem(item));
+        QCOMPARE(store->item(item.id)->entryDate, QDate(2026, 10, 18));
         auto before = item;
         item.manualDays = 8;
         QVERIFY(kitchen->saveItem(item));
@@ -413,6 +452,27 @@ private slots:
         QCOMPARE(kitchen->freshness(next).freshness, Freshness::BeyondEstimate);
         QVERIFY(kitchen->deleteShelfLifeRule(QStringLiteral("鸡蛋"), Storage::Fridge));
         QVERIFY(kitchen->shelfLifeRules().isEmpty());
+    }
+
+    void ruleMoveRollsBackWhenOldRuleCannotBeDeleted()
+    {
+        const auto before = proposeShelfLifeRule(QStringLiteral("鸡蛋"), Storage::Fridge, 7);
+        const auto after = proposeShelfLifeRule(QStringLiteral("鸡蛋"), Storage::Freezer, 30);
+        QVERIFY(before);
+        QVERIFY(after);
+        QVERIFY(kitchen->confirmRule(*before));
+        QSqlQuery query(database->handle());
+        QVERIFY(query.exec(QStringLiteral("CREATE TRIGGER refuse_rule_delete BEFORE DELETE ON shelf_life_rules "
+                                          "BEGIN SELECT RAISE(FAIL, 'test failure'); END")));
+        QVERIFY(!kitchen->replaceRule(*after, Storage::Fridge));
+        const auto rules = kitchen->shelfLifeRules();
+        QCOMPARE(rules.size(), 1);
+        QCOMPARE(rules.first().storage, Storage::Fridge);
+        QCOMPARE(rules.first().days, 7);
+        QVERIFY(query.exec(QStringLiteral("DROP TRIGGER refuse_rule_delete")));
+        QVERIFY(kitchen->replaceRule(*after, Storage::Fridge));
+        QCOMPARE(kitchen->shelfLifeRules().size(), 1);
+        QCOMPARE(kitchen->shelfLifeRules().first().storage, Storage::Freezer);
     }
 
     void storageChangeUsesStoredAiAndDoesNotSetRule()

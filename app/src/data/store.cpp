@@ -203,8 +203,9 @@ QString assignments(const QString &columns)
 
 }
 
-Store::Store(Database &database, const Clock &clock, QString importsDirectory)
-    : m_database(database), m_clock(clock), m_importsDirectory(std::move(importsDirectory))
+Store::Store(Database &database, const Clock &clock, QString importsDirectory, bool cleanUntrackedFiles)
+    : m_database(database), m_clock(clock), m_importsDirectory(std::move(importsDirectory)),
+      m_cleanUntrackedFiles(cleanUntrackedFiles)
 {
 }
 
@@ -509,7 +510,7 @@ bool Store::deleteAllData()
         return false;
     QSqlQuery query(m_database.handle());
     bool ok = run(query, QStringLiteral("INSERT OR IGNORE INTO file_cleanup SELECT path FROM import_images"));
-    if (!m_importsDirectory.isEmpty()) {
+    if (m_cleanUntrackedFiles && !m_importsDirectory.isEmpty()) {
         for (const auto &file : QDir(m_importsDirectory).entryInfoList(QDir::Files | QDir::Hidden | QDir::System)) {
             query.prepare(QStringLiteral("INSERT OR IGNORE INTO file_cleanup (path) VALUES (?)"));
             query.addBindValue(file.absoluteFilePath());

@@ -24661,7 +24661,7 @@
     {
      "raw": "五花肉（可加可不加）",
      "name": "五花肉",
-     "optional": false,
+     "optional": true,
      "kind": "ingredient",
      "canonical": [
       [
@@ -28574,7 +28574,7 @@
     {
      "raw": "小葱花（点缀用）",
      "name": "小葱花",
-     "optional": false,
+     "optional": true,
      "kind": "ingredient",
      "canonical": [
       [
@@ -39563,7 +39563,7 @@
     {
      "raw": "虾仁（个人口味，可加可不加）",
      "name": "虾仁",
-     "optional": false,
+     "optional": true,
      "kind": "unknown",
      "canonical": [
       [

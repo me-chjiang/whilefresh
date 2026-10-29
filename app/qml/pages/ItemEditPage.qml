@@ -9,7 +9,7 @@ Item {
     signal backRequested()
     property var dateEdits: ({})
     property string saveError: ""
-    PageHeader { id: header; x: Theme.gap; width: parent.width - Theme.gap * 2; heading: "编辑食材"; actionText: "返回"; onActionTriggered: page.backRequested() }
+    PageHeader { id: header; x: Theme.gap; width: parent.width - Theme.gap * 2; heading: "编辑食材"; backVisible: true; onBackRequested: page.backRequested() }
     Flickable {
         anchors.top: header.bottom
         anchors.bottom: parent.bottom

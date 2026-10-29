@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Build an Android APK for one ABI into build/android-<abi>[-release].
-# Usage: scripts/build-android.sh <x86_64|arm64-v8a> [--no-key] [--release]
+# Usage: scripts/build-android.sh <x86_64|arm64-v8a> [--no-key] [--release|--sign-debug]
 # --release signs with ~/.config/whilefresh/release.keystore; its password comes from the
 # keychain entry landing-project-android-keystore and is only passed through the environment.
 # The DeepSeek key is read from the macOS keychain unless --no-key is given (ADR-5).
@@ -8,7 +8,7 @@ set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
 if [[ $# -lt 1 ]]; then
-    echo "usage: $0 <x86_64|arm64-v8a> [--no-key] [--release]" >&2
+    echo "usage: $0 <x86_64|arm64-v8a> [--no-key] [--release|--sign-debug]" >&2
     exit 2
 fi
 
@@ -22,10 +22,12 @@ esac
 
 with_key=1
 release=0
+sign_debug=0
 for arg in "$@"; do
     case "$arg" in
         --no-key) with_key=0 ;;
         --release) release=1 ;;
+        --sign-debug) sign_debug=1 ;;
         *) echo "unknown option: $arg" >&2; exit 2 ;;
     esac
 done
@@ -46,6 +48,8 @@ if [[ $release -eq 1 ]]; then
     build_type=Release
     variant=release
     build_dir="$REPO_ROOT/build/android-$abi-release"
+fi
+if [[ $release -eq 1 || $sign_debug -eq 1 ]]; then
     keystore="${WHILEFRESH_KEYSTORE:-$HOME/.config/whilefresh/release.keystore}"
     if [[ ! -f "$keystore" ]]; then
         echo "release keystore not found: $keystore" >&2
@@ -65,7 +69,7 @@ if [[ $release -eq 1 ]]; then
 fi
 "$QT_ROOT/$kit/bin/qt-cmake" -S "$REPO_ROOT/app" -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE="$build_type" \
-    "${sign_args[@]}" \
+    "${sign_args[@]+"${sign_args[@]}"}" \
     -DQT_HOST_PATH="$QT_ROOT/macos" \
     -DANDROID_SDK_ROOT="$ANDROID_SDK_ROOT" \
     -DANDROID_NDK_ROOT="$ANDROID_NDK_ROOT" \

@@ -91,10 +91,8 @@ bool ImportService::receive(const platform::ImportPayload &payload)
         m_store.discardImportFiles(rejected);
         return reject(rec::ErrorKind::InvalidInput, QStringLiteral("请先确认或放弃当前入库草稿，再重新导入"));
     }
-    m_payload = payload;
-    m_received = true;
-    m_draft = {};
-    auto &record = m_draft.record;
+    ImportDraft draft;
+    auto &record = draft.record;
     record.createdAt = m_clock.now();
     record.isDemo = m_demo;
     record.origin = platform::originName(payload.origin);
@@ -128,8 +126,11 @@ bool ImportService::receive(const platform::ImportPayload &payload)
             record.images.append({ image.localPath, sha, image.mimeType, image.capturedAt,
                                    platform::dateSourceName(image.capturedAtSource) });
         }
-        m_draft.duplicate = checkSameImage(hashes, m_store.importFingerprints());
+        draft.duplicate = checkSameImage(hashes, m_store.importFingerprints());
     }
+    m_payload = payload;
+    m_received = true;
+    m_draft = std::move(draft);
     emit prepared();
     if (m_draft.duplicate.isDuplicate())
         emit duplicateDetected(m_draft.duplicate);
@@ -269,7 +270,6 @@ bool ImportService::updateItem(int index, DraftItem draft)
     draft.production = before.production;
     draft.purchase = before.purchase;
     draft.expiry = before.expiry;
-    draft.item.entryDate = before.item.entryDate;
     draft.item.id = 0;
     draft.item.importId = 0;
     draft.item.status = ItemStatus::InStock;
@@ -344,7 +344,8 @@ bool ImportService::confirm(bool allowDuplicate)
         if (!draft.selected || draft.category == rec::ItemCategory::Irrelevant)
             continue;
         auto &item = draft.item;
-        item.entryDate = m_clock.today();
+        if (!item.entryDate.isValid())
+            item.entryDate = m_clock.today();
         const auto resolution = resolveShelfLife(item.shelfLifeInput(),
                                                  { m_builtin->catalog.get(), m_builtin->shelfLife.get(), &rules, &cache });
         item.applyShelfLife(resolution);

@@ -106,6 +106,65 @@ private slots:
         QCOMPARE(match.missingCount, 1);
     }
 
+    void optionalAndSeasoningDoNotCoverSelection()
+    {
+        IngredientCatalog local = catalog;
+        QVERIFY(local.add({ QStringLiteral("蓝莓"), QStringLiteral("fruit"), {}, {}, false, false }));
+        QVERIFY(local.add({ QStringLiteral("虾仁"), QStringLiteral("seafood"), {}, {}, false, false }));
+        QVERIFY(local.add({ QStringLiteral("紫菜"), QStringLiteral("vegetable"), {}, {}, false, false }));
+        const Recipe soup = recipe(QStringLiteral("紫菜蛋花汤"),
+                                   { need(QStringLiteral("鸡蛋"), { { QStringLiteral("鸡蛋") } }),
+                                     need(QStringLiteral("紫菜"), { { QStringLiteral("紫菜") } }),
+                                     need(QStringLiteral("虾仁（可加可不加）"), { { QStringLiteral("虾仁") } }, true,
+                                          QStringLiteral("unknown")) });
+        RecipeMatcher matcher(&local, { item(QStringLiteral("蓝莓"), 1, true),
+                                        item(QStringLiteral("虾仁"), 2, true) });
+        const RecipeMatch match = matcher.match(soup);
+        QCOMPARE(match.haveCount, 1);
+        QCOMPARE(match.missingCount, 2);
+        QCOMPARE(match.selectedNames, (QStringList{ QStringLiteral("蓝莓"), QStringLiteral("虾仁") }));
+        QVERIFY(match.usedSelected.isEmpty());
+        QCOMPARE(match.unusedSelected, match.selectedNames);
+        QVERIFY(rankForClearFridge({ match }).isEmpty());
+
+        const Recipe saltOnly = recipe(QStringLiteral("盐水"),
+                                       { need(QStringLiteral("盐"), { { QStringLiteral("盐") } }) });
+        RecipeMatcher withSalt(&local, { item(QStringLiteral("盐"), 3, true) });
+        const RecipeMatch seasoning = withSalt.match(saltOnly);
+        QCOMPARE(seasoning.haveCount, 1);
+        QCOMPARE(seasoning.selectedUsed, 0);
+        QVERIFY(rankForClearFridge({ seasoning }).isEmpty());
+    }
+
+    void selectedNamesAreCanonicalAndDistinctAcrossBatches()
+    {
+        const Recipe r = recipe(QStringLiteral("番茄汤"),
+                                { need(QStringLiteral("西红柿"), { { QStringLiteral("西红柿") } }, false,
+                                       QStringLiteral("unknown")),
+                                  need(QStringLiteral("土豆"), { { QStringLiteral("土豆") } }) });
+        RecipeMatcher matcher(&catalog, { item(QStringLiteral("番茄"), 1, true),
+                                          item(QStringLiteral("西红柿"), 2, true, true),
+                                          item(QStringLiteral("盐"), 3, true) });
+        const RecipeMatch match = matcher.match(r);
+        QCOMPARE(match.haveCount, 1);
+        QCOMPARE(match.missingCount, 1);
+        QCOMPARE(match.selectedNames, QStringList{ QStringLiteral("西红柿") });
+        QCOMPARE(match.usedSelected, (QStringList{ QStringLiteral("西红柿") }));
+        QVERIFY(match.unusedSelected.isEmpty());
+        QCOMPARE(match.selectedUsed, 1);
+        QCOMPARE(match.inventoryUsed, 2);
+        QCOMPARE(match.nearExpiryUsed, 1);
+
+        const Recipe parent = recipe(QStringLiteral("西红柿"),
+                                     { need(QStringLiteral("西红柿"), { { QStringLiteral("西红柿") } }) });
+        const Recipe child = recipe(QStringLiteral("圣女果"),
+                                    { need(QStringLiteral("圣女果"), { { QStringLiteral("圣女果") } }) });
+        RecipeMatcher withChild(&catalog, { item(QStringLiteral("小番茄"), 4, true) });
+        QCOMPARE(withChild.match(parent).usedSelected, (QStringList{ QStringLiteral("圣女果") }));
+        QCOMPARE(withChild.match(child).selectedUsed, 1);
+        QCOMPARE(matcher.match(child).selectedUsed, 0);
+    }
+
     void clearFridgeRanking()
     {
         const QList<Recipe> recipes{

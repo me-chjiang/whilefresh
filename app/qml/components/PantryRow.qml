@@ -7,6 +7,7 @@ Item {
     property var ingredient: ({})
     property bool multiSelect: false
     property bool checked: false
+    readonly property bool actionReady: !multiSelect && !drag.active && !slideAnimation.running && front.x === -150
     signal editRequested(var item)
     signal selectionRequested(var item)
     signal used(var item)
@@ -14,6 +15,7 @@ Item {
     signal firstRequested(var item)
     height: Theme.rowHeight + Theme.gapSmall
     clip: true
+    onMultiSelectChanged: if (multiSelect) front.x = 0
 
     Row {
         anchors.right: parent.right
@@ -29,7 +31,7 @@ Item {
                 IconGlyph { name: "check"; tint: Theme.textOnGreen; width: 20; height: 20; anchors.horizontalCenter: parent.horizontalCenter }
                 Text { text: "用掉"; font.pixelSize: Theme.textSubtitle; font.weight: Theme.weightBold; color: Theme.textOnGreen }
             }
-            TapHandler { onTapped: { row.used(row.ingredient); front.x = 0 } }
+            TapHandler { enabled: row.actionReady; onTapped: { row.used(row.ingredient); front.x = 0 } }
         }
         Rectangle {
             width: parent.width / 2
@@ -40,7 +42,7 @@ Item {
                 IconGlyph { name: "ban"; tint: Theme.textOnGreen; width: 20; height: 20; anchors.horizontalCenter: parent.horizontalCenter }
                 Text { text: "家里没有"; font.pixelSize: Theme.textSubtitle; font.weight: Theme.weightBold; color: Theme.textOnGreen }
             }
-            TapHandler { onTapped: { row.unavailable(row.ingredient); front.x = 0 } }
+            TapHandler { enabled: row.actionReady; onTapped: { row.unavailable(row.ingredient); front.x = 0 } }
         }
     }
     Rectangle {
@@ -107,6 +109,7 @@ Item {
         }
         DragHandler {
             id: drag
+            enabled: !row.multiSelect
             target: front
             xAxis.minimum: -150
             xAxis.maximum: 90
@@ -128,9 +131,12 @@ Item {
                 else if (row.multiSelect) row.selectionRequested(row.ingredient)
                 else row.editRequested(row.ingredient)
             }
-            onLongPressed: row.selectionRequested(row.ingredient)
+            onLongPressed: if (front.x === 0) row.selectionRequested(row.ingredient)
         }
-        Behavior on x { NumberAnimation { duration: 160 } }
+        Behavior on x {
+            enabled: !drag.active
+            NumberAnimation { id: slideAnimation; duration: 160 }
+        }
     }
     Rectangle {
         anchors.bottom: parent.bottom

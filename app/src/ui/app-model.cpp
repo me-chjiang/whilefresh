@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QStandardPaths>
+#include <QTimer>
 
 namespace whilefresh::ui {
 
@@ -67,10 +68,10 @@ void setDate(core::RecordedDate &recorded, const QString &text)
 }
 
 AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const data::BuiltinData> builtin,
-                   QObject *parent)
+                   const QString &dataDirectory, QObject *parent)
     : QObject(parent), m_platform(platform), m_builtin(std::move(builtin))
 {
-    m_dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    m_dataDir = dataDirectory.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) : dataDirectory;
     QDir().mkpath(m_dataDir);
     m_real = openSession(QDir(m_dataDir).filePath(QStringLiteral("whilefresh.db")), false);
     if (!m_real) {
@@ -88,6 +89,17 @@ AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const d
         }
     }
     m_selected = kitchen().defaultSelection();
+    m_lastDate = m_clock.today();
+    auto *dateTimer = new QTimer(this);
+    dateTimer->setInterval(30000);
+    connect(dateTimer, &QTimer::timeout, this, [this] {
+        const QDate today = m_clock.today();
+        if (today != m_lastDate) {
+            m_lastDate = today;
+            invalidate();
+        }
+    });
+    dateTimer->start();
 
     if (m_platform) {
         connect(m_platform, &platform::PlatformServices::importReceived, this,
@@ -125,7 +137,9 @@ std::unique_ptr<AppModel::Session> AppModel::openSession(const QString &dbPath, 
         qWarning("database %s: %s", qUtf8Printable(dbPath), qUtf8Printable(error));
         return nullptr;
     }
-    session->store = std::make_unique<data::Store>(*session->database, m_clock, platform::importsDirectory());
+    const QString importsDir = QDir(m_dataDir).filePath(QStringLiteral("imports"));
+    QDir().mkpath(importsDir);
+    session->store = std::make_unique<data::Store>(*session->database, m_clock, importsDir, !demo);
     session->kitchen = std::make_unique<KitchenService>(*session->store, m_builtin, m_clock);
     if (demo)
         session->recognizer = std::make_unique<rec::DemoRecognizer>();
@@ -137,6 +151,12 @@ std::unique_ptr<AppModel::Session> AppModel::openSession(const QString &dbPath, 
     auto *k = raw->kitchen.get();
     auto *imp = raw->import.get();
     connect(k, &KitchenService::changed, this, [this, raw] { if (raw == m_active) invalidate(); });
+    connect(k, &KitchenService::shoppingChanged, this, [this, raw] {
+        if (raw != m_active)
+            return;
+        m_shopping.reset();
+        emit shoppingChanged();
+    });
     connect(k, &KitchenService::aboutToDeleteAllData, imp, &ImportService::discard);
     connect(imp, &ImportService::prepared, this, [this, raw] {
         if (raw != m_active) return;
@@ -151,7 +171,8 @@ std::unique_ptr<AppModel::Session> AppModel::openSession(const QString &dbPath, 
         }
     });
     connect(imp, &ImportService::duplicateDetected, this, [this, raw] {
-        if (raw == m_active) setImportState(QStringLiteral("duplicate"));
+        if (raw == m_active && m_importState != QLatin1String("draft"))
+            setImportState(QStringLiteral("duplicate"));
     });
     connect(imp, &ImportService::draftReady, this, [this, raw] {
         if (raw == m_active) setImportState(QStringLiteral("draft"));
@@ -213,13 +234,25 @@ void AppModel::invalidate()
 {
     m_items.reset();
     m_recipes.reset();
-    m_clearRecipes.reset();
     m_shopping.reset();
     QSet<qint64> existing;
     for (const auto &item : kitchen().fridge())
         existing.insert(item.id);
     m_selected.intersect(existing);
+    invalidateSelection();
+    emit recipesChanged();
+    emit shoppingChanged();
     emit changed();
+}
+
+void AppModel::invalidateSelection()
+{
+    m_clearPreview.reset();
+    m_clearRecipes.reset();
+    m_clearResultsSummary.clear();
+    m_clearResultsReady = false;
+    emit selectionChanged();
+    emit clearResultsChanged();
 }
 
 void AppModel::setImportState(const QString &state, const QString &error)
@@ -259,7 +292,9 @@ QVariantMap AppModel::summaryMap(const core::RecipeMatch &match) const
 {
     const auto &r = *match.recipe;
     return { { "id", r.id }, { "name", r.name }, { "difficulty", r.difficulty.value_or(1) },
-             { "haveCount", match.haveCount }, { "missingCount", match.missingCount }, { "sourceUrl", r.sourceUrl } };
+             { "haveCount", match.haveCount }, { "missingCount", match.missingCount }, { "sourceUrl", r.sourceUrl },
+             { "sourceName", kitchen().recipeSource().name }, { "usedSelected", match.usedSelected },
+             { "unusedSelected", match.unusedSelected } };
 }
 
 QVariantList AppModel::items()
@@ -291,10 +326,24 @@ QVariantList AppModel::selectedIds() const
 
 void AppModel::toggleSelected(qint64 id)
 {
+    bool exists = false;
+    for (const auto &item : kitchen().fridge()) {
+        if (item.id == id) {
+            exists = true;
+            break;
+        }
+    }
+    if (!exists)
+        return;
     if (!m_selected.remove(id))
         m_selected.insert(id);
-    m_clearRecipes.reset();
-    emit changed();
+    invalidateSelection();
+}
+
+void AppModel::selectDefaults()
+{
+    m_selected = kitchen().defaultSelection();
+    invalidateSelection();
 }
 
 QVariantList AppModel::recipes()
@@ -308,17 +357,37 @@ QVariantList AppModel::recipes()
     return *m_recipes;
 }
 
-QVariantList AppModel::clearRecipes()
+QVariantList AppModel::clearRecipes() const
 {
-    if (!m_clearRecipes) {
-        QVariantList list;
-        if (!m_selected.isEmpty()) {
-            for (const auto &match : kitchen().clearFridge(m_selected))
-                list.append(summaryMap(match));
-        }
-        m_clearRecipes = list;
+    return m_clearRecipes.value_or(QVariantList{});
+}
+
+QVariantMap AppModel::clearPreview()
+{
+    if (!m_clearPreview) {
+        const auto preview = kitchen().clearFridgePreview(m_selected);
+        m_clearPreview = QVariantMap{ { "selectedCount", preview.selectedCount },
+                                     { "candidateCount", preview.candidateCount },
+                                     { "completeCount", preview.completeCount },
+                                     { "uncovered", preview.uncovered } };
     }
-    return *m_clearRecipes;
+    return *m_clearPreview;
+}
+
+bool AppModel::findClearRecipes()
+{
+    if (clearPreview().value(QStringLiteral("selectedCount")).toInt() == 0) {
+        emit notice(QStringLiteral("请选择至少一种非调料食材"));
+        return false;
+    }
+    QVariantList results;
+    for (const auto &match : kitchen().clearFridge(m_selected))
+        results.append(summaryMap(match));
+    m_clearResultsSummary = clearPreview();
+    m_clearRecipes = results;
+    m_clearResultsReady = true;
+    emit clearResultsChanged();
+    return true;
 }
 
 QVariantMap AppModel::recipeDetail(const QString &id) const
@@ -327,12 +396,39 @@ QVariantMap AppModel::recipeDetail(const QString &id) const
     if (!match || !match->recipe)
         return {};
     QVariantMap map = summaryMap(*match);
+    const auto &recipe = *match->recipe;
     QVariantList ingredients;
-    for (const auto &group : match->groups)
-        ingredients.append(QVariantMap { { "raw", group.ingredientRaw.isEmpty() ? group.group.join(QStringLiteral(" 或 ")) : group.ingredientRaw },
-                                         { "has", group.satisfied() }, { "optional", group.optional } });
+    QStringList ingredientNotes = recipe.ingredientNotes;
+    for (const auto &ingredient : recipe.ingredients) {
+        if (ingredient.kind == QLatin1String("tool")) {
+            ingredientNotes.append(QStringLiteral("工具：%1").arg(ingredient.raw));
+            continue;
+        }
+        bool has = !ingredient.groups.isEmpty();
+        for (const auto &need : ingredient.groups) {
+            bool satisfied = false;
+            for (const auto &group : match->groups) {
+                if (group.group == need) {
+                    satisfied = group.satisfied();
+                    break;
+                }
+            }
+            has = has && satisfied;
+        }
+        ingredients.append(QVariantMap{ { "raw", ingredient.raw }, { "has", has },
+                                         { "known", !ingredient.groups.isEmpty() },
+                                         { "optional", ingredient.optional } });
+    }
+    QVariantList quantities;
+    for (const auto &quantity : recipe.quantities)
+        quantities.append(QVariantMap{ { "name", quantity.name }, { "expr", quantity.expr } });
+    map.insert(QStringLiteral("summary"), recipe.summary);
     map.insert(QStringLiteral("ingredients"), ingredients);
-    map.insert(QStringLiteral("steps"), match->recipe->steps);
+    map.insert(QStringLiteral("ingredientNotes"), ingredientNotes);
+    map.insert(QStringLiteral("quantities"), quantities);
+    map.insert(QStringLiteral("quantityNotes"), recipe.quantityNotes);
+    map.insert(QStringLiteral("steps"), recipe.steps);
+    map.insert(QStringLiteral("notes"), recipe.notes);
     return map;
 }
 
@@ -505,21 +601,23 @@ QVariantList AppModel::rules() const
     return list;
 }
 
-void AppModel::saveRule(const QString &name, const QString &oldLocation, const QString &location, const QString &days)
+bool AppModel::saveRule(const QString &name, const QString &oldLocation, const QString &location, const QString &days)
 {
     const auto storage = storageFromName(location);
     const auto old = storageFromName(oldLocation);
-    if (!storage)
-        return;
-    const int n = days.trimmed().toInt();
-    if (n > 0) {
-        if (old && *old != *storage)
-            kitchen().deleteShelfLifeRule(name, *old);
-        if (const auto proposal = core::proposeShelfLifeRule(name, *storage, n))
-            kitchen().confirmRule(*proposal);
-    } else if (const auto proposal = core::proposeStorageRule(name, *storage)) {
-        kitchen().confirmRule(*proposal);
+    bool validDays = false;
+    const int n = days.trimmed().toInt(&validDays);
+    if (!storage || (!days.trimmed().isEmpty() && (!validDays || n <= 0))) {
+        emit notice(QStringLiteral("请填写有效的存放位置和正整数天数"));
+        return false;
     }
+    const auto proposal = days.trimmed().isEmpty()
+        ? core::proposeStorageRule(name, *storage) : core::proposeShelfLifeRule(name, *storage, n);
+    if (!proposal || !kitchen().replaceRule(*proposal, old)) {
+        emit notice(QStringLiteral("规则未保存，请重试；原规则已保留"));
+        return false;
+    }
+    return true;
 }
 
 void AppModel::deleteRule(const QString &name, const QString &location, const QString &kind)
@@ -664,7 +762,23 @@ void AppModel::editDraft(int index, const QVariantMap &edits)
     if (index < 0 || index >= items.size())
         return;
     DraftItem draft = items.at(index);
-    applyEdits(draft.item, edits, false);
+    applyEdits(draft.item, edits, true);
+    m_active->import->updateItem(index, draft);
+}
+
+void AppModel::setDraftCategory(int index, const QString &category)
+{
+    const auto &items = m_active->import->draft().items;
+    if (index < 0 || index >= items.size())
+        return;
+    DraftItem draft = items.at(index);
+    if (category == QLatin1String("food"))
+        draft.category = rec::ItemCategory::Food;
+    else if (category == QLatin1String("seasoning"))
+        draft.category = rec::ItemCategory::Seasoning;
+    else
+        return;
+    draft.selected = true;
     m_active->import->updateItem(index, draft);
 }
 

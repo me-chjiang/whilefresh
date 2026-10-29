@@ -176,6 +176,30 @@ private slots:
         QCOMPARE(m_database->schemaVersion(), Database::latestVersion());
     }
 
+    void demoDeleteAllDataKeepsRealImportFiles()
+    {
+        Database demoDatabase(QStringLiteral(":memory:"));
+        QVERIFY(demoDatabase.open());
+        QVERIFY(demoDatabase.migrate());
+        Store demoStore(demoDatabase, *m_clock, importsDir(), false);
+        const QString realImage = QDir(importsDir()).filePath(QStringLiteral("real.jpg"));
+        const QString demoImage = QDir(importsDir()).filePath(QStringLiteral("demo.jpg"));
+        QVERIFY(touch(realImage) && touch(demoImage));
+        ImportRecord real;
+        real.inputKind = QStringLiteral("screenshot");
+        real.images = { { realImage, QStringLiteral("real"), {}, {}, {} } };
+        QVERIFY(m_store->insertImport(real) > 0);
+        ImportRecord demo;
+        demo.inputKind = QStringLiteral("screenshot");
+        demo.images = { { demoImage, QStringLiteral("demo"), {}, {}, {} } };
+        QVERIFY(demoStore.insertImport(demo) > 0);
+
+        QVERIFY(demoStore.deleteAllData());
+        QVERIFY(QFile::exists(realImage));
+        QVERIFY(!QFile::exists(demoImage));
+        QVERIFY(m_store->importRecord(real.id).has_value());
+    }
+
     void rulesAndCache()
     {
         QVERIFY(m_store->saveShelfLifeRule({ QStringLiteral("鸡蛋"), Storage::Fridge, 30 }));

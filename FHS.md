@@ -14,10 +14,11 @@
 ├── docs/                      # 产品与研究文档（PRD、调研）
 │   ├── archive/               # 历史版本（PRD v3、v4，调研速查）
 │   ├── images/                # README 截图（仅演示模式数据）
+│   ├── project-guide.html     # 可离线打开的项目结构与实现导览
 │   ├── development.md         # 开发文档：环境、构建与验证命令、数据工具、调试方法
 │   └── mvp/                   # MVP 循环文档：需求、规划、cycle-state、交付报告
 │       ├── notes/             # 复杂模块的实现说明（如 android-integration.md）
-│       └── todo.md            # 未完成事项
+│       └── todo.md            # 项目唯一待办 checklist（含后续候选）
 ├── app/                       # Qt 6 CMake 工程（Android APK + macOS 桌面开发版）
 │   ├── CMakeLists.txt
 │   ├── src/
@@ -51,6 +52,9 @@
 │   ├── recordings/            # 识别录制（请求摘要 + 原始响应），仅限合成数据；synthetic/ 中按样本 ID 同名存储
 │   └── vocabulary/            # 测试用合成词表（正式词表见 app/assets/data/）
 ├── scripts/                   # 构建、安装、取密钥、模拟器启动等 shell 脚本
+├── recipe-sources/             # 独立菜谱来源标准化仓库（CLI、HTTP、YAML 契约与验收数据）
+├── recipe-sources-xiachufang-api/ # 独立 Git 仓库：xiachufang-api 的现代化解析与 YAML 服务
+│   └── docs/                  # 该独立服务的操作说明与访问限制排查文档
 ├── build/                     # 不进 Git：构建产物，按目标分子目录（desktop、android-x86_64、android-arm64-v8a）
 └── private/                   # 不进 Git：个人资料、真实测试样例（bill/）、真实样例的识别录制（recordings/）
 ```
@@ -73,7 +77,7 @@
 - **测试样本**：合成输入及其同名标准答案放 `test-data/synthetic/<screenshots|receipts|texts>/`，小票照片采用 JPEG、截图 PNG，HTML 为可重复生成的排版源；录制回放放 `test-data/recordings/synthetic/`（原始 `recognize-cli` format-1 响应 + 补充的 `elapsed_ms`）。生成/录制/评估工具和固定场景放 `tools/whilefresh_tools/synthetic/`，单测的手工录制夹具放 `tools/tests/fixtures/`。真实样例及其识别录制只放 `private/`（录制放 `private/recordings/`），任何内容都不得复制进仓库。
 - **视觉稿** 放 `design/<版本或主题>/`，截图与 HTML 同目录。
 - **一次性探针或实验脚本** 放 `/tmp`，不进仓库；确需保留的转成 `tools/` 或 `scripts/` 中的正式工具。
-- **文档**：产品文档放 `docs/`，MVP 循环文档放 `docs/mvp/`；复杂模块的 `IMPLEMENTATION_NOTE` 写成 `docs/mvp/notes/<模块>.md`。
+- **文档**：产品文档放 `docs/`，MVP 循环文档放 `docs/mvp/`；复杂模块的 `IMPLEMENTATION_NOTE` 写成 `docs/mvp/notes/<模块>.md`；可离线阅读的项目实现导览放 `docs/project-guide.html`。
 
 ## Stability notes
 
@@ -90,6 +94,7 @@
 
 ## Change log
 
+- 2026-10-22 — 增加 `docs/project-guide.html`：离线项目结构、功能实现与技术债导览。
 - 2026-10-21 — 文档整理：开发说明移到 docs/development.md，历史版本移到 docs/archive/。
 - 2026-10-21 — T7：增加 `tools/whilefresh_tools/synthetic/`、`test-data/synthetic/` 与 `test-data/recordings/synthetic/`，规定可重复生成的 HTML/PNG/JPEG/TXT、标准答案和合成识别录制的摆放位置。
 - 2026-10-21 — T5：细化应用服务与视图模型的分工，记录 SQLite 迁移位置与 core/data/ui 分层测试。

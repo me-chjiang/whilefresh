@@ -130,19 +130,30 @@ RecipeMatcher::RecipeMatcher(const IngredientCatalog *catalog, QList<StockEntry>
     : m_catalog(catalog), m_stock(std::move(stock))
 {
     for (int i = 0; i < m_stock.size(); ++i) {
-        const QString &name = m_stock.at(i).name;
+        QString &name = m_stock[i].name;
+        if (m_catalog) {
+            const QString canonical = m_catalog->resolve(name);
+            if (!canonical.isEmpty())
+                name = canonical;
+        }
+        if (m_stock.at(i).selected && !m_stock.at(i).pantry
+            && (!m_catalog || m_catalog->categoryOf(name) != QStringLiteral("seasoning"))
+            && !m_selectedNames.contains(name))
+            m_selectedNames.append(name);
         QStringList meets{ name };
         if (m_catalog)
             meets += m_catalog->ancestors(name);
         for (const QString &requirement : meets)
             m_byRequirement[requirement].append(i);
     }
+    m_selectedNames.sort();
 }
 
 RecipeMatch RecipeMatcher::match(const Recipe &recipe) const
 {
     RecipeMatch result;
     result.recipe = &recipe;
+    result.selectedNames = m_selectedNames;
     QHash<QString, int> seen; // group key -> index in result.groups
     for (const RecipeIngredient &ingredient : recipe.ingredients) {
         if (ingredient.kind == QStringLiteral("tool"))
@@ -172,7 +183,8 @@ RecipeMatch RecipeMatcher::match(const Recipe &recipe) const
         }
     }
 
-    QSet<qint64> selected, nearExpiry, inventory;
+    QSet<QString> usedSelected;
+    QSet<qint64> nearExpiry, inventory;
     for (const GroupMatch &group : std::as_const(result.groups)) {
         if (group.satisfied())
             ++result.haveCount;
@@ -182,13 +194,20 @@ RecipeMatch RecipeMatcher::match(const Recipe &recipe) const
             if (entry.pantry)
                 continue;
             inventory.insert(entry.itemId);
-            if (entry.selected)
-                selected.insert(entry.itemId);
+            if (entry.selected && !group.optional
+                && (!m_catalog || m_catalog->categoryOf(entry.name) != QStringLiteral("seasoning")))
+                usedSelected.insert(entry.name);
             if (entry.nearExpiry)
                 nearExpiry.insert(entry.itemId);
         }
     }
-    result.selectedUsed = selected.size();
+    result.usedSelected = usedSelected.values();
+    result.usedSelected.sort();
+    result.selectedUsed = result.usedSelected.size();
+    for (const QString &name : std::as_const(result.selectedNames)) {
+        if (!usedSelected.contains(name))
+            result.unusedSelected.append(name);
+    }
     result.nearExpiryUsed = nearExpiry.size();
     result.inventoryUsed = inventory.size();
     return result;

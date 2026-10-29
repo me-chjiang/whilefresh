@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from whilefresh_tools.synthetic import regress
 from whilefresh_tools.synthetic.evaluate import (
     evaluate_sample,
     load_vocabulary,
@@ -25,6 +26,30 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def fixture(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text(encoding="utf-8"))
+
+
+def test_paid_regression_counts_failed_attempts(tmp_path, monkeypatch):
+    cli = tmp_path / "recognize-cli"
+    cli.touch()
+    sources = tmp_path / "sources"
+    sources.mkdir()
+    for sample in SAMPLES[:2]:
+        (sources / (sample.id + ".txt")).write_text("sample", encoding="utf-8")
+        (sources / (sample.id + ".json")).write_text(json.dumps({"id": sample.id, "capture_date": "2026-10-21"}), encoding="utf-8")
+    monkeypatch.setattr(regress, "sample_file", lambda sample: sources / (sample.id + ".txt"))
+    monkeypatch.setattr(regress, "truth_file", lambda sample: sources / (sample.id + ".json"))
+    monkeypatch.setattr(regress, "RECORDINGS_DIR", tmp_path / "recordings")
+    monkeypatch.setattr(regress, "_ensure_tmp", lambda path: path.mkdir(parents=True, exist_ok=True))
+    calls = []
+
+    def fail(cmd, **kwargs):
+        calls.append(cmd)
+        return regress.subprocess.CompletedProcess(cmd, 1, "", "failed")
+
+    monkeypatch.setattr(regress.subprocess, "run", fail)
+    assert regress.run(tmp_path, cli, limit=1, samples=SAMPLES[:2]) == 0
+    assert len(calls) == 1
+    assert regress._count_attempts(tmp_path) == 1
 
 
 @pytest.fixture(scope="module")

@@ -5,8 +5,9 @@ import WhileFresh
 Rectangle {
     id: card
     property var recipe: ({})
+    readonly property bool showCoverage: recipe.usedSelected !== undefined || recipe.unusedSelected !== undefined
     signal opened(var recipe)
-    height: Theme.recipeHeight
+    height: Math.max(Theme.recipeHeight, cardContent.implicitHeight + Theme.gap * 2)
     radius: Theme.radiusRow
     color: Theme.card
     Rectangle {
@@ -16,7 +17,10 @@ Rectangle {
         color: Theme.tomato
     }
     RowLayout {
+        id: cardContent
         anchors.fill: parent
+        anchors.topMargin: Theme.gap
+        anchors.bottomMargin: Theme.gap
         anchors.leftMargin: Theme.gap
         anchors.rightMargin: Theme.gapSmall
         spacing: Theme.gapSmall
@@ -30,14 +34,31 @@ Rectangle {
                 font.pixelSize: Theme.textRecipe
                 font.weight: Theme.weightBlack
                 color: Theme.ink
-                elide: Text.ElideRight
+                wrapMode: Text.Wrap
             }
             RowLayout {
+                Layout.fillWidth: true
                 spacing: Theme.gapSmall
-                IconGlyph { name: "book-2"; tint: Theme.muted; width: 15; height: 15 }
-                Text { text: "HowToCook"; font.pixelSize: Theme.textMeta; font.weight: Theme.weightBold; color: Theme.muted }
+                IconGlyph { name: "book-2"; tint: Theme.muted; Layout.preferredWidth: 15; Layout.preferredHeight: 15 }
+                Text { Layout.fillWidth: true; Layout.minimumWidth: 0; elide: Text.ElideRight; text: card.recipe.sourceName || "原菜谱"; font.pixelSize: Theme.textMeta; font.weight: Theme.weightBold; color: Theme.muted }
                 Text { text: "有 " + (card.recipe.haveCount || 0); font.pixelSize: Theme.textMeta; font.weight: Theme.weightBold; color: Theme.fresh }
                 Text { text: "· 缺 " + (card.recipe.missingCount || 0); font.pixelSize: Theme.textMeta; font.weight: Theme.weightBold; color: Theme.nearing }
+            }
+            Text {
+                visible: card.showCoverage && card.recipe.usedSelected && card.recipe.usedSelected.length > 0
+                Layout.fillWidth: true
+                text: "用到已选：" + (card.recipe.usedSelected || []).join("、")
+                font.pixelSize: Theme.textMeta
+                color: Theme.fresh
+                wrapMode: Text.Wrap
+            }
+            Text {
+                visible: card.showCoverage && card.recipe.unusedSelected && card.recipe.unusedSelected.length > 0
+                Layout.fillWidth: true
+                text: "未用到：" + (card.recipe.unusedSelected || []).join("、")
+                font.pixelSize: Theme.textMeta
+                color: Theme.muted
+                wrapMode: Text.Wrap
             }
         }
         Text {
@@ -45,7 +66,7 @@ Rectangle {
             font.pixelSize: Theme.textMeta
             color: Theme.muted
         }
-        IconGlyph { name: "chevron-right"; tint: Theme.outline; width: 20; height: 20 }
+        IconGlyph { name: "chevron-right"; tint: Theme.outline; Layout.preferredWidth: 20; Layout.preferredHeight: 20 }
     }
     TapHandler { onTapped: card.opened(card.recipe) }
 }

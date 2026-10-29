@@ -1,6 +1,6 @@
 # 趁鲜 MVP 工程规划
 
-> loop-dev-cycle Phase 1 产出（即 skill 的 `PLAN.md`），2026-10-20。依据 [MVP 需求确认稿](mvp-requirements.md) 与 [PRD v5](../prd-v5.md)。状态：已执行（Phase 1 于 2026-10-20 通过；T0–T11 于 2026-10-21 合并；真机验收未做）。
+> loop-dev-cycle Phase 1 产出（即 skill 的 `PLAN.md`），2026-10-20。依据 [MVP 需求确认稿](mvp-requirements.md) 与 [PRD v5](../prd-v5.md)。状态：已执行（Phase 1 于 2026-10-20 通过；T0–T11 于 2026-10-21 合并）。本文件保留原实施规划与风险，当前执行 checklist 统一见 [todo.md](todo.md)，实际验证范围见 [cycle-state.md](cycle-state.md)。
 
 ## 1. 架构概述
 
@@ -158,11 +158,6 @@ Phase 2 开始前用 build-project-fhs skill 把目录规则写成 `FHS.md`。
 
 具体命令在 T0 完成后写入 README。
 
-## 7. 需要你确认的事项
+## 7. 规划确认记录
 
-1. 本规划是否通过（loop Gate）。
-2. ADR-3：是否同意引入 KDAB `android_openssl` 预编译库。
-3. ADR-10：图标用 Tabler Icons（MIT）是否可以。
-4. 保质期参考表以 USDA FoodKeeper 为底（ADR-7），中国常见食材缺口由 AI 判断补充，是否可以。
-
-以上均已确认，见 cycle-state 决策日志。
+本规划、KDAB android_openssl、Tabler Icons 与 FoodKeeper 参考表方案均已确认，见 [cycle-state 决策日志](cycle-state.md)。

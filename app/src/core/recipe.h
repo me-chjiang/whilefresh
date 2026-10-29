@@ -93,9 +93,12 @@ struct GroupMatch {
 struct RecipeMatch {
     const Recipe *recipe = nullptr;
     QList<GroupMatch> groups; // de-duplicated, in recipe order
+    QStringList selectedNames; // distinct selected stock names
+    QStringList usedSelected; // selected names satisfying required non-seasoning ingredients
+    QStringList unusedSelected;
     int haveCount = 0;    // satisfied groups, including optional ones ("有 N")
     int missingCount = 0; // unsatisfied required groups ("缺 M")
-    int selectedUsed = 0;    // distinct selected items used
+    int selectedUsed = 0; // usedSelected.size()
     int nearExpiryUsed = 0;  // distinct near-expiry items used
     int inventoryUsed = 0;   // distinct fridge items (not pantry) used
 
@@ -110,12 +113,14 @@ class RecipeMatcher
 public:
     RecipeMatcher(const IngredientCatalog *catalog, QList<StockEntry> stock);
 
+    const QStringList &selectedNames() const { return m_selectedNames; }
     RecipeMatch match(const Recipe &recipe) const;
     QList<RecipeMatch> matchAll(const QList<Recipe> &recipes) const;
 
 private:
     const IngredientCatalog *m_catalog;
     QList<StockEntry> m_stock;
+    QStringList m_selectedNames;
     QHash<QString, QList<int>> m_byRequirement; // requirement name -> stock indices meeting it
 };
 

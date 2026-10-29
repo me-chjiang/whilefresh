@@ -5,6 +5,8 @@ import WhileFresh
 
 Item {
     id: page
+    property bool canGoBack: false
+    signal backRequested()
     signal importRequested()
     signal editRequested(var item)
     signal notice(string message)
@@ -15,6 +17,8 @@ Item {
         id: header
         x: Theme.gap
         width: parent.width - Theme.gap * 2
+        backVisible: page.canGoBack
+        onBackRequested: page.backRequested()
         heading: "冰箱"
         subtitle: "共 " + App.items.length + " 件"
         actionText: "＋ 入库"

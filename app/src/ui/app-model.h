@@ -25,10 +25,13 @@ class AppModel : public QObject
     Q_OBJECT
     Q_PROPERTY(QVariantList items READ items NOTIFY changed)
     Q_PROPERTY(int nearCount READ nearCount NOTIFY changed)
-    Q_PROPERTY(QVariantList selectedIds READ selectedIds NOTIFY changed)
-    Q_PROPERTY(QVariantList recipes READ recipes NOTIFY changed)
-    Q_PROPERTY(QVariantList clearRecipes READ clearRecipes NOTIFY changed)
-    Q_PROPERTY(QVariantList shopping READ shopping NOTIFY changed)
+    Q_PROPERTY(QVariantList selectedIds READ selectedIds NOTIFY selectionChanged)
+    Q_PROPERTY(QVariantList recipes READ recipes NOTIFY recipesChanged)
+    Q_PROPERTY(QVariantList clearRecipes READ clearRecipes NOTIFY clearResultsChanged)
+    Q_PROPERTY(QVariantMap clearPreview READ clearPreview NOTIFY selectionChanged)
+    Q_PROPERTY(QVariantMap clearResultsSummary READ clearResultsSummary NOTIFY clearResultsChanged)
+    Q_PROPERTY(bool clearResultsReady READ clearResultsReady NOTIFY clearResultsChanged)
+    Q_PROPERTY(QVariantList shopping READ shopping NOTIFY shoppingChanged)
     Q_PROPERTY(QVariantList pantry READ pantry NOTIFY changed)
     Q_PROPERTY(QVariantList suggestions READ suggestions NOTIFY changed)
     Q_PROPERTY(QVariantList rules READ rules NOTIFY changed)
@@ -46,7 +49,7 @@ class AppModel : public QObject
 
 public:
     AppModel(platform::PlatformServices *platform, std::shared_ptr<const data::BuiltinData> builtin,
-             QObject *parent = nullptr);
+             const QString &dataDirectory = {}, QObject *parent = nullptr);
     ~AppModel() override;
 
     bool ok() const { return m_real != nullptr; }
@@ -55,7 +58,10 @@ public:
     int nearCount();
     QVariantList selectedIds() const;
     QVariantList recipes();
-    QVariantList clearRecipes();
+    QVariantList clearRecipes() const;
+    QVariantMap clearPreview();
+    QVariantMap clearResultsSummary() const { return m_clearResultsSummary; }
+    bool clearResultsReady() const { return m_clearResultsReady; }
     QVariantList shopping();
     QVariantList pantry() const;
     QVariantList suggestions() const;
@@ -73,6 +79,8 @@ public:
     int draftFoodCount() const;
 
     Q_INVOKABLE void toggleSelected(qint64 id);
+    Q_INVOKABLE void selectDefaults();
+    Q_INVOKABLE bool findClearRecipes();
     Q_INVOKABLE QVariantMap recipeDetail(const QString &id) const;
     Q_INVOKABLE int addMissing(const QString &recipeId);
     Q_INVOKABLE void removeShopping(qint64 id);
@@ -91,7 +99,7 @@ public:
     Q_INVOKABLE void addPantry(const QString &name);
     Q_INVOKABLE void removePantry(const QString &name);
     Q_INVOKABLE void decideSuggestion(qint64 id, bool accept);
-    Q_INVOKABLE void saveRule(const QString &name, const QString &oldLocation, const QString &location,
+    Q_INVOKABLE bool saveRule(const QString &name, const QString &oldLocation, const QString &location,
                               const QString &days);
     Q_INVOKABLE void deleteRule(const QString &name, const QString &location, const QString &kind);
     Q_INVOKABLE void deleteImport(qint64 id);
@@ -104,12 +112,17 @@ public:
     Q_INVOKABLE void startImport(bool allowDuplicate);
     Q_INVOKABLE void cancelImport();
     Q_INVOKABLE void editDraft(int index, const QVariantMap &edits);
+    Q_INVOKABLE void setDraftCategory(int index, const QString &category);
     Q_INVOKABLE void dropDraft(int index);
     Q_INVOKABLE void retrieveDraft(int index);
     Q_INVOKABLE void confirmImport();
 
 signals:
     void changed();
+    void selectionChanged();
+    void recipesChanged();
+    void clearResultsChanged();
+    void shoppingChanged();
     void demoModeChanged();
     void importChanged();
     void notice(const QString &message);
@@ -130,6 +143,7 @@ private:
     void seedDemo(Session &session);
     void activate(Session *session);
     void invalidate();
+    void invalidateSelection();
     void setImportState(const QString &state, const QString &error = {});
     QVariantMap itemMap(const core::FridgeItem &item) const;
     QVariantMap summaryMap(const core::RecipeMatch &match) const;
@@ -150,11 +164,15 @@ private:
     QString m_importState = QStringLiteral("idle");
     QString m_importError;
     bool m_consented = false;
+    QDate m_lastDate;
 
     std::optional<QVariantList> m_items;
     std::optional<QVariantList> m_recipes;
     std::optional<QVariantList> m_clearRecipes;
     std::optional<QVariantList> m_shopping;
+    std::optional<QVariantMap> m_clearPreview;
+    QVariantMap m_clearResultsSummary;
+    bool m_clearResultsReady = false;
 };
 
 }

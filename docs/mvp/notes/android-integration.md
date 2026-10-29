@@ -64,6 +64,8 @@ Java 只收集原始线索，C++ `resolveCapturedAt`（`app/src/platform/capture
 
 ## 已知限制
 
+本节保留平台行为与约束；需改进的图文分享、设备间迁移等事项统一见 [项目待办](../todo.md)。
+
 - 系统选图器（Photo Picker）的 URI 只提供 `DATE_TAKEN`；实测没有 EXIF 的 PNG 也返回了 `DATE_TAKEN`（选图器自行回落到文件时间），因此来源显示为 `media-taken`，实际精度与 `media-added` 相当。
 - 从"文件"App（DocumentsUI）分享时 URI 属于 ExternalStorageProvider，只有 `last_modified`，来源为 `file-modified`。无存储权限，不能换成 MediaStore URI 查询。
 - `adb shell am start` 无法构造 `Uri` 列表，`ACTION_SEND_MULTIPLE` 需通过真实 App（如"文件"）分享来测；单图分享需同时用 `-d` 传同一 URI，`--grant-read-uri-permission` 才会授权。
