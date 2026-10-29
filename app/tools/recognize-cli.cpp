@@ -18,7 +18,7 @@
 #include "recognition/deepseek-recognizer.h"
 #include "recognition/recording.h"
 #include "recognition/request-builder.h"
-#include "recognition/vocabulary.h"
+#include "core/catalog.h"
 
 #include <QCommandLineParser>
 #include <QCoreApplication>
@@ -106,14 +106,14 @@ int main(int argc, char *argv[])
         return 2;
     }
     QString error;
-    const auto vocabulary = Vocabulary::fromFile(parser.value(QStringLiteral("vocab")), &error);
+    const auto vocabulary = whilefresh::core::IngredientCatalog::fromFile(parser.value(QStringLiteral("vocab")), &error);
     if (!vocabulary) {
         err() << "error: " << error << "\n";
         return 2;
     }
 
     RecognitionRequest request;
-    request.vocabulary = std::make_shared<const Vocabulary>(*vocabulary);
+    request.catalog = std::make_shared<const whilefresh::core::IngredientCatalog>(*vocabulary);
     if (parser.isSet(QStringLiteral("text"))) {
         QFile file(parser.value(QStringLiteral("text")));
         if (!file.open(QIODevice::ReadOnly)) {

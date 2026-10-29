@@ -17,6 +17,7 @@
 using namespace whilefresh::recognition;
 using namespace whilefresh::recognition::testing;
 namespace ai = whilefresh::ai;
+namespace core = whilefresh::core;
 
 namespace {
 
@@ -119,7 +120,7 @@ private:
         RecognitionRequest request;
         request.kind = InputKind::Screenshot;
         request.images = { { m_imagePath, QDate(2026, 10, 18) } };
-        request.vocabulary = syntheticVocabulary();
+        request.catalog = syntheticCatalog();
         return request;
     }
 
@@ -128,7 +129,7 @@ private:
         RecognitionRequest request;
         request.kind = InputKind::OrderText;
         request.text = text;
-        request.vocabulary = syntheticVocabulary();
+        request.catalog = syntheticCatalog();
         return request;
     }
 
@@ -280,7 +281,7 @@ private slots:
         Fixture f;
 
         RecognitionRequest noVocabulary = textRequest(QStringLiteral("x"));
-        noVocabulary.vocabulary.reset();
+        noVocabulary.catalog.reset();
         f.recognizer.recognize(noVocabulary);
         f.recognizer.recognize(textRequest(QStringLiteral("   ")));
         f.recognizer.recognize(textRequest(QString(kMaxOrderTextChars + 1, QLatin1Char('x'))));
@@ -501,12 +502,12 @@ private slots:
         QFETCH(InputKind, kind);
 
         QString error;
-        const auto vocabulary = Vocabulary::fromFile(
+        const auto catalog = core::IngredientCatalog::fromFile(
             QStringLiteral(WHILEFRESH_DEMO_ASSETS_DIR "/../data/vocabulary.json"), &error);
-        QVERIFY2(vocabulary, qPrintable(error));
+        QVERIFY2(catalog, qPrintable(error));
         RecognitionRequest request;
         request.kind = kind;
-        request.vocabulary = std::make_shared<const Vocabulary>(*vocabulary);
+        request.catalog = std::make_shared<const core::IngredientCatalog>(*catalog);
         if (kind == InputKind::OrderText) {
             QFile file(testDataPath(input));
             QVERIFY(file.open(QIODevice::ReadOnly));

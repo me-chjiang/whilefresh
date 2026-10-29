@@ -5,7 +5,6 @@
 #include "core/texts.h"
 #include "platform/import-files.h"
 #include "recognition/response-parser.h"
-#include "recognition/vocabulary.h"
 
 #include <QCryptographicHash>
 #include <QFile>
@@ -78,13 +77,6 @@ ImportService::ImportService(data::Store &store, std::shared_ptr<const data::Bui
     : QObject(parent), m_store(store), m_builtin(std::move(builtin)), m_clock(clock),
       m_recognizer(&recognizer), m_demo(demo)
 {
-    // Build from the domain catalog: recognition's JSON reader predates the category-array format.
-    auto vocabulary = std::make_shared<rec::Vocabulary>();
-    for (const auto &code : m_builtin->catalog->categoryOrder())
-        vocabulary->addCategory(code, m_builtin->catalog->categoryDisplayName(code));
-    for (const auto &entry : m_builtin->catalog->entries())
-        vocabulary->add({ entry.name, entry.category, entry.aliases });
-    m_vocabulary = vocabulary;
     connect(&recognizer, &rec::RecognitionService::succeeded, this, &ImportService::succeeded);
     connect(&recognizer, &rec::RecognitionService::failed, this, &ImportService::recognitionFailed);
     connect(&recognizer, &rec::RecognitionService::batchSucceeded, this, &ImportService::batchSucceeded);
@@ -205,7 +197,7 @@ bool ImportService::start(bool privacyConfirmed, bool allowDuplicate)
 rec::RecognitionRequest ImportService::request() const
 {
     rec::RecognitionRequest request;
-    request.vocabulary = m_vocabulary;
+    request.catalog = m_builtin->catalog;
     request.kind = rec::inputKindFromString(m_draft.record.inputKind).value_or(rec::InputKind::Screenshot);
     request.text = m_payload.text;
     for (const auto &image : m_payload.images)
@@ -335,7 +327,7 @@ std::optional<rec::RecognitionResult> ImportService::resultFromJob() const
     QList<rec::RecognitionResult> parts;
     for (const QByteArray &encoded : m_job.results()) {
         const QJsonObject batch = QJsonDocument::fromJson(encoded).object();
-        auto outcome = rec::parseChatCompletion(batch.value("response").toString().toUtf8(), m_vocabulary.get(), kind);
+        auto outcome = rec::parseChatCompletion(batch.value("response").toString().toUtf8(), m_builtin->catalog.get(), kind);
         if (!outcome.result)
             return std::nullopt;
         outcome.result->batchSpans = { { batch.value("firstImage").toInt(-1), batch.value("lastImage").toInt(-1) } };

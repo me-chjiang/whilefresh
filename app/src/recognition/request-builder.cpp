@@ -6,16 +6,6 @@ namespace whilefresh::recognition {
 
 namespace {
 
-QString vocabularyBlock(const Vocabulary &vocabulary)
-{
-    QStringList lines;
-    for (const auto &[category, names] : vocabulary.namesByCategory()) {
-        const QString label = category.isEmpty() ? QStringLiteral("其他") : category;
-        lines.append(QStringLiteral("【%1】%2").arg(label, names.join(QStringLiteral("、"))));
-    }
-    return lines.join(QLatin1Char('\n'));
-}
-
 QString inputParagraph(InputKind kind)
 {
     switch (kind) {
@@ -46,20 +36,20 @@ QString promptVersion()
     return QString::fromLatin1(prompt::kPromptVersion);
 }
 
-QString buildPrompt(InputKind kind, const Vocabulary &vocabulary)
+QString buildPrompt(InputKind kind, const core::IngredientCatalog &catalog)
 {
     QString text = QString::fromUtf8(prompt::kPromptTemplate);
     text.replace(QStringLiteral("{{INPUT}}"), inputParagraph(kind));
-    text.replace(QStringLiteral("{{VOCABULARY}}"), vocabularyBlock(vocabulary));
+    text.replace(QStringLiteral("{{VOCABULARY}}"), catalog.hierarchyText());
     return text;
 }
 
-ai::ChatRequest buildChatRequest(InputKind kind, const Vocabulary &vocabulary,
+ai::ChatRequest buildChatRequest(InputKind kind, const core::IngredientCatalog &catalog,
                                  const QList<PreparedImage> &images, const QString &text,
                                  const RequestOptions &options)
 {
     ai::ChatMessage message;
-    message.parts.append(ai::ChatPart::text(buildPrompt(kind, vocabulary)));
+    message.parts.append(ai::ChatPart::text(buildPrompt(kind, catalog)));
 
     if (kind == InputKind::OrderText) {
         message.parts.append(ai::ChatPart::text(QStringLiteral("<订单文字>\n%1\n</订单文字>").arg(text)));

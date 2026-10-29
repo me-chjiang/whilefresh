@@ -106,7 +106,6 @@ private:
     std::shared_ptr<const data::BuiltinData> m_builtin;
     const core::Clock &m_clock;
     QPointer<recognition::RecognitionService> m_recognizer;
-    std::shared_ptr<const recognition::Vocabulary> m_vocabulary;
     platform::ImportPayload m_payload;
     ImportDraft m_draft;
     quint64 m_requestId = 0;

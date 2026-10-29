@@ -2,7 +2,7 @@
 
 #include "ai/chat-types.h"
 #include "recognition/image-preprocessor.h"
-#include "recognition/vocabulary.h"
+#include "core/catalog.h"
 
 namespace whilefresh::recognition {
 
@@ -20,12 +20,12 @@ struct RequestOptions {
 QString promptVersion();
 
 // Full instruction text for one request: the input-kind paragraph, schema, rules and the
-// vocabulary grouped by category.
-QString buildPrompt(InputKind kind, const Vocabulary &vocabulary);
+// vocabulary as IngredientCatalog::hierarchyText().
+QString buildPrompt(InputKind kind, const core::IngredientCatalog &catalog);
 
 // Chat request: a single user message holding the prompt, then for each image a text label and
 // an image_url block (or the delimited order text for OrderText), in JSON mode.
-ai::ChatRequest buildChatRequest(InputKind kind, const Vocabulary &vocabulary,
+ai::ChatRequest buildChatRequest(InputKind kind, const core::IngredientCatalog &catalog,
                                  const QList<PreparedImage> &images, const QString &text,
                                  const RequestOptions &options = {});
 

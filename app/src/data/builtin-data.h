@@ -16,7 +16,6 @@ struct BuiltinData {
     std::shared_ptr<const core::IngredientCatalog> catalog;
     std::shared_ptr<const core::RecipeBook> recipes;
     std::shared_ptr<const core::ShelfLifeTable> shelfLife; // empty table when the file is absent
-    QByteArray vocabularyJson; // raw vocabulary.json, for the recognizer's Vocabulary
 
     // Where the files are embedded (qrc).
     static QString builtInDirectory() { return QStringLiteral(":/whilefresh/data"); }

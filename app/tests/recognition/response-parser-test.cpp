@@ -11,7 +11,7 @@ namespace {
 
 ParseOutcome parseContent(const QString &content, InputKind kind = InputKind::Screenshot)
 {
-    return parseChatCompletion(chatCompletion(content), syntheticVocabulary().get(), kind);
+    return parseChatCompletion(chatCompletion(content), syntheticCatalog().get(), kind);
 }
 
 }
@@ -30,7 +30,7 @@ private slots:
             R"("shelf_life_days":{"fridge":30,"freezer":180,"room":null},"image_index":2})");
         const ParseOutcome outcome = parseChatCompletion(
             chatCompletion(modelJson({ item }, QStringLiteral("\"ignored_summary\":\"换购推荐\"")), 1200, 340),
-            syntheticVocabulary().get(), InputKind::Screenshot);
+            syntheticCatalog().get(), InputKind::Screenshot);
 
         QVERIFY(outcome.result);
         const RecognitionResult &result = *outcome.result;
@@ -207,7 +207,7 @@ private slots:
     void unusableResponsesAreBadResponse()
     {
         QFETCH(QByteArray, body);
-        const ParseOutcome outcome = parseChatCompletion(body, syntheticVocabulary().get(), InputKind::Screenshot);
+        const ParseOutcome outcome = parseChatCompletion(body, syntheticCatalog().get(), InputKind::Screenshot);
         QVERIFY(!outcome.result);
         QCOMPARE(outcome.error.kind, ErrorKind::BadResponse);
         QVERIFY(!outcome.error.userMessage.isEmpty());
@@ -221,7 +221,7 @@ private slots:
         const QString cut = QStringLiteral("{\"source_type\":\"order\",\"items\":[%1,\n %2,\n {\"raw_name\":\"牛奶\",\"canonical_na").arg(whole1, whole2);
         for (const QString &content : { cut, QStringLiteral("```json\n") + cut }) {
             const ParseOutcome outcome = parseChatCompletion(
-                chatCompletion(content, 700, 8000, QStringLiteral("length")), syntheticVocabulary().get(),
+                chatCompletion(content, 700, 8000, QStringLiteral("length")), syntheticCatalog().get(),
                 InputKind::Screenshot);
             QVERIFY(outcome.result);
             QVERIFY(outcome.result->truncated);
@@ -238,7 +238,7 @@ private slots:
     {
         const ParseOutcome outcome = parseChatCompletion(
             chatCompletion(modelJson({ itemJson(QStringLiteral("a"), QStringLiteral("鸡蛋")) }), 10, 4096, QStringLiteral("length")),
-            syntheticVocabulary().get(), InputKind::Screenshot);
+            syntheticCatalog().get(), InputKind::Screenshot);
         QVERIFY(outcome.result);
         QVERIFY(outcome.result->truncated);
         QCOMPARE(outcome.result->items.size(), 1);
@@ -281,7 +281,7 @@ private slots:
     {
         const auto part = [](const QStringList &items, int firstImage, int lastImage) {
             RecognitionResult result = *parseChatCompletion(chatCompletion(modelJson(items), 100, 10),
-                                                            syntheticVocabulary().get(), InputKind::Screenshot).result;
+                                                            syntheticCatalog().get(), InputKind::Screenshot).result;
             result.batchSpans = { { firstImage, lastImage } };
             return result;
         };

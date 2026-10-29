@@ -10,9 +10,11 @@
 #include <memory>
 #include <optional>
 
-namespace whilefresh::recognition {
+namespace whilefresh::core {
+class IngredientCatalog;
+}
 
-class Vocabulary;
+namespace whilefresh::recognition {
 
 // Transport errors and token counts are those of the chat client (ai layer).
 using ErrorKind = ai::ErrorKind;
@@ -108,7 +110,7 @@ struct RecognitionRequest {
     InputKind kind = InputKind::Screenshot;
     QList<ImageInput> images; // for Screenshot / Receipt
     QString text;             // for OrderText
-    std::shared_ptr<const Vocabulary> vocabulary;
+    std::shared_ptr<const core::IngredientCatalog> catalog; // the vocabulary, with its hierarchy (R-ADR-5)
     // Resume support (R-ADR-9): skip the batches before this one. Batches are planned from the
     // same images and limits, so their numbering is stable across runs.
     int firstBatch = 0;
