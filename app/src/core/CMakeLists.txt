@@ -14,6 +14,7 @@ add_library(whilefresh-core STATIC
     fridge-item.h
     import-duplicates.cpp
     import-duplicates.h
+    name-mapping.h
     pantry.cpp
     pantry.h
     quantity.cpp
@@ -29,6 +30,8 @@ add_library(whilefresh-core STATIC
     storage.cpp
     storage.h
     texts.h
+    vocabulary-resolver.cpp
+    vocabulary-resolver.h
 )
 
 target_include_directories(whilefresh-core PUBLIC "${PROJECT_SOURCE_DIR}/src")

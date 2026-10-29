@@ -1,8 +1,10 @@
 #include "core/catalog.h"
 
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QRegularExpression>
 #include <QSet>
 
 namespace whilefresh::core {
@@ -53,6 +55,17 @@ std::optional<IngredientCatalog> IngredientCatalog::fromJson(const QByteArray &j
     return catalog;
 }
 
+std::optional<IngredientCatalog> IngredientCatalog::fromFile(const QString &path, QString *error)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error)
+            *error = QStringLiteral("vocabulary: cannot read %1: %2").arg(path, file.errorString());
+        return std::nullopt;
+    }
+    return fromJson(file.readAll(), error);
+}
+
 void IngredientCatalog::addCategory(const QString &code, const QString &displayName)
 {
     if (code.isEmpty())
@@ -89,6 +102,69 @@ QString IngredientCatalog::resolve(const QString &nameOrAlias) const
     if (m_index.contains(trimmed))
         return trimmed;
     return m_aliasToName.value(trimmed);
+}
+
+QString IngredientCatalog::resolveFinest(const QString &title) const
+{
+    const QString trimmed = title.trimmed();
+    if (trimmed.isEmpty())
+        return {};
+    if (const QString exact = resolve(trimmed); !exact.isEmpty())
+        return exact;
+
+    static const QRegularExpression separators(QStringLiteral(R"([\s\p{P}\p{S}]+|\d+(?:\.\d+)?[A-Za-z]*)"),
+                                               QRegularExpression::UseUnicodePropertiesOption);
+    const QStringList tokens = trimmed.split(separators, Qt::SkipEmptyParts);
+
+    struct Candidate {
+        QString name;
+        qsizetype length = 0;
+        qsizetype end = 0;
+        qsizetype token = 0;
+    };
+    QList<Candidate> candidates;
+    const auto consider = [&](const QString &surface, const QString &name) {
+        for (qsizetype t = 0; t < tokens.size(); ++t) {
+            const QString &token = tokens.at(t);
+            const qsizetype at = token.lastIndexOf(surface);
+            if (at < 0)
+                continue;
+            const qsizetype end = at + surface.size();
+            if (surface.size() == 1 && end != token.size())
+                continue;
+            candidates.append({ name, surface.size(), end, t });
+        }
+    };
+    for (const CatalogEntry &candidate : m_entries) {
+        consider(candidate.name, candidate.name);
+        for (const QString &alias : candidate.aliases) {
+            // Only the owner of an alias may match through it; a standard name is never an alias.
+            if (!alias.isEmpty() && !m_index.contains(alias) && m_aliasToName.value(alias) == candidate.name)
+                consider(alias, candidate.name);
+        }
+    }
+
+    QSet<QString> broader;
+    for (const Candidate &candidate : std::as_const(candidates)) {
+        for (const QString &ancestor : ancestors(candidate.name))
+            broader.insert(ancestor);
+    }
+    QHash<qsizetype, Candidate> bestInToken;
+    for (const Candidate &candidate : std::as_const(candidates)) {
+        if (broader.contains(candidate.name))
+            continue;
+        const auto it = bestInToken.constFind(candidate.token);
+        if (it == bestInToken.constEnd() || candidate.end > it->end
+            || (candidate.end == it->end && candidate.length > it->length))
+            bestInToken.insert(candidate.token, candidate);
+    }
+    std::optional<Candidate> best;
+    for (qsizetype t = 0; t < tokens.size(); ++t) {
+        const auto it = bestInToken.constFind(t);
+        if (it != bestInToken.constEnd() && (!best || it->length > best->length))
+            best = *it;
+    }
+    return best ? best->name : QString();
 }
 
 QString IngredientCatalog::categoryOf(const QString &name) const
@@ -139,6 +215,66 @@ QStringList IngredientCatalog::ancestors(const QString &name) const
 bool IngredientCatalog::satisfies(const QString &name, const QString &requirement) const
 {
     return name == requirement || ancestors(name).contains(requirement);
+}
+
+QString IngredientCatalog::hierarchyText() const
+{
+    // Deeper descendants are listed with their topmost ancestor.
+    const auto rootOf = [this](const QString &name) {
+        QString root;
+        for (const QString &ancestor : ancestors(name)) {
+            if (contains(ancestor))
+                root = ancestor;
+        }
+        return root;
+    };
+    QHash<QString, QStringList> children;
+    QSet<QString> nested;
+    for (const CatalogEntry &item : m_entries) {
+        if (const QString root = rootOf(item.name); !root.isEmpty()) {
+            children[root].append(item.name);
+            nested.insert(item.name);
+        }
+    }
+
+    struct Block {
+        QString code;
+        QStringList families;
+        QStringList standalone;
+    };
+    QList<Block> blocks;
+    const auto blockFor = [&](const QString &code) -> Block & {
+        for (Block &block : blocks) {
+            if (block.code == code)
+                return block;
+        }
+        blocks.append({ code, {}, {} });
+        return blocks.last();
+    };
+    for (const auto &category : std::as_const(m_categories))
+        blockFor(category.first);
+    for (const CatalogEntry &item : m_entries) {
+        if (nested.contains(item.name))
+            continue;
+        const QStringList kids = children.value(item.name);
+        if (kids.isEmpty())
+            blockFor(item.category).standalone.append(item.name);
+        else
+            blockFor(item.category).families.append(
+                QStringLiteral("%1 > %2").arg(item.name, kids.join(QStringLiteral("、"))));
+    }
+
+    QStringList lines;
+    for (const Block &block : std::as_const(blocks)) {
+        if (block.families.isEmpty() && block.standalone.isEmpty())
+            continue;
+        const QString label = block.code.isEmpty() ? QStringLiteral("其他") : categoryDisplayName(block.code);
+        lines.append(QStringLiteral("【%1】").arg(label));
+        lines.append(block.families);
+        if (!block.standalone.isEmpty())
+            lines.append(block.standalone.join(QStringLiteral("、")));
+    }
+    return lines.join(QLatin1Char('\n'));
 }
 
 }
