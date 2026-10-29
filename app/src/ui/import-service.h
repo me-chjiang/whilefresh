@@ -95,6 +95,7 @@ private:
     bool restoreJobPayload(const QByteArray &payload);
     void saveJob();
     bool dropJob(qint64 id, const QStringList &paths);
+    bool dropStoredJobs();
     void recognitionFailed(quint64 id, const recognition::RecognitionError &error);
     void parseDates(DraftItem &item) const;
     void recalculate();

@@ -693,6 +693,39 @@ private slots:
         QVERIFY(!store->importJob());
     }
 
+    void unrestorableJobsStillFreeTheirImages()
+    {
+        const auto orphan = [this] {
+            const auto image = payload().images.first().localPath;
+            const QByteArray json = QJsonDocument(QJsonObject{ { "images", QJsonArray{ QJsonObject{ { "path", image } } } } })
+                                        .toJson(QJsonDocument::Compact);
+            ResumableJob job;
+            const qint64 id = store->insertImportJob(json, job);
+            QSqlQuery query(database->handle());
+            // "done" without any batch: ResumableJob::restore() rejects it.
+            query.prepare(QStringLiteral("UPDATE import_jobs SET state = 'done' WHERE id = ?"));
+            query.addBindValue(id);
+            if (!query.exec())
+                qFatal("cannot corrupt job");
+            return image;
+        };
+        rec::ReplayRecognizer recognizer(mixedRecording());
+        ImportService service(*store, builtin, *clock, recognizer);
+
+        const QString first = orphan();
+        QVERIFY(!store->importJob());
+        QVERIFY(!service.hasUnfinishedJob());
+        QVERIFY(service.discardUnfinishedJob());
+        QVERIFY(store->importJobRows().isEmpty());
+        QVERIFY(!QFile::exists(first));
+
+        const QString second = orphan();
+        QVERIFY(service.receive(payload(true, "next")));
+        QVERIFY(store->importJobRows().isEmpty());
+        QVERIFY(!QFile::exists(second));
+        QVERIFY(service.discard());
+    }
+
     void textImportsAreNotPersisted()
     {
         rec::ReplayRecognizer recognizer(dir->filePath(QStringLiteral("missing.json")));

@@ -573,21 +573,38 @@ bool Store::deleteAllData()
     return retryFileCleanup();
 }
 
+// Job and batch rows change together: a half-written job (say "done" with pending batches) could
+// not be restored, so every write is one transaction.
 qint64 Store::insertImportJob(const QByteArray &payload, const ResumableJob &job)
 {
+    if (!transaction())
+        return 0;
     QSqlQuery query(m_database.handle());
     query.prepare(QStringLiteral("INSERT INTO import_jobs (state, payload, created_at, updated_at) VALUES (?, ?, ?, ?)"));
     query.addBindValue(ResumableJob::stateKey(job.state()));
     query.addBindValue(QString::fromUtf8(payload));
     query.addBindValue(now());
     query.addBindValue(now());
-    if (!run(query))
+    const qint64 id = run(query) ? query.lastInsertId().toLongLong() : 0;
+    if (!id || !writeImportJob(id, job) || !commit()) {
+        rollback();
         return 0;
-    const qint64 id = query.lastInsertId().toLongLong();
-    return saveImportJob(id, job) ? id : 0;
+    }
+    return id;
 }
 
 bool Store::saveImportJob(qint64 id, const ResumableJob &job)
+{
+    if (!transaction())
+        return false;
+    if (!writeImportJob(id, job) || !commit()) {
+        rollback();
+        return false;
+    }
+    return true;
+}
+
+bool Store::writeImportJob(qint64 id, const ResumableJob &job)
 {
     QSqlQuery query(m_database.handle());
     query.prepare(QStringLiteral("UPDATE import_jobs SET state = ?, updated_at = ? WHERE id = ?"));
@@ -645,6 +662,22 @@ std::optional<ImportJobRecord> Store::importJob() const
     }
     record.job = *job;
     return record;
+}
+
+QList<ImportJobRecord> Store::importJobRows() const
+{
+    QList<ImportJobRecord> rows;
+    QSqlQuery query(m_database.handle());
+    if (!run(query, QStringLiteral("SELECT id, payload, created_at FROM import_jobs ORDER BY id")))
+        return rows;
+    while (query.next()) {
+        ImportJobRecord record;
+        record.id = query.value(0).toLongLong();
+        record.payload = query.value(1).toString().toUtf8();
+        record.createdAt = dateTimeFrom(query.value(2));
+        rows.append(record);
+    }
+    return rows;
 }
 
 bool Store::deleteImportJob(qint64 id)

@@ -100,6 +100,9 @@ public:
     qint64 insertImportJob(const QByteArray &payload, const core::ResumableJob &job);
     bool saveImportJob(qint64 id, const core::ResumableJob &job);
     std::optional<ImportJobRecord> importJob() const; // the newest, if any
+    // Every job row with its payload (job left empty), including ones importJob() cannot restore,
+    // so their images can still be freed.
+    QList<ImportJobRecord> importJobRows() const;
     bool deleteImportJob(qint64 id);
 
     // Local memory rules
@@ -143,6 +146,7 @@ public:
 
 private:
     QString now() const;
+    bool writeImportJob(qint64 id, const core::ResumableJob &job);
 
     Database &m_database;
     const core::Clock &m_clock;

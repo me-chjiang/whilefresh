@@ -127,12 +127,7 @@ bool ImportService::receive(const platform::ImportPayload &payload)
         return reject(rec::ErrorKind::InvalidInput, QStringLiteral("请先确认或放弃当前入库草稿，再重新导入"));
     }
     // A new import replaces a job nobody resumed; its images would otherwise never be freed.
-    if (const auto stale = m_store.importJob()) {
-        QStringList paths;
-        for (const auto &image : QJsonDocument::fromJson(stale->payload).object().value("images").toArray())
-            paths.append(image.toObject().value("path").toString());
-        dropJob(stale->id, paths);
-    }
+    dropStoredJobs();
     m_payload = payload;
     m_received = true;
     m_draft = {};
@@ -640,12 +635,21 @@ bool ImportService::discardUnfinishedJob()
 {
     if (m_received || busy())
         return false;
-    const auto stored = m_store.importJob();
-    if (!stored)
-        return true;
-    m_jobId = stored->id;
-    restoreJobPayload(stored->payload); // best effort: whatever images are still there go
-    return discard();
+    return dropStoredJobs();
+}
+
+bool ImportService::dropStoredJobs()
+{
+    // All rows, not just importJob(): a job whose rows cannot be restored is invisible there but
+    // still owns images.
+    bool ok = true;
+    for (const auto &stored : m_store.importJobRows()) {
+        QStringList paths;
+        for (const auto &image : QJsonDocument::fromJson(stored.payload).object().value("images").toArray())
+            paths.append(image.toObject().value("path").toString());
+        ok = dropJob(stored.id, paths) && ok;
+    }
+    return ok;
 }
 
 }

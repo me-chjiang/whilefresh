@@ -235,6 +235,36 @@ private slots:
         QCOMPARE(m_store->importRecord(original.id)->duplicateOf, qint64(0));
     }
 
+    void importJobWritesAreAtomic()
+    {
+        ResumableJob job;
+        QVERIFY(job.start());
+        QVERIFY(job.plan(2));
+        QVERIFY(job.completeBatch(0, "a"));
+        const qint64 id = m_store->insertImportJob("{}", job);
+        QVERIFY(id > 0);
+
+        // The job row is updated first, then the batches; the second batch fails.
+        QSqlQuery query(m_database->handle());
+        QVERIFY(query.exec(QStringLiteral("CREATE TRIGGER fail_batch BEFORE UPDATE ON import_job_batches "
+                                          "WHEN NEW.batch_index = 1 BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END")));
+        QVERIFY(job.completeBatch(1, "b"));
+        QCOMPARE(job.state(), ResumableJob::State::Done);
+        QVERIFY(!m_store->saveImportJob(id, job));
+        const auto loaded = m_store->importJob();
+        QVERIFY(loaded); // not a half-written "done" job with a pending batch
+        QCOMPARE(loaded->job.nextBatch(), 1);
+        QCOMPARE(loaded->job.results(), QList<QByteArray>{ "a" });
+        QVERIFY(query.exec(QStringLiteral("DROP TRIGGER fail_batch")));
+
+        // A failed insert leaves no orphan job row.
+        QVERIFY(query.exec(QStringLiteral("CREATE TRIGGER fail_insert BEFORE INSERT ON import_job_batches "
+                                          "BEGIN SELECT RAISE(ABORT, 'synthetic failure'); END")));
+        QCOMPARE(m_store->insertImportJob("{}", job), qint64(0));
+        QCOMPARE(m_store->importJobRows().size(), 1);
+        QCOMPARE(m_store->importJob()->id, id);
+    }
+
     void importJobRoundTrip()
     {
         QVERIFY(!m_store->importJob());
