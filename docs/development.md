@@ -128,9 +128,25 @@ scripts/build-desktop.sh  # 用完密钥后恢复为不带密钥的桌面构建
 
 采集器把 `recognize-cli --record` 原样写入 `/tmp`，通过校验后仅在仓库内副本补一个 `elapsed_ms`（取自同次 CLI 摘要）；原生 format-1 录制本身没有耗时字段，回放器忽略这个补充字段。报告统计标准名+勾选匹配召回/精确、类别、赠品、日期、件数、规格、token 与耗时；首版不设阈值。**不要用该合成基线代替 `private/` 真实样例的验收**。
 
+### AI 层
+
+`app/src/ai/`（`whilefresh-ai`，只链接 core 与 Qt::Network，CMake 中有检查）是识别和之后所有 AI 服务共用的 DeepSeek 传输层：
+
+- `ChatClient`：一次 chat-completions 调用的异步接口（请求 id、可取消）。请求为 `ChatRequest`（system/user 消息，user 可含 image_url、JSON 模式、max_tokens、temperature、thinking）；大请求可在工作线程先 `encodeChatRequest` 再 `sendEncoded`。结果为正文、finish_reason、token 用量、耗时、截断标记和原始响应；失败为带类型的 `ChatError`（`ErrorKind` 与 HTTP/网络错误分类也在这里）。
+- `DeepSeekChatClient`：空闲超时 150 s、总时限 240 s；只有 5xx 和服务器断开连接重试一次，超时和 4xx 不重试；`finish_reason=length` 时作为成功返回部分正文并标记 `truncated`。日志只记大小、数量、耗时、token、状态码。密钥在发送时向 `CredentialProvider` 取，没有密钥直接报 `NotConfigured`，不发请求。
+- `CredentialProvider`（`api-keys.h`；文件名避开 `.gitignore` 的 `*credential*`）：`key(Service)`，Service 为 DeepSeek / Lexmount。现有 `BuiltinCredentialProvider`（构建时注入的密钥）和 `StaticCredentialProvider`（测试、工具）；`AppModel` 持有提供者和应用级 `DeepSeekChatClient`，运行时可用 `setCredentials()` 更换。
+- `RecordedChatClient` / `RecordingChatClient`：传输层回放与录制。录制格式 2 只存请求摘要和请求体 SHA-256，不存提示词和图片；也能读 `recognize-cli` 的格式 1（可带 `requestDigests`）。带摘要的录制只回答相同的请求，提示词或输入变了会失败，需要重新录制。
+- `SystemPromptBuilder`：基础文本 + 按顺序追加的段落，偏好摘要永远放最后；空段落省略。
+
+测试在 `app/tests/ai/`，全部离线：`deepseek-chat-client-test`（本地假 HTTP 服务器 `fake-http-server.h`，与识别测试共用）覆盖重试、超时、截断、无密钥、日志；`chat-recording-test` 覆盖回放顺序、摘要校验、录制→写入→读取→回放，以及读取 `test-data/recordings/` 与演示预置的格式 1 录制；`system-prompt-builder-test` 覆盖段落顺序。
+
+```sh
+ctest --test-dir build/desktop --output-on-failure -R 'chat|system-prompt|deepseek-recognizer'
+```
+
 ### 识别层与录制工具
 
-识别层在 `app/src/recognition/`：`RecognitionService` 接口，`DeepSeekRecognizer`（真实服务）、`ReplayRecognizer`（回放录制）、`DemoRecognizer`（演示预置）三种实现。`ctest` 默认全部离线（假服务器 + 合成录制），不计费。
+识别层在 `app/src/recognition/`：`RecognitionService` 接口，`DeepSeekRecognizer`（真实服务）、`ReplayRecognizer`（回放录制）、`DemoRecognizer`（演示预置）三种实现。`DeepSeekRecognizer` 负责图片处理、切片、分批、构造请求和解析结果，经注入的 `ai::ChatClient` 发送；其测试用 `RecordedChatClient` 代替网络，并验证合成样本的格式 1 录制经传输层回放与 `ReplayRecognizer` 的结果完全一致。`ReplayRecognizer` / `DemoRecognizer` 仍在识别层直接回放录制：演示和回放时手上的图片不是录制时的图片，重新切片分批后请求数和批次范围对不上。`ctest` 默认全部离线（假服务器 + 合成录制），不计费。
 
 `recognize-cli` 是仅桌面可用的命令行程序，**调用真实 DeepSeek（计费）**，需要带密钥构建，用完建议重新用无密钥方式构建：
 
@@ -139,9 +155,12 @@ scripts/build-desktop.sh --with-key
 build/desktop/tools/recognize-cli --vocab app/assets/data/vocabulary.json \
     [--kind screenshot|receipt] [--date YYYY-MM-DD] [--no-thinking] [--record <文件>] <图片>...
 build/desktop/tools/recognize-cli --vocab <词表> --text <订单文字文件>
+# 离线回放：同样的输入 + 录制文件，走同一条请求路径，不需要密钥、不联网
+build/desktop/tools/recognize-cli --vocab app/assets/data/vocabulary.json \
+    --replay test-data/recordings/synthetic/cart-fresh-01.json test-data/synthetic/screenshots/cart-fresh-01.png
 ```
 
-只在终端打印结果摘要（耗时、token、商品清单；回复被截断时有警告）。默认保持 deepseek-flash 的思考开启（已验证的识别效果基于此），`--no-thinking` 用于对比。`--record` 保存录制（请求摘要 + 原始响应，文件权限 0600）：仓库内除 `private/` 外的路径会被拒绝；合成样本的录制先写到仓库外（如 `/tmp`），确认不含真实数据后再复制到 `test-data/recordings/`；真实样例（`private/bill/`）的录制只能放 `private/recordings/`，不进仓库。在线识别是手动验证，不属于 ctest。
+只在终端打印结果摘要（耗时、token、商品清单；回复被截断时有警告）。默认保持 deepseek-flash 的思考开启（已验证的识别效果基于此），`--no-thinking` 用于对比。`--record` 保存录制（格式 1：请求摘要、每个请求体的 SHA-256 + 原始响应，文件权限 0600）：仓库内除 `private/` 外的路径会被拒绝；合成样本的录制先写到仓库外（如 `/tmp`），确认不含真实数据后再复制到 `test-data/recordings/`；真实样例（`private/bill/`）的录制只能放 `private/recordings/`，不进仓库。在线识别是手动验证，不属于 ctest。
 
 ### Android 导入调试
 
