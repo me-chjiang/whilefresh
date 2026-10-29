@@ -44,11 +44,11 @@ Item {
                 onActionTriggered: page.importRequested()
             }
             Repeater {
-                model: ["冷藏", "冷冻", "常温"]
+                model: ["冷藏", "冷冻", "常温", "常备调料", "常备食材"]
                 delegate: Item {
                     id: section
                     required property string modelData
-                    readonly property var list: App.items.filter(function (item) { return item.location === section.modelData })
+                    readonly property var list: App.items.filter(function (item) { return item.group === section.modelData })
                     visible: list.length > 0
                     width: content.width
                     height: visible ? card.height + Theme.gapSmall : 0
@@ -99,7 +99,7 @@ Item {
                         x: Theme.gapLarge
                         label: section.modelData
                         count: String(section.list.length)
-                        iconName: section.modelData === "冷藏" ? "fridge" : section.modelData === "冷冻" ? "snowflake" : "sun"
+                        iconName: section.modelData === "冷藏" ? "fridge" : section.modelData === "冷冻" ? "snowflake" : section.modelData === "常温" ? "sun" : "star"
                         tapeColor: section.modelData === "冷藏" ? Theme.tapeSage : section.modelData === "冷冻" ? Theme.tapeBlue : Theme.tapeSand
                     }
                 }

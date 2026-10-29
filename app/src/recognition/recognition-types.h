@@ -109,6 +109,9 @@ struct RecognitionRequest {
     QList<ImageInput> images; // for Screenshot / Receipt
     QString text;             // for OrderText
     std::shared_ptr<const Vocabulary> vocabulary;
+    // Resume support (R-ADR-9): skip the batches before this one. Batches are planned from the
+    // same images and limits, so their numbering is stable across runs.
+    int firstBatch = 0;
 };
 
 }

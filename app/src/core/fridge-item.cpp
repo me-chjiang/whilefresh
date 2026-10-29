@@ -13,13 +13,15 @@ QString itemStatusKey(ItemStatus status)
         return QStringLiteral("used");
     case ItemStatus::Absent:
         return QStringLiteral("absent");
+    case ItemStatus::Discarded:
+        return QStringLiteral("discarded");
     }
     return QStringLiteral("in_stock");
 }
 
 std::optional<ItemStatus> itemStatusFromKey(const QString &key)
 {
-    for (ItemStatus status : { ItemStatus::InStock, ItemStatus::Used, ItemStatus::Absent }) {
+    for (ItemStatus status : { ItemStatus::InStock, ItemStatus::Used, ItemStatus::Absent, ItemStatus::Discarded }) {
         if (itemStatusKey(status) == key)
             return status;
     }
@@ -35,8 +37,32 @@ QString itemStatusLabel(ItemStatus status)
         return texts::statusUsed();
     case ItemStatus::Absent:
         return texts::statusAbsent();
+    case ItemStatus::Discarded:
+        return texts::statusDiscarded();
     }
     return {};
+}
+
+QString itemKindKey(ItemKind kind)
+{
+    switch (kind) {
+    case ItemKind::Food:
+        return QStringLiteral("food");
+    case ItemKind::StapleSeasoning:
+        return QStringLiteral("staple_seasoning");
+    case ItemKind::StapleFood:
+        return QStringLiteral("staple_food");
+    }
+    return QStringLiteral("food");
+}
+
+std::optional<ItemKind> itemKindFromKey(const QString &key)
+{
+    for (ItemKind kind : { ItemKind::Food, ItemKind::StapleSeasoning, ItemKind::StapleFood }) {
+        if (itemKindKey(kind) == key)
+            return kind;
+    }
+    return std::nullopt;
 }
 
 QString dateOriginKey(DateOrigin origin)

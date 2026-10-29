@@ -2,6 +2,7 @@
 #include "data/store.h"
 
 #include <QFile>
+#include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QTest>
 
@@ -78,6 +79,10 @@ private slots:
         item.expiryDate = QDate(2026, 11, 3);
         item.startBasis = StartBasis::PurchaseDate;
         item.shelfLifeNote = QStringLiteral("包装到期日");
+        item.kind = ItemKind::StapleFood;
+        item.amount = 950;
+        item.unit = QStringLiteral("ml");
+        item.snoozedUntil = QDate(2026, 10, 22);
         QVERIFY(m_store->insertItem(item) > 0);
         QCOMPARE(item.entryDate, QDate(2026, 10, 21)); // filled from the clock
 
@@ -99,6 +104,12 @@ private slots:
         QCOMPARE(loaded->expiryDate, QDate(2026, 11, 3));
         QCOMPARE(loaded->startBasis, StartBasis::PurchaseDate);
         QCOMPARE(loaded->createdAt, m_clock->now());
+        QCOMPARE(loaded->kind, ItemKind::StapleFood);
+        QCOMPARE(loaded->amount, 950.0);
+        QCOMPARE(loaded->unit, QStringLiteral("ml"));
+        QCOMPARE(loaded->snoozedUntil, QDate(2026, 10, 22));
+        QVERIFY(loaded->isSnoozed(QDate(2026, 10, 21)));
+        QVERIFY(!loaded->isSnoozed(QDate(2026, 10, 22)));
 
         FridgeItem changed = *loaded;
         changed.status = ItemStatus::Used;
@@ -106,9 +117,12 @@ private slots:
         QVERIFY(m_store->items().isEmpty());
         QCOMPARE(m_store->items(std::nullopt).size(), 1);
         QCOMPARE(m_store->items(ItemStatus::Used).size(), 1);
+        changed.status = ItemStatus::Discarded;
+        QVERIFY(m_store->updateItem(changed));
+        QCOMPARE(m_store->items(ItemStatus::Discarded).size(), 1);
     }
 
-    void deleteImportRemovesItemsAndFiles()
+    void deleteImportKeepsWhatWasEaten()
     {
         const QString image = QDir(importsDir()).filePath(QStringLiteral("a.jpg"));
         const QString other = QDir(importsDir()).filePath(QStringLiteral("b.jpg"));
@@ -120,15 +134,21 @@ private slots:
         first.images = { { image, QStringLiteral("sha-a"), QStringLiteral("image/jpeg"), m_clock->now(), QStringLiteral("Exif") },
                          { outside, QStringLiteral("sha-x"), {}, {}, {} } };
         QVERIFY(m_store->insertImport(first) > 0);
+        QVERIFY(m_store->saveImportProducts(first.id, { { QStringLiteral("土豆"), QStringLiteral("500g") } }));
         ImportRecord second;
         second.inputKind = QStringLiteral("screenshot");
         second.images = { { other, QStringLiteral("sha-b"), {}, {}, {} } };
         QVERIFY(m_store->insertImport(second) > 0);
 
-        FridgeItem a = sampleItem(first.id, QStringLiteral("土豆"), QStringLiteral("500g"));
-        FridgeItem b = sampleItem(second.id, QStringLiteral("西红柿"), QStringLiteral("500g"));
+        FridgeItem inStock = sampleItem(first.id, QStringLiteral("土豆"), QStringLiteral("500g"));
+        FridgeItem used = sampleItem(first.id, QStringLiteral("西红柿"), QStringLiteral("500g"));
+        used.status = ItemStatus::Used;
+        FridgeItem discarded = sampleItem(first.id, QStringLiteral("菠菜"), QStringLiteral("300g"));
+        discarded.status = ItemStatus::Discarded;
+        FridgeItem fromSecond = sampleItem(second.id, QStringLiteral("西红柿"), QStringLiteral("500g"));
         FridgeItem manual = sampleItem(0, QStringLiteral("鸡蛋"), QStringLiteral("10枚"));
-        QVERIFY(m_store->insertItem(a) && m_store->insertItem(b) && m_store->insertItem(manual));
+        for (FridgeItem *item : { &inStock, &used, &discarded, &fromSecond, &manual })
+            QVERIFY(m_store->insertItem(*item) > 0);
         Suggestion suggestion{ 0, SuggestionKind::MarkPantryHave, QStringLiteral("生抽"), QStringLiteral("?"), first.id, {} };
         QVERIFY(m_store->addSuggestion(suggestion));
 
@@ -141,11 +161,116 @@ private slots:
         QVERIFY(!QFile::exists(image));
         QVERIFY(QFile::exists(outside)); // never touches files outside the imports directory
         QVERIFY(QFile::exists(other));
-        QVERIFY(!m_store->importRecord(first.id));
+
+        // Only what was still in the fridge goes; manual and other imports' items stay.
+        QVERIFY(!m_store->item(inStock.id));
         QCOMPARE(m_store->items().size(), 2);
-        QVERIFY(m_store->itemsForImport(first.id).isEmpty());
+        QVERIFY(m_store->item(fromSecond.id));
+        QVERIFY(m_store->item(manual.id));
+        const auto kept = m_store->itemsForImport(first.id);
+        QCOMPARE(kept.size(), 2);
+        for (const auto &item : kept) {
+            QCOMPARE(item.importId, first.id);
+            QVERIFY(item.status == ItemStatus::Used || item.status == ItemStatus::Discarded);
+        }
         QCOMPARE(m_store->pendingSuggestions().size(), 0);
+
+        // Hidden from the history and from duplicate detection, but the row remains.
+        QVERIFY(!m_store->importRecord(first.id));
+        QCOMPARE(m_store->imports().size(), 1);
+        const auto all = m_store->imports(true);
+        QCOMPARE(all.size(), 2);
+        const auto deleted = std::find_if(all.begin(), all.end(), [&](const ImportRecord &r) { return r.id == first.id; });
+        QCOMPARE(deleted->deletedAt, m_clock->now());
+        QVERIFY(deleted->images.isEmpty());
+        QCOMPARE(m_store->importFingerprints().size(), 1);
+        QCOMPARE(m_store->importFingerprints().first().importId, second.id);
         QVERIFY(!m_store->deleteImport(first.id));
+    }
+
+    void clearingHistoryNeverEmptiesTheFridge()
+    {
+        const QString a = QDir(importsDir()).filePath(QStringLiteral("a.jpg"));
+        const QString b = QDir(importsDir()).filePath(QStringLiteral("b.jpg"));
+        QVERIFY(touch(a) && touch(b));
+        QList<qint64> ids;
+        for (const QString &path : { a, b }) {
+            ImportRecord record;
+            record.inputKind = QStringLiteral("screenshot");
+            record.images = { { path, path.right(5), {}, {}, {} } };
+            QVERIFY(m_store->insertImport(record) > 0);
+            FridgeItem item = sampleItem(record.id, QStringLiteral("土豆"), QStringLiteral("500g"));
+            QVERIFY(m_store->insertItem(item) > 0);
+            ids.append(record.id);
+        }
+        FridgeItem manual = sampleItem(0, QStringLiteral("鸡蛋"), QStringLiteral("10枚"));
+        QVERIFY(m_store->insertItem(manual) > 0);
+
+        QVERIFY(m_store->clearImportHistory());
+        QVERIFY(m_store->imports().isEmpty());
+        QCOMPARE(m_store->imports(true).size(), 2);
+        QCOMPARE(m_store->items().size(), 3);
+        for (qint64 id : ids)
+            QCOMPARE(m_store->itemsForImport(id).size(), 1);
+        QVERIFY(!QFile::exists(a));
+        QVERIFY(!QFile::exists(b));
+        QVERIFY(m_store->importFingerprints().isEmpty());
+    }
+
+    void skippedDuplicateRecord()
+    {
+        ImportRecord original;
+        original.inputKind = QStringLiteral("screenshot");
+        QVERIFY(m_store->insertImport(original) > 0);
+        ImportRecord skipped;
+        skipped.inputKind = QStringLiteral("screenshot");
+        skipped.status = ImportStatus::SkippedDuplicate;
+        skipped.duplicateOf = original.id;
+        QVERIFY(m_store->insertImport(skipped) > 0);
+        const auto loaded = m_store->importRecord(skipped.id);
+        QVERIFY(loaded);
+        QCOMPARE(loaded->status, ImportStatus::SkippedDuplicate);
+        QCOMPARE(loaded->duplicateOf, original.id);
+        QCOMPARE(m_store->importRecord(original.id)->status, ImportStatus::Confirmed);
+        QCOMPARE(m_store->importRecord(original.id)->duplicateOf, qint64(0));
+    }
+
+    void importJobRoundTrip()
+    {
+        QVERIFY(!m_store->importJob());
+        ResumableJob job;
+        QVERIFY(job.start());
+        const qint64 id = m_store->insertImportJob(R"({"images":[]})", job);
+        QVERIFY(id > 0);
+        QVERIFY(job.plan(3));
+        QVERIFY(job.completeBatch(0, "first"));
+        QVERIFY(m_store->saveImportJob(id, job));
+
+        auto loaded = m_store->importJob();
+        QVERIFY(loaded);
+        QCOMPARE(loaded->id, id);
+        QCOMPARE(loaded->payload, QByteArray(R"({"images":[]})"));
+        QCOMPARE(loaded->createdAt, m_clock->now());
+        // Saved while running: the process died with a request in flight.
+        QCOMPARE(loaded->job.state(), ResumableJob::State::Failed);
+        QCOMPARE(loaded->job.batchCount(), 3);
+        QCOMPARE(loaded->job.nextBatch(), 1);
+        QCOMPARE(loaded->job.results(), QList<QByteArray>{ "first" });
+
+        job.reset();
+        QVERIFY(job.start());
+        QVERIFY(job.plan(1));
+        QVERIFY(job.completeBatch(0, "whole"));
+        QVERIFY(m_store->saveImportJob(id, job));
+        loaded = m_store->importJob();
+        QCOMPARE(loaded->job.state(), ResumableJob::State::Done);
+        QCOMPARE(loaded->job.results(), QList<QByteArray>{ "whole" });
+
+        QVERIFY(m_store->deleteImportJob(id));
+        QVERIFY(!m_store->importJob());
+        QSqlQuery query(m_database->handle());
+        QVERIFY(query.exec(QStringLiteral("SELECT COUNT(*) FROM import_job_batches")) && query.next());
+        QCOMPARE(query.value(0).toInt(), 0);
     }
 
     void deleteAllData()
@@ -164,8 +289,12 @@ private slots:
         ShoppingEntry entry;
         entry.names = { QStringLiteral("盐") };
         m_store->addShoppingEntry(entry);
+        ResumableJob job;
+        QVERIFY(m_store->insertImportJob("{}", job) > 0);
 
         QVERIFY(m_store->deleteAllData());
+        QVERIFY(!m_store->importJob());
+        QVERIFY(m_store->imports(true).isEmpty());
         QVERIFY(m_store->items(std::nullopt).isEmpty());
         QVERIFY(m_store->imports().isEmpty());
         QVERIFY(m_store->shelfLifeRules().isEmpty());

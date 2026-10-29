@@ -91,7 +91,7 @@ Item {
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: (row.ingredient.days || "") + " · " + Theme.sourceLabel(row.ingredient.source) + (row.ingredient.source === "package" ? "" : " · 估计")
+                    text: row.ingredient.days || ""
                     font.pixelSize: Theme.textMeta
                     color: Theme.muted
                     elide: Text.ElideRight

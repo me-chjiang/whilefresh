@@ -25,6 +25,8 @@ inline QString referenceAttribution() { return QStringLiteral("参考：USDA Foo
 inline QString statusInStock() { return QStringLiteral("在库"); }
 inline QString statusUsed() { return QStringLiteral("已用掉"); }
 inline QString statusAbsent() { return QStringLiteral("家里没有"); }
+inline QString statusDiscarded() { return QStringLiteral("已扔掉"); }
+inline QString needsShelfLife() { return QStringLiteral("待录保质期"); }
 
 inline QString orSeparator() { return QStringLiteral(" 或 "); }
 inline QString shoppingListTitle() { return QStringLiteral("待买清单"); }

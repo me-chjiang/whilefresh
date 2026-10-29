@@ -1,19 +1,44 @@
 #include "ui/import-service.h"
 
+#include "core/fridge-groups.h"
+#include "core/quantity.h"
 #include "core/texts.h"
 #include "platform/import-files.h"
+#include "recognition/response-parser.h"
 #include "recognition/vocabulary.h"
 
 #include <QCryptographicHash>
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 namespace whilefresh::ui {
 using namespace core;
 namespace rec = recognition;
 
 namespace {
+
+// One stored batch: the raw chat-completion body and the images it covered, enough to parse
+// and merge it again exactly as the recognizer did.
+QByteArray encodeBatch(const QByteArray &response, const rec::BatchSpan &span)
+{
+    const QJsonObject batch{ { "firstImage", span.firstImage }, { "lastImage", span.lastImage },
+                             { "response", QString::fromUtf8(response) } };
+    return QJsonDocument(batch).toJson(QJsonDocument::Compact);
+}
+
+platform::ImportedImage::DateSource dateSourceFromName(const QString &name)
+{
+    using Source = platform::ImportedImage::DateSource;
+    for (Source source : { Source::Camera, Source::Exif, Source::MediaTaken, Source::MediaAdded, Source::FileModified }) {
+        if (platform::dateSourceName(source) == name)
+            return source;
+    }
+    return Source::None;
+}
 
 std::optional<Storage> storageOf(rec::StorageKind storage)
 {
@@ -62,9 +87,19 @@ ImportService::ImportService(data::Store &store, std::shared_ptr<const data::Bui
     m_vocabulary = vocabulary;
     connect(&recognizer, &rec::RecognitionService::succeeded, this, &ImportService::succeeded);
     connect(&recognizer, &rec::RecognitionService::failed, this, &ImportService::recognitionFailed);
+    connect(&recognizer, &rec::RecognitionService::batchSucceeded, this, &ImportService::batchSucceeded);
 }
 
-ImportService::~ImportService() { discard(); }
+ImportService::~ImportService()
+{
+    if (m_jobId) {
+        // The job and its images stay for resume() in the next run.
+        if (m_requestId && m_recognizer)
+            m_recognizer->cancel(m_requestId);
+        return;
+    }
+    discard();
+}
 QString ImportService::privacyNotice() { return texts::uploadPrivacyNotice(); }
 
 bool ImportService::reject(rec::ErrorKind kind, const QString &message)
@@ -91,9 +126,18 @@ bool ImportService::receive(const platform::ImportPayload &payload)
         m_store.discardImportFiles(rejected);
         return reject(rec::ErrorKind::InvalidInput, QStringLiteral("请先确认或放弃当前入库草稿，再重新导入"));
     }
+    // A new import replaces a job nobody resumed; its images would otherwise never be freed.
+    if (const auto stale = m_store.importJob()) {
+        QStringList paths;
+        for (const auto &image : QJsonDocument::fromJson(stale->payload).object().value("images").toArray())
+            paths.append(image.toObject().value("path").toString());
+        dropJob(stale->id, paths);
+    }
     m_payload = payload;
     m_received = true;
     m_draft = {};
+    m_jobId = 0;
+    m_job = {};
     auto &record = m_draft.record;
     record.createdAt = m_clock.now();
     record.isDemo = m_demo;
@@ -146,21 +190,84 @@ bool ImportService::start(bool privacyConfirmed, bool allowDuplicate)
         emit duplicateDetected(m_draft.duplicate);
         return false;
     }
-    rec::RecognitionRequest request;
-    request.vocabulary = m_vocabulary;
-    request.kind = rec::inputKindFromString(m_draft.record.inputKind).value_or(rec::InputKind::Screenshot);
-    request.text = m_payload.text;
     if (m_payload.kind == platform::ImportPayload::Kind::Images) {
         // A failed receive must not be usable as a partially validated upload.
         if (m_payload.images.isEmpty() || m_draft.record.images.size() != m_payload.images.size())
             return reject(rec::ErrorKind::InvalidInput, texts::importEmptyInput());
-        for (const auto &image : m_payload.images)
-            request.images.append({ image.localPath, image.capturedAt.date() });
+        m_job.start();
+        if (m_jobId)
+            saveJob();
+        else
+            m_jobId = m_store.insertImportJob(jobPayload(), m_job);
     } else if (m_payload.text.trimmed().isEmpty()) {
         return reject(rec::ErrorKind::InvalidInput, texts::importEmptyInput());
     }
-    m_requestId = m_recognizer->recognize(request);
+    m_batchesReported = false;
+    m_requestId = m_recognizer->recognize(request());
     return true;
+}
+
+rec::RecognitionRequest ImportService::request() const
+{
+    rec::RecognitionRequest request;
+    request.vocabulary = m_vocabulary;
+    request.kind = rec::inputKindFromString(m_draft.record.inputKind).value_or(rec::InputKind::Screenshot);
+    request.text = m_payload.text;
+    for (const auto &image : m_payload.images)
+        request.images.append({ image.localPath, image.capturedAt.date() });
+    if (m_payload.kind == platform::ImportPayload::Kind::Images)
+        request.firstBatch = m_job.nextBatch();
+    return request;
+}
+
+void ImportService::saveJob()
+{
+    if (m_jobId && !m_store.saveImportJob(m_jobId, m_job))
+        qWarning("import job %lld: progress not saved", m_jobId);
+}
+
+QByteArray ImportService::jobPayload() const
+{
+    const auto &record = m_draft.record;
+    QJsonArray images;
+    for (const auto &image : record.images) {
+        images.append(QJsonObject{
+            { "path", image.path }, { "sha256", image.sha256 }, { "mimeType", image.mimeType },
+            { "capturedAt", image.capturedAt.isValid() ? image.capturedAt.toUTC().toString(Qt::ISODateWithMs) : QString() },
+            { "capturedAtSource", image.capturedAtSource } });
+    }
+    const QJsonObject payload{ { "inputKind", record.inputKind }, { "origin", record.origin },
+                               { "createdAt", record.createdAt.toUTC().toString(Qt::ISODateWithMs) },
+                               { "isDemo", record.isDemo }, { "images", images } };
+    return QJsonDocument(payload).toJson(QJsonDocument::Compact);
+}
+
+bool ImportService::restoreJobPayload(const QByteArray &json)
+{
+    const QJsonObject payload = QJsonDocument::fromJson(json).object();
+    m_draft = {};
+    m_payload = {};
+    m_payload.kind = platform::ImportPayload::Kind::Images;
+    auto &record = m_draft.record;
+    record.inputKind = payload.value("inputKind").toString();
+    record.origin = payload.value("origin").toString();
+    m_payload.origin = platform::originFromName(record.origin).value_or(platform::ImportPayload::Origin::Gallery);
+    record.createdAt = QDateTime::fromString(payload.value("createdAt").toString(), Qt::ISODateWithMs);
+    record.isDemo = payload.value("isDemo").toBool() || m_demo;
+    bool complete = rec::inputKindFromString(record.inputKind).has_value();
+    const QString directory = QDir(m_store.importsDirectory()).canonicalPath();
+    for (const auto &value : payload.value("images").toArray()) {
+        const QJsonObject object = value.toObject();
+        data::ImportImageRecord image{ object.value("path").toString(), object.value("sha256").toString(),
+                                       object.value("mimeType").toString(),
+                                       QDateTime::fromString(object.value("capturedAt").toString(), Qt::ISODateWithMs).toLocalTime(),
+                                       object.value("capturedAtSource").toString() };
+        const QFileInfo info(image.path);
+        complete = complete && info.isFile() && !info.isSymLink() && info.absoluteDir().canonicalPath() == directory;
+        record.images.append(image);
+        m_payload.images.append({ image.path, image.mimeType, image.capturedAt, dateSourceFromName(image.capturedAtSource) });
+    }
+    return complete && !record.images.isEmpty();
 }
 
 void ImportService::parseDates(DraftItem &draft) const
@@ -182,12 +289,72 @@ void ImportService::parseDates(DraftItem &draft) const
         draft.item.packageExpiry = recorded(draft.expiry);
 }
 
+void ImportService::batchSucceeded(quint64 id, int index, int count, const rec::RecognitionResult &part)
+{
+    if (id != m_requestId || m_payload.kind != platform::ImportPayload::Kind::Images)
+        return;
+    m_batchesReported = true;
+    if (!m_job.plan(count)) {
+        // The images were split differently this time, so stored batches no longer line up:
+        // start over from the first batch.
+        m_recognizer->cancel(m_requestId);
+        m_job.reset();
+        m_job.start();
+        saveJob();
+        m_requestId = m_recognizer->recognize(request());
+        return;
+    }
+    if (m_job.completeBatch(index, encodeBatch(part.rawResponses.value(0), part.batchSpans.value(0))))
+        saveJob();
+}
+
 void ImportService::succeeded(quint64 id, const rec::RecognitionResult &result)
 {
     if (id != m_requestId || !m_received)
         return;
     m_requestId = 0;
-    m_draft.record.isDemo = m_demo || result.isDemo;
+    if (m_payload.kind != platform::ImportPayload::Kind::Images) {
+        buildDraft(result);
+        return;
+    }
+    if (!m_batchesReported) {
+        // Recognizers that answer in one piece (replay, demo): the whole answer becomes the job.
+        m_job.reset();
+        m_job.start();
+        if (m_job.plan(int(result.rawResponses.size()))) {
+            for (int i = 0; i < result.rawResponses.size(); ++i)
+                m_job.completeBatch(i, encodeBatch(result.rawResponses.at(i), result.batchSpans.value(i)));
+        }
+        saveJob();
+        buildDraft(result);
+        return;
+    }
+    // Batches finished in an earlier run are only in the job; merge everything from there.
+    const auto all = m_job.state() == ResumableJob::State::Done ? resultFromJob() : std::nullopt;
+    buildDraft(all ? *all : result);
+}
+
+std::optional<rec::RecognitionResult> ImportService::resultFromJob() const
+{
+    const auto kind = rec::inputKindFromString(m_draft.record.inputKind).value_or(rec::InputKind::Screenshot);
+    QList<rec::RecognitionResult> parts;
+    for (const QByteArray &encoded : m_job.results()) {
+        const QJsonObject batch = QJsonDocument::fromJson(encoded).object();
+        auto outcome = rec::parseChatCompletion(batch.value("response").toString().toUtf8(), m_vocabulary.get(), kind);
+        if (!outcome.result)
+            return std::nullopt;
+        outcome.result->batchSpans = { { batch.value("firstImage").toInt(-1), batch.value("lastImage").toInt(-1) } };
+        parts.append(*outcome.result);
+    }
+    if (parts.isEmpty())
+        return std::nullopt;
+    return rec::mergeResults(parts);
+}
+
+void ImportService::buildDraft(const rec::RecognitionResult &result)
+{
+    m_draft.items.clear();
+    m_draft.record.isDemo = m_draft.record.isDemo || m_demo || result.isDemo;
     m_draft.record.truncated = result.truncated;
     m_draft.record.sourceType = rec::enumKey(result.sourceType);
     m_draft.warning = result.truncated ? texts::importMayBeIncomplete() : QString();
@@ -227,6 +394,8 @@ void ImportService::recognitionFailed(quint64 id, const rec::RecognitionError &e
     if (id != m_requestId)
         return;
     m_requestId = 0;
+    if (m_payload.kind == platform::ImportPayload::Kind::Images && m_job.fail())
+        saveJob();
     emit failed(error);
 }
 
@@ -247,6 +416,8 @@ void ImportService::recalculate()
     const auto rules = m_store.ruleBook();
     const ShelfLifeContext context{ m_builtin->catalog.get(), m_builtin->shelfLife.get(), &rules, &cache };
     for (auto &draft : m_draft.items) {
+        draft.item.kind = classifyItemKind(draft.item.canonicalName, draft.category == rec::ItemCategory::Seasoning,
+                                           draft.item.storage, m_builtin->catalog.get(), m_builtin->shelfLife.get());
         const auto result = resolveShelfLife(draft.item.shelfLifeInput(), context);
         draft.item.applyShelfLife(result);
         if (draft.selected && draft.category != rec::ItemCategory::Irrelevant) {
@@ -327,9 +498,7 @@ bool ImportService::confirm(bool allowDuplicate)
             || (!m_builtin->catalog->contains(item.canonicalName) && item.canonicalName != rec::uncategorizedName())
             || (item.manualDays && *item.manualDays <= 0) || (item.labelledDays && *item.labelledDays <= 0))
             return reject(rec::ErrorKind::InvalidInput, QStringLiteral("请检查商品名称、数量和保质天数"));
-        if (draft.category == rec::ItemCategory::Seasoning && !m_builtin->catalog->contains(item.canonicalName))
-            return reject(rec::ErrorKind::InvalidInput, QStringLiteral("请为调料选择标准食材名，或改为食材入库"));
-        if (draft.category == rec::ItemCategory::Food && draft.needsDateConfirmation())
+        if (draft.needsDateConfirmation())
             return reject(rec::ErrorKind::InvalidInput, texts::importNeedsBaseDate());
     }
     if (!m_store.transaction())
@@ -352,10 +521,14 @@ bool ImportService::confirm(bool allowDuplicate)
             ok = ok && m_store.cacheAiEstimate(entry);
             cache.insert(entry.name, entry.storage, entry.days);
         }
-        if (draft.category == rec::ItemCategory::Food) {
-            item.importId = record.id;
-            ok = ok && m_store.insertItem(item) > 0;
-        }
+        // Seasonings are stock too (常备调料); the pantry suggestion below still applies to them.
+        const Amount amount = totalAmount(item.quantityText, item.count);
+        item.amount = amount.value;
+        item.unit = amount.unit;
+        item.importId = record.id;
+        ok = ok && m_store.insertItem(item) > 0;
+        if (!m_builtin->catalog->contains(item.canonicalName))
+            continue;
         if (draft.category == rec::ItemCategory::Seasoning || pantry.isPantry(item.canonicalName)) {
             if (auto suggestion = suggestionForPurchase(item.canonicalName, pantry)) {
                 suggestion->importId = record.id;
@@ -363,6 +536,8 @@ bool ImportService::confirm(bool allowDuplicate)
             }
         }
     }
+    if (m_jobId)
+        ok = ok && m_store.deleteImportJob(m_jobId);
     if (!ok || !m_store.commit()) {
         m_store.rollback();
         return reject(rec::ErrorKind::Internal, QStringLiteral("无法保存，请重试"));
@@ -370,7 +545,24 @@ bool ImportService::confirm(bool allowDuplicate)
     m_received = false;
     m_payload = {};
     m_draft = {};
+    m_jobId = 0;
+    m_job = {};
     emit committed(record.id);
+    return true;
+}
+
+bool ImportService::skipDuplicate()
+{
+    if (!m_received || busy() || !m_draft.duplicate.isDuplicate())
+        return false;
+    auto record = m_draft.record;
+    record.images.clear(); // deleted with the draft below; the record only says what was skipped
+    record.status = data::ImportStatus::SkippedDuplicate;
+    record.duplicateOf = m_draft.duplicate.importId;
+    if (m_store.insertImport(record) <= 0)
+        return reject(rec::ErrorKind::Internal, QStringLiteral("无法保存，请重试"));
+    discard();
+    emit skipped(record.id);
     return true;
 }
 
@@ -381,22 +573,79 @@ bool ImportService::discard()
     if (requestId && m_recognizer)
         m_recognizer->cancel(requestId);
     QStringList paths;
-    // Files may still be referenced by an older import (e.g. a caller reusing a payload).
-    QSet<QString> referenced;
-    for (const auto &record : m_store.imports()) {
-        for (const auto &image : record.images)
-            referenced.insert(QFileInfo(image.path).absoluteFilePath());
-    }
-    for (const auto &image : m_payload.images) {
-        if (QFileInfo::exists(image.localPath) && !referenced.contains(QFileInfo(image.localPath).absoluteFilePath()))
-            paths.append(image.localPath);
-    }
-    const bool ok = paths.isEmpty() || m_store.discardImportFiles(paths);
+    for (const auto &image : m_payload.images)
+        paths.append(image.localPath);
+    const bool ok = dropJob(m_jobId, paths);
+    m_jobId = 0;
+    m_job = {};
     m_draft = {};
     m_received = false;
     if (ok)
         m_payload = {};
     return ok;
+}
+
+bool ImportService::dropJob(qint64 id, const QStringList &candidates)
+{
+    if (id)
+        m_store.deleteImportJob(id);
+    // Files may still be referenced by an older import (e.g. a caller reusing a payload).
+    QSet<QString> referenced;
+    for (const auto &record : m_store.imports(true)) {
+        for (const auto &image : record.images)
+            referenced.insert(QFileInfo(image.path).absoluteFilePath());
+    }
+    QStringList paths;
+    for (const auto &path : candidates) {
+        if (QFileInfo::exists(path) && !referenced.contains(QFileInfo(path).absoluteFilePath()))
+            paths.append(path);
+    }
+    return paths.isEmpty() || m_store.discardImportFiles(paths);
+}
+
+bool ImportService::hasUnfinishedJob() const
+{
+    return !m_received && m_store.importJob().has_value();
+}
+
+bool ImportService::resume()
+{
+    if (m_received || busy() || !m_recognizer)
+        return false;
+    const auto stored = m_store.importJob();
+    if (!stored)
+        return false;
+    m_jobId = stored->id;
+    m_job = stored->job;
+    if (!restoreJobPayload(stored->payload)) {
+        discard();
+        return reject(rec::ErrorKind::InvalidInput, QStringLiteral("导入的图片已不在，请重新导入"));
+    }
+    m_received = true;
+    if (m_job.state() == ResumableJob::State::Done) {
+        if (const auto result = resultFromJob()) {
+            buildDraft(*result);
+            return true;
+        }
+        m_job.reset(); // stored answers unreadable: recognize again
+    }
+    m_job.start();
+    saveJob();
+    m_batchesReported = false;
+    m_requestId = m_recognizer->recognize(request());
+    return true;
+}
+
+bool ImportService::discardUnfinishedJob()
+{
+    if (m_received || busy())
+        return false;
+    const auto stored = m_store.importJob();
+    if (!stored)
+        return true;
+    m_jobId = stored->id;
+    restoreJobPayload(stored->payload); // best effort: whatever images are still there go
+    return discard();
 }
 
 }

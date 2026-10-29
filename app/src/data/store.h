@@ -5,6 +5,7 @@
 #include "core/fridge-item.h"
 #include "core/import-duplicates.h"
 #include "core/pantry.h"
+#include "core/resumable-job.h"
 #include "core/shelf-life.h"
 #include "core/shopping-list.h"
 
@@ -26,6 +27,10 @@ struct ImportImageRecord {
     QString capturedAtSource; // platform DateSource name, empty when unknown
 };
 
+// Confirmed imports produced items; a skipped suspected duplicate is kept as a record only.
+enum class ImportStatus { Confirmed, SkippedDuplicate };
+QString importStatusKey(ImportStatus status); // "confirmed", "skipped_duplicate"
+
 struct ImportRecord {
     qint64 id = 0;
     QDateTime createdAt;
@@ -35,7 +40,18 @@ struct ImportRecord {
     bool isDemo = false;
     bool truncated = false; // the recognizer's answer was cut off
     int textLength = 0;
+    ImportStatus status = ImportStatus::Confirmed;
+    qint64 duplicateOf = 0; // the earlier import a skipped duplicate resembled
+    QDateTime deletedAt;    // hidden from the history once set (R-ADR-8)
     QList<ImportImageRecord> images;
+};
+
+// A resumable import (R-ADR-9): the job's progress plus the owner's description of the input.
+struct ImportJobRecord {
+    qint64 id = 0;
+    core::ResumableJob job;
+    QByteArray payload; // JSON written and read by the import service
+    QDateTime createdAt;
 };
 
 // All persistent user data. Plain synchronous calls on the GUI thread; the data set is small.
@@ -60,18 +76,31 @@ public:
     // Imports
     qint64 insertImport(ImportRecord &record); // sets id and createdAt when unset
     std::optional<ImportRecord> importRecord(qint64 id) const;
-    QList<ImportRecord> imports() const; // newest first
+    // Newest first; deleted imports are left out unless asked for.
+    QList<ImportRecord> imports(bool includeDeleted = false) const;
     QList<core::ImportFingerprint> importFingerprints() const;
     bool saveImportProducts(qint64 id, const QList<QPair<QString, QString>> &products);
     // Retry queued filesystem deletions after a crash or temporary failure; call at startup too.
     bool retryFileCleanup();
     bool discardImportFiles(const QStringList &paths);
-    // Deletes the import, the items it produced and its image files.
+    // Soft delete (R-ADR-8): removes the import's items that are still in stock, its image files
+    // and its purchase fingerprint, and hides the record. Used / discarded / absent items keep
+    // their import_id. False when the import is unknown or already deleted, or when a file is
+    // still queued for cleanup.
     bool deleteImport(qint64 id);
+    // Hides every import and deletes their image files; never deletes an item, so clearing the
+    // history cannot empty the fridge.
+    bool clearImportHistory();
     // Deletes every row and every file in the imports directory. The schema stays.
     bool deleteAllData();
     // Deletes a file only when it lies directly in the imports directory.
     bool removeImportFile(const QString &path) const;
+
+    // Resumable import jobs; at most one is unfinished at a time.
+    qint64 insertImportJob(const QByteArray &payload, const core::ResumableJob &job);
+    bool saveImportJob(qint64 id, const core::ResumableJob &job);
+    std::optional<ImportJobRecord> importJob() const; // the newest, if any
+    bool deleteImportJob(qint64 id);
 
     // Local memory rules
     QList<core::ShelfLifeRule> shelfLifeRules() const;

@@ -1,6 +1,8 @@
 #include "ui/app-model.h"
 
 #include "core/date-text.h"
+#include "core/fridge-groups.h"
+#include "core/texts.h"
 #include "platform/import-files.h"
 #include "recognition/deepseek-recognizer.h"
 #include "recognition/demo-recognizer.h"
@@ -178,6 +180,11 @@ std::unique_ptr<AppModel::Session> AppModel::openSession(const QString &dbPath, 
         invalidate();
         emit importCommitted();
     });
+    connect(imp, &ImportService::skipped, this, [this, raw] {
+        if (raw != m_active) return;
+        setImportState(QStringLiteral("idle"));
+        invalidate();
+    });
     return session;
 }
 
@@ -241,20 +248,20 @@ QVariantMap AppModel::itemMap(const core::FridgeItem &item) const
 {
     const auto state = kitchen().freshness(item);
     QString days;
-    if (item.shelfLifeSource == core::ShelfLifeSource::Package && item.expiryDate.isValid())
-        days = item.expiryDate.toString(QStringLiteral("MM-dd")) + QStringLiteral(" 到期");
-    else if (state.freshness == core::Freshness::BeyondEstimate)
-        days = QStringLiteral("请查看后决定");
-    else if (state.remainingDays)
-        days = QStringLiteral("约剩 %1 天").arg(*state.remainingDays);
-    else
-        days = QStringLiteral("保质期未知");
+    if (state.remainingDays)
+        days = *state.remainingDays < 0 ? QStringLiteral("过期%1天").arg(-*state.remainingDays)
+                                        : QStringLiteral("剩余%1天").arg(*state.remainingDays);
+    else if (item.needsShelfLife())
+        days = core::texts::needsShelfLife();
     const QString name = item.displayName.isEmpty() ? item.canonicalName : item.displayName;
     return {
         { "id", item.id }, { "name", name }, { "quantity", item.quantityText },
         { "category", item.category }, { "location", core::storageDisplayName(item.storage) },
         { "freshness", freshnessName(state.freshness) }, { "source", sourceName(item.shelfLifeSource) },
         { "days", days }, { "first", item.useFirst },
+        { "kind", core::itemKindKey(item.kind) }, { "group", core::fridgeGroupName(core::fridgeGroup(item)) },
+        { "needsShelfLife", item.needsShelfLife() },
+        { "snoozed", item.isSnoozed(m_clock.today()) },
         { "bulk", kitchen().pantryRules().isBulk(item.canonicalName) },
         { "purchasedAt", dateText(item.purchaseDate.date) }, { "storedAt", dateText(item.entryDate) },
         { "producedAt", dateText(item.productionDate.date) },
@@ -284,10 +291,15 @@ QVariantList AppModel::items()
 int AppModel::nearCount()
 {
     int count = 0;
-    for (const auto &value : items())
-        count += value.toMap().value(QStringLiteral("freshness")) == QLatin1String("nearing");
+    for (const auto &value : items()) {
+        const auto item = value.toMap();
+        count += item.value(QStringLiteral("freshness")) == QLatin1String("nearing")
+            && !item.value(QStringLiteral("snoozed")).toBool();
+    }
     return count;
 }
+
+int AppModel::attentionCount() const { return m_active ? int(kitchen().attention().size()) : 0; }
 
 QVariantList AppModel::selectedIds() const
 {
@@ -362,6 +374,8 @@ QString AppModel::shoppingText() const { return kitchen().shoppingText(); }
 
 void AppModel::useItem(qint64 id) { kitchen().useItem(id); }
 void AppModel::markAbsent(qint64 id) { kitchen().markAbsent(id); }
+void AppModel::discardItem(qint64 id) { kitchen().discardItem(id); }
+void AppModel::snoozeItem(qint64 id) { kitchen().snoozeItem(id); }
 void AppModel::toggleFirst(qint64 id, bool enabled) { kitchen().setUseFirst(id, enabled); }
 
 void AppModel::removeItems(const QVariantList &ids)
@@ -549,6 +563,8 @@ QVariantList AppModel::imports() const
             kind += QStringLiteral(" · %1 张").arg(r.images.size());
         if (r.isDemo)
             kind = QStringLiteral("演示 · ") + kind;
+        if (r.status == data::ImportStatus::SkippedDuplicate)
+            kind += QStringLiteral(" · 已跳过");
         list.append(QVariantMap { { "id", r.id }, { "name", kind },
                                   { "date", r.createdAt.toLocalTime().toString(QStringLiteral("yyyy-MM-dd")) } });
     }
@@ -558,6 +574,12 @@ QVariantList AppModel::imports() const
 void AppModel::deleteImport(qint64 id)
 {
     if (!kitchen().deleteImport(id))
+        emit notice(QStringLiteral("部分图片暂未清理，稍后会自动重试"));
+}
+
+void AppModel::clearImportHistory()
+{
+    if (!kitchen().clearImportHistory())
         emit notice(QStringLiteral("部分图片暂未清理，稍后会自动重试"));
 }
 
@@ -626,6 +648,29 @@ void AppModel::cancelImport()
     setImportState(QStringLiteral("idle"));
 }
 
+void AppModel::skipImport()
+{
+    m_consented = false;
+    if (!m_active->import->skipDuplicate())
+        cancelImport();
+}
+
+void AppModel::resumeImport()
+{
+    setImportState(QStringLiteral("recognizing"));
+    if (!m_active->import->resume() && m_importState == QLatin1String("recognizing"))
+        setImportState(QStringLiteral("idle"));
+}
+
+void AppModel::discardUnfinishedImport()
+{
+    if (!m_active->import->discardUnfinishedJob())
+        emit notice(QStringLiteral("部分图片暂未清理，稍后会自动重试"));
+    emit importChanged();
+}
+
+bool AppModel::hasUnfinishedImport() const { return m_active && m_active->import->hasUnfinishedJob(); }
+
 QVariantList AppModel::draftItems() const
 {
     QVariantList list;
@@ -648,7 +693,8 @@ QVariantList AppModel::draftItems() const
             { "purchasedAt", dateText(item.purchaseDate.date) }, { "storedAt", dateText(item.entryDate) },
             { "producedAt", dateText(item.productionDate.date) },
             { "packageExpiresAt", dateText(item.packageExpiry.date) },
-            { "group", group }, { "needsDate", d.needsDateConfirmation() } });
+            { "group", group }, { "needsDate", d.needsDateConfirmation() },
+            { "kind", core::itemKindKey(item.kind) }, { "needsShelfLife", d.needsShelfLife() } });
     }
     return list;
 }

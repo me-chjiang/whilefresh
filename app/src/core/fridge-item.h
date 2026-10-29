@@ -12,10 +12,15 @@
 
 namespace whilefresh::core {
 
-enum class ItemStatus { InStock, Used, Absent };
+enum class ItemStatus { InStock, Used, Absent, Discarded };
 QString itemStatusKey(ItemStatus status);
 std::optional<ItemStatus> itemStatusFromKey(const QString &key);
 QString itemStatusLabel(ItemStatus status);
+
+// Food is grouped by storage; staples get their own fridge groups (see staples.h).
+enum class ItemKind { Food, StapleSeasoning, StapleFood };
+QString itemKindKey(ItemKind kind); // "food", "staple_seasoning", "staple_food"
+std::optional<ItemKind> itemKindFromKey(const QString &key);
 
 // Who supplied a date: visible on the material, or typed by the user. Entry dates are always
 // automatic and have no source.
@@ -42,11 +47,16 @@ struct FridgeItem {
     QString category;      // category code
     QString quantityText;  // "500g", "10枚"
     int count = 1;
+    ItemKind kind = ItemKind::Food;
+    // Total in stock parsed from quantityText x count (see quantity.h); 0 / empty when unknown.
+    double amount = 0.0;
+    QString unit;
     Storage storage = Storage::Fridge;
     StorageSource storageSource = StorageSource::Default;
     bool useFirst = false;
     ItemStatus status = ItemStatus::InStock;
     QDateTime statusChangedAt;
+    QDate snoozedUntil; // "忽略" an expiring item: no reminder before this day
 
     RecordedDate purchaseDate;
     QDate entryDate;
@@ -74,6 +84,9 @@ struct FridgeItem {
     {
         return evaluateFreshness(expiryDate, shelfLifeDays, today);
     }
+    bool isSnoozed(const QDate &today) const { return snoozedUntil.isValid() && today < snoozedUntil; }
+    // Staples keep their place even without a shelf life; the user is asked to enter one (待录保质期).
+    bool needsShelfLife() const { return kind != ItemKind::Food && !expiryDate.isValid(); }
 };
 
 }

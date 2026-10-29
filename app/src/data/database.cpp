@@ -141,6 +141,52 @@ const QList<QStringList> &migrations()
             QStringLiteral("ALTER TABLE items ADD COLUMN reference_conditions_confirmed INTEGER NOT NULL DEFAULT 0"),
             QStringLiteral("ALTER TABLE imports ADD COLUMN source_type TEXT NOT NULL DEFAULT 'other'"),
         },
+        // 5 (round 2): item kind, amount and snooze; soft-deleted and skipped imports; name
+        // mappings, preferences, resumable import jobs and cooking sessions.
+        {
+            QStringLiteral("ALTER TABLE items ADD COLUMN kind TEXT NOT NULL DEFAULT 'food'"),
+            QStringLiteral("ALTER TABLE items ADD COLUMN amount REAL NOT NULL DEFAULT 0"),
+            QStringLiteral("ALTER TABLE items ADD COLUMN unit TEXT NOT NULL DEFAULT ''"),
+            QStringLiteral("ALTER TABLE items ADD COLUMN snoozed_until TEXT"),
+            QStringLiteral("ALTER TABLE imports ADD COLUMN status TEXT NOT NULL DEFAULT 'confirmed'"),
+            QStringLiteral("ALTER TABLE imports ADD COLUMN duplicate_of INTEGER REFERENCES imports(id) ON DELETE SET NULL"),
+            QStringLiteral("ALTER TABLE imports ADD COLUMN deleted_at TEXT"),
+            QStringLiteral(R"(CREATE TABLE name_mappings (
+                raw_name TEXT PRIMARY KEY,
+                canonical_name TEXT NOT NULL,
+                confirmed_at TEXT NOT NULL
+            ))"),
+            QStringLiteral(R"(CREATE TABLE preferences (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                text TEXT NOT NULL,
+                source TEXT NOT NULL DEFAULT 'user',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            ))"),
+            QStringLiteral(R"(CREATE TABLE import_jobs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                state TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            ))"),
+            QStringLiteral(R"(CREATE TABLE import_job_batches (
+                job_id INTEGER NOT NULL REFERENCES import_jobs(id) ON DELETE CASCADE,
+                batch_index INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                result BLOB,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (job_id, batch_index)
+            ))"),
+            QStringLiteral(R"(CREATE TABLE cleanup_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                state TEXT NOT NULL,
+                payload TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                committed_at TEXT
+            ))"),
+        },
     };
     return list;
 }
