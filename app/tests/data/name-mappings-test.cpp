@@ -38,6 +38,24 @@ private slots:
         m_dir.reset();
     }
 
+    void listsForgetsAndClears()
+    {
+        SqliteNameMappingStore names(*m_database, *m_clock);
+        QVERIFY(names.entries().isEmpty());
+        QVERIFY(names.remember(QStringLiteral("土猪肉"), QStringLiteral("猪肉")));
+        QVERIFY(names.remember(QStringLiteral("冰鲜 鸡全腿"), QStringLiteral("鸡腿")));
+        const auto entries = names.entries();
+        QCOMPARE(entries.size(), 2);
+        QCOMPARE(entries.at(0).second.isEmpty(), false);
+        QVERIFY(names.forget(QStringLiteral(" 冰鲜  鸡全腿 ")));
+        QVERIFY(!names.forget(QStringLiteral("冰鲜 鸡全腿")));
+        QVERIFY(names.mapped(QStringLiteral("冰鲜 鸡全腿")).isEmpty());
+        QCOMPARE(names.mapped(QStringLiteral("土猪肉")), QStringLiteral("猪肉"));
+        QVERIFY(names.clear());
+        QVERIFY(names.entries().isEmpty());
+        QVERIFY(names.clear());
+    }
+
     void remembersAndOverwritesByKey()
     {
         SqliteNameMappingStore names(*m_database, *m_clock);

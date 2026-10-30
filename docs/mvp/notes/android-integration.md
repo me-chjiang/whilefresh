@@ -58,6 +58,14 @@ Java 只收集原始线索，C++ `resolveCapturedAt`（`app/src/platform/capture
 
 早于 2000 年（相机时钟未设置）或晚于当前时间一天以上的值视为不可信，跳过。`DATE_ADDED` 排在 `DATE_MODIFIED` 之前：截图被裁剪、编辑后修改时间会变，入库时间更接近截图当天。
 
+## 密钥存储（Keystore）
+
+- `KeyVault.java`（C++ 侧 `platform/android/android-key-vault.*`，JNI 静态方法 `put/get/remove`，Context 取自 `QNativeInterface::QAndroidApplication::context()`）：AES-256-GCM，密钥别名 `whilefresh-secrets` 在 AndroidKeyStore 内生成，首次保存时创建，不可导出。
+- 密文：`files/secrets/<名称>.bin` = 12 字节 IV + 密文 + 16 字节标签；先写 `.tmp` 再改名。名称只允许 `[a-z0-9-]`。
+- 读取失败（文件缺失、Keystore 密钥丢失如卸载重装后）一律当作未配置，用户重新填写；`allowBackup=false`，密文不会被备份到别的设备。
+- 日志只记异常类名，不记名称以外的内容，不记值。
+- 模拟器验证（x86_64，API 34）：服务页保存假项目 ID 后 `files/secrets/lexmount-project-id.bin` 为 40 字节，强制停止并重启后状态仍为"已配置"；清除后文件删除。
+
 ## 验证方法
 
 见 README「Android 导入调试」。合成测试图由 `/tmp` 中的一次性脚本生成，不进仓库。

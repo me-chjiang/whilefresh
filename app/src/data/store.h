@@ -5,6 +5,7 @@
 #include "core/fridge-item.h"
 #include "core/import-duplicates.h"
 #include "core/pantry.h"
+#include "core/preference.h"
 #include "core/resumable-job.h"
 #include "core/shelf-life.h"
 #include "core/shopping-list.h"
@@ -137,6 +138,13 @@ public:
     QList<core::ShoppingEntry> shoppingEntries() const;
     bool removeShoppingEntry(qint64 id);
     bool clearShoppingList();
+
+    // Preference memory (taste and habits). Text is trimmed and capped at kPreferenceMaxChars;
+    // blank text, a duplicate of an existing one, or more than kPreferenceMaxCount rows fail (id 0).
+    qint64 addPreference(const QString &text, const QString &source = QStringLiteral("user"));
+    bool updatePreference(qint64 id, const QString &text);
+    bool deletePreference(qint64 id);
+    QList<core::Preference> preferences() const; // oldest first
 
     // Settings
     QString setting(const QString &key, const QString &fallback = {}) const;

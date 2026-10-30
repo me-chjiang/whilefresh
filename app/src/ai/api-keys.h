@@ -5,7 +5,9 @@
 
 namespace whilefresh::ai {
 
-enum class Service { DeepSeek, Lexmount };
+// LexmountProjectId is not a key but is stored and fetched the same way (the Lexmount API needs
+// both).
+enum class Service { DeepSeek, Lexmount, LexmountProjectId };
 
 // Where API keys come from. App-level code holds the provider and can swap it (built-in key for
 // demo mode, the user's stored key otherwise); clients ask for the key on every request.
@@ -14,7 +16,7 @@ class CredentialProvider
 public:
     virtual ~CredentialProvider() = default;
 
-    // Empty when the service is not configured.
+    // Empty when the service (or credential) is not configured.
     virtual QString key(Service service) const = 0;
     bool isConfigured(Service service) const { return !key(service).isEmpty(); }
 };

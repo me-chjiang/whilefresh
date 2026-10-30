@@ -11,6 +11,8 @@ add_library(whilefresh-ai STATIC
     deepseek-chat-client.h
     ingredient-classifier.cpp
     ingredient-classifier.h
+    preference-summarizer.cpp
+    preference-summarizer.h
     recorded-chat-client.cpp
     recorded-chat-client.h
     system-prompt-builder.cpp

@@ -134,17 +134,39 @@ scripts/build-desktop.sh  # 用完密钥后恢复为不带密钥的桌面构建
 
 - `ChatClient`：一次 chat-completions 调用的异步接口（请求 id、可取消）。请求为 `ChatRequest`（system/user 消息，user 可含 image_url、JSON 模式、max_tokens、temperature、thinking）；大请求可在工作线程先 `encodeChatRequest` 再 `sendEncoded`。结果为正文、finish_reason、token 用量、耗时、截断标记和原始响应；失败为带类型的 `ChatError`（`ErrorKind` 与 HTTP/网络错误分类也在这里）。
 - `DeepSeekChatClient`：每次尝试空闲超时 150 s，整次调用（含重试）总时限 240 s，单个请求可用 `ChatRequest::idleTimeoutMs` / `deadlineMs` 覆盖；只有 HTTP 5xx 和服务器断开连接（RemoteHostClosed）重试一次，协议错误、超时和 4xx 不重试；`finish_reason=length` 时作为成功返回部分正文并标记 `truncated`。日志只记大小、数量、耗时、token、状态码。密钥在发送时向 `CredentialProvider` 取，没有密钥直接报 `NotConfigured`，不发请求。
-- `CredentialProvider`（`api-keys.h`；文件名避开 `.gitignore` 的 `*credential*`）：`key(Service)`，Service 为 DeepSeek / Lexmount。现有 `BuiltinCredentialProvider`（构建时注入的密钥）和 `StaticCredentialProvider`（测试、工具）；`AppModel` 持有提供者和应用级 `DeepSeekChatClient`，运行时用 `AppModel::setCredentialProvider()` 更换（同时通知 QML 的 `recognitionConfigured`）。
+- `CredentialProvider`（`api-keys.h`；文件名避开 `.gitignore` 的 `*credential*`）：`key(Service)`，Service 为 DeepSeek / Lexmount / LexmountProjectId（项目 ID 不是密钥，但与密钥同样存取，T17 从同一个提供者取）。现有 `BuiltinCredentialProvider`（构建时注入的密钥）和 `StaticCredentialProvider`（测试、工具）；`AppModel` 持有提供者和应用级 `DeepSeekChatClient`，运行时用 `AppModel::setCredentialProvider()` 更换（同时通知 QML 的 `recognitionConfigured`）。
 - `RecordedChatClient` / `RecordingChatClient`：传输层回放与录制。录制格式 2 只存请求摘要和请求体 SHA-256，不存提示词和图片；也能读 `recognize-cli` 的格式 1（可带 `requestDigests`）。带摘要的录制只回答相同的请求，提示词或输入变了会失败，需要重新录制。
 - `parseJsonContent(ChatResult)`：把 JSON 模式的回答正文（可带 ```json 围栏）解析成对象，失败时返回 BadResponse，供纯文本 JSON 服务使用。
 - `SystemPromptBuilder`：基础文本 + 按顺序追加的段落，偏好摘要永远放最后；空段落省略。
 - `IngredientClassifier`（T14）：把本地对不上词表的商品名一次批量发给 DeepSeek 归类。纯文本 JSON 模式、关闭思考、空闲 30 s / 总时限 60 s，一次最多 80 个名称；system 中附分层词表（`IngredientCatalog::hierarchyText()`），每个回答都用词表校验，词表外的名称丢弃并计数，`none` 保持未归类。只依赖 core，词表由调用方传入。
+- `PreferenceSummarizer`（T16）：把偏好记忆各条合并成不超过 200 字的一行摘要。纯文本 JSON 模式（`{"summary": "…"}`）、关闭思考、空闲 20 s / 总时限 40 s；输入最多 50 条、每条 100 字；回答压成一行并截断到 200 字，没有可用 `summary` 时按 BadResponse 失败。只在用户点"整理"时调用，没有任何自动调用。
 
-测试在 `app/tests/ai/`，全部离线：`ingredient-classifier-test` 覆盖请求形状、回答校验、取消、失败，并回放 `test-data/recordings/classifier/synthetic-names.json`（没有该录制时跳过，见下文"重新录制归类"）；`deepseek-chat-client-test`（本地假 HTTP 服务器 `fake-http-server.h`，与识别测试共用）覆盖重试、超时、截断、无密钥、日志；`chat-types-test` 覆盖请求编码与 `parseJsonContent`；`chat-recording-test` 覆盖回放顺序、摘要校验、取消不占用录制、录制→写入→读取→回放，以及读取 `test-data/recordings/` 与演示预置的格式 1 录制；`system-prompt-builder-test` 覆盖段落顺序。
+测试在 `app/tests/ai/`，全部离线：`ingredient-classifier-test` 覆盖请求形状、回答校验、取消、失败，并回放 `test-data/recordings/classifier/synthetic-names.json`（没有该录制时跳过，见下文"重新录制归类"）；`deepseek-chat-client-test`（本地假 HTTP 服务器 `fake-http-server.h`，与识别测试共用）覆盖重试、超时、截断、无密钥、日志；`chat-types-test` 覆盖请求编码与 `parseJsonContent`；`chat-recording-test` 覆盖回放顺序、摘要校验、取消不占用录制、录制→写入→读取→回放，以及读取 `test-data/recordings/` 与演示预置的格式 1 录制；`system-prompt-builder-test` 覆盖段落顺序；`preference-summarizer-test` 覆盖请求形状、输入上限、回答校验与截断、失败、取消，并回放 `test-data/recordings/preferences/synthetic-preferences.json`。
 
 ```sh
 ctest --test-dir build/desktop --output-on-failure -R 'chat|system-prompt|deepseek-recognizer'
 ```
+
+### 密钥存储、服务页与偏好记忆（T16）
+
+- **存储**（`app/src/platform/key-vault.h`，接口 `KeyVault`；文件名避开 `.gitignore` 的 `*secret*`）：保存 DeepSeek 密钥、Lexmount 密钥、Lexmount 项目 ID 三个值，不进 SQLite、不写日志。Android 实现 `android/android-key-vault.*` 通过 JNI 调 `KeyVault.java`：AES-256-GCM，密钥在 AndroidKeyStore（不可导出），每个值一个文件 `files/secrets/<名称>.bin`（12 字节 IV + 密文），`allowBackup=false`。桌面实现 `desktop/file-key-vault.*` 只供开发：应用数据目录下的 `secrets.json`，目录 0700、文件 0600，**明文，不加密，不得用于分发**。
+- **提供者**：`ui/user-keys.h` 的 `UserCredentialProvider` 读写上述存储（会话内缓存，写入只经它）。`AppModel` 在非演示模式使用它，演示模式使用 `BuiltinCredentialProvider` 和独立的 demo.db；切换演示模式、保存或清除密钥都会更新 `recognitionConfigured`。非演示模式下用户没填 DeepSeek 密钥即"未配置"，不回退到内置密钥。T17 取 Lexmount 凭据用 `AppModel::credentials()->key(Service::Lexmount / LexmountProjectId)`。
+- **子模型**：`ui/settings-model.*` 的 `SettingsModel` 以 `App.settings` 暴露给 QML（R-ADR-11 的第一步）：密钥的保存/清除与"已配置/未配置"状态（只写不读，不回显）、偏好 CRUD、摘要、已记住的名称映射。
+- **页面**：我的 → 服务（`ServicesPage.qml`，三个密码框，每项保存/清除）；我的 → 偏好记忆（`PreferencesPage.qml`：偏好列表与添加/删除，摘要与"整理"按钮，无密钥时按钮禁用并显示未配置；"已记住的名称"列表可逐条删除或全部清除）。
+- **偏好记忆**：`preferences` 表由 `Store::addPreference/updatePreference/deletePreference/preferences` 读写（单条 ≤100 字，最多 50 条，去重，来源 user/ai）。摘要存在 `settings.preference_summary`，生成时的偏好文本存在 `preference_summary_source`，两者不一致时页面显示"待整理"；偏好全部删除时摘要同时清空。T18 取摘要：`AppModel::settings()->preferenceSummary()`，或用 `SettingsModel::cookingSystemPrompt(builder)` 得到摘要在最后的 system prompt。
+- **名称映射**：`core::NameMappingStore` 增加 `entries()/forget()/clear()`，AI 归类被记住的名称可在偏好记忆页清除。
+
+重新录制偏好整理（合成数据，不含私人信息；密钥只来自钥匙串，录制不含密钥）：
+
+```sh
+printf '不吃香菜\n少油\n周末才做复杂菜\n不吃香菜\n' > /tmp/prefs.txt
+scripts/build-desktop.sh --with-key
+build/desktop/tools/recognize-cli --summarize /tmp/prefs.txt --record /tmp/prefs-rec.json
+cp /tmp/prefs-rec.json test-data/recordings/preferences/synthetic-preferences.json
+scripts/build-desktop.sh   # 重新构建为无密钥版本
+```
+
+验证：`ctest --test-dir build/desktop --output-on-failure -R 'key-vault|settings-model|summarizer|store|name-mappings'`。Android 上用服务页保存一个假值后重启应用，状态仍为"已配置"，`adb shell run-as <包名> ls files/secrets` 可见密文文件。
 
 ### 词表与名称归类
 

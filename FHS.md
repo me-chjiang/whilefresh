@@ -96,6 +96,7 @@
 
 ## Change log
 
+- 2026-10-30 — T16：新增 `platform/key-vault.*`（`android/`、`desktop/` 各一个实现）、`app/android/.../KeyVault.java`、`ai/preference-summarizer.*`、`core/preference.h`、`ui/settings-model.*`、`ui/user-keys.*`、`qml/pages/{Services,Preferences}Page.qml`、`qml/components/KeyField.qml`、`test-data/recordings/preferences/`。文件名避开 `.gitignore` 的 `*secret*` / `*credential*`。
 - 2026-10-30 — T14：删除 `recognition/vocabulary.*`，识别统一使用 `core::IngredientCatalog`；新增 `core/vocabulary-resolver.*`、`core/name-mapping.h`、`ai/ingredient-classifier.*`、`data/name-mappings.*`，`test-data/vocabulary/resolve-cases.json`，预留 `test-data/recordings/classifier/`。
 
 - 2026-10-30 — T13：新增 `app/src/ai/`（ChatClient、录制回放、SystemPromptBuilder、CredentialProvider）与 `app/tests/ai/`；密钥注入从 recognition 移到 ai，`recognition` 改为依赖 `ai`。

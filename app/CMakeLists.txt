@@ -57,6 +57,7 @@ qt_add_qml_module(whilefresh
         qml/components/PaperBackground.qml
         qml/components/CategoryDot.qml
         qml/components/FreshnessStamp.qml
+        qml/components/KeyField.qml
         qml/components/SectionTape.qml
         qml/components/InkButton.qml
         qml/components/PageHeader.qml
@@ -73,6 +74,8 @@ qt_add_qml_module(whilefresh
         qml/pages/RecipeDetailPage.qml
         qml/pages/ShoppingPage.qml
         qml/pages/ProfilePage.qml
+        qml/pages/ServicesPage.qml
+        qml/pages/PreferencesPage.qml
         qml/pages/ImportFlowPage.qml
         qml/pages/ItemEditPage.qml
     RESOURCES

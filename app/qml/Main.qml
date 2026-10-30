@@ -145,8 +145,18 @@ ApplicationWindow {
         ProfilePage {
             debugTools: window.debugTools
             onDebugRequested: window.debugPanelVisible = !window.debugPanelVisible
+            onServicesRequested: stack.push(servicesComponent)
+            onPreferencesRequested: stack.push(preferencesComponent)
             onNotice: function(message) { window.showNotice(message) }
         }
+    }
+    Component {
+        id: servicesComponent
+        ServicesPage { onBackRequested: stack.pop() }
+    }
+    Component {
+        id: preferencesComponent
+        PreferencesPage { onBackRequested: stack.pop() }
     }
     Component {
         id: detailComponent

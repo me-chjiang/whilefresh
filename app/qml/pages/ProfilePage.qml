@@ -7,6 +7,8 @@ Item {
     id: page
     signal notice(string message)
     signal debugRequested()
+    signal servicesRequested()
+    signal preferencesRequested()
     property bool debugTools: false
     property string pendingImportName: ""
     property int pendingImportId: -1
@@ -37,6 +39,36 @@ Item {
                     Text { text: "演示模式"; font.pixelSize: Theme.textBody; font.weight: Theme.weightBold; color: Theme.ink; Layout.fillWidth: true }
                     Switch { checked: App.demoMode; onToggled: App.setDemoMode(checked) }
                 }
+            }
+            Rectangle {
+                width: content.width
+                height: Theme.touch + Theme.gapLarge
+                radius: Theme.radiusCard
+                color: Theme.card
+                RowLayout {
+                    x: Theme.gap
+                    y: Theme.gapSmall
+                    width: parent.width - Theme.gap * 2
+                    height: Theme.touch
+                    Text { text: "服务"; font.pixelSize: Theme.textBody; font.weight: Theme.weightBold; color: Theme.ink; Layout.fillWidth: true }
+                    IconGlyph { name: "chevron-right"; tint: Theme.muted; width: 20; height: 20 }
+                }
+                TapHandler { onTapped: page.servicesRequested() }
+            }
+            Rectangle {
+                width: content.width
+                height: Theme.touch + Theme.gapLarge
+                radius: Theme.radiusCard
+                color: Theme.card
+                RowLayout {
+                    x: Theme.gap
+                    y: Theme.gapSmall
+                    width: parent.width - Theme.gap * 2
+                    height: Theme.touch
+                    Text { text: "偏好记忆"; font.pixelSize: Theme.textBody; font.weight: Theme.weightBold; color: Theme.ink; Layout.fillWidth: true }
+                    IconGlyph { name: "chevron-right"; tint: Theme.muted; width: 20; height: 20 }
+                }
+                TapHandler { onTapped: page.preferencesRequested() }
             }
             Text { text: "常备调料 / 常用食材"; font.family: Theme.serif; font.pixelSize: Theme.textPanel; font.weight: Theme.weightBlack; color: Theme.ink }
             Text { text: "清单内默认家里有；存量多的食材用掉一次仍保留。建议更改需确认。"; width: content.width; wrapMode: Text.Wrap; font.pixelSize: Theme.textMeta; color: Theme.muted }

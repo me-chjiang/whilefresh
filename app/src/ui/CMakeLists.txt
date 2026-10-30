@@ -3,6 +3,10 @@ add_library(whilefresh-ui STATIC
     app-info.h
     app-model.cpp
     app-model.h
+    settings-model.cpp
+    settings-model.h
+    user-keys.cpp
+    user-keys.h
     kitchen-service.cpp
     kitchen-service.h
     import-service.cpp

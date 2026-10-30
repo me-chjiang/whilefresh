@@ -971,6 +971,65 @@ bool Store::clearShoppingList()
     return run(query, QStringLiteral("DELETE FROM shopping_items"));
 }
 
+qint64 Store::addPreference(const QString &rawText, const QString &source)
+{
+    const QString text = rawText.simplified().left(core::kPreferenceMaxChars);
+    if (text.isEmpty() || (source != QLatin1String("user") && source != QLatin1String("ai")))
+        return 0;
+    const QList<core::Preference> existing = preferences();
+    if (existing.size() >= core::kPreferenceMaxCount)
+        return 0;
+    for (const core::Preference &preference : existing) {
+        if (preference.text == text)
+            return 0;
+    }
+    QSqlQuery query(m_database.handle());
+    query.prepare(QStringLiteral("INSERT INTO preferences (text, source, created_at, updated_at) VALUES (?, ?, ?, ?)"));
+    query.addBindValue(text);
+    query.addBindValue(source);
+    query.addBindValue(now());
+    query.addBindValue(now());
+    return run(query) ? query.lastInsertId().toLongLong() : 0;
+}
+
+bool Store::updatePreference(qint64 id, const QString &rawText)
+{
+    const QString text = rawText.simplified().left(core::kPreferenceMaxChars);
+    if (text.isEmpty())
+        return false;
+    QSqlQuery query(m_database.handle());
+    query.prepare(QStringLiteral("UPDATE preferences SET text = ?, updated_at = ? WHERE id = ?"));
+    query.addBindValue(text);
+    query.addBindValue(now());
+    query.addBindValue(id);
+    return run(query) && query.numRowsAffected() == 1;
+}
+
+bool Store::deletePreference(qint64 id)
+{
+    QSqlQuery query(m_database.handle());
+    query.prepare(QStringLiteral("DELETE FROM preferences WHERE id = ?"));
+    query.addBindValue(id);
+    return run(query) && query.numRowsAffected() == 1;
+}
+
+QList<core::Preference> Store::preferences() const
+{
+    QList<core::Preference> list;
+    QSqlQuery query(m_database.handle());
+    if (!run(query, QStringLiteral("SELECT id, text, source, created_at FROM preferences ORDER BY id")))
+        return list;
+    while (query.next()) {
+        core::Preference preference;
+        preference.id = query.value(0).toLongLong();
+        preference.text = query.value(1).toString();
+        preference.source = query.value(2).toString();
+        preference.createdAt = query.value(3).toString();
+        list.append(preference);
+    }
+    return list;
+}
+
 QString Store::setting(const QString &key, const QString &fallback) const
 {
     QSqlQuery query(m_database.handle());
