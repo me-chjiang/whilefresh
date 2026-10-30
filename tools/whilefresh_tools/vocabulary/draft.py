@@ -1,16 +1,12 @@
-"""One-off AI draft of the vocabulary and the recipe-ingredient map.
+"""One-off AI draft of the vocabulary.
 
 Output is a *draft* for human review: after it is copied into
-``vocabulary-source.json`` / ``ingredient-map.json`` and edited, rebuilding never
+``vocabulary-source.json`` and edited, rebuilding never
 calls the AI again.
 """
 
-import json
-
 from .deepseek import Client
-from .schema import CATEGORIES, normalize_item, recipe_ingredient_names
-
-BATCH_SIZE = 80
+from .schema import CATEGORIES, normalize_item
 
 SYSTEM_A = """你在为中国家庭做饭的 App 整理“标准食材词表”。只输出一个 json 对象，不要任何解释。
 
@@ -50,20 +46,6 @@ TOPICS = [
     ("processed", "罐头、即食沙拉、豆制酱菜、腌制品、泡菜榨菜、方便米饭、速食汤、面包糕点、零食类食品（饼干、薯片）、饮品以外的包装食品", 45),
     ("other", "饮用水与饮品（水、可乐、果汁、茶、咖啡、酒类）、坚果干果与种子（花生、核桃、腰果、葡萄干、红枣、枸杞）、烘焙配料（酵母、吉利丁、巧克力、可可粉）、冰块、其他无法归入前面类别的食材", 60),
 ]
-
-SYSTEM_B = """你在为中国家庭做饭的 App 把菜谱里的“原料行”映射到标准食材词表。只输出一个 json 对象，不要任何解释。
-
-规则：
-1. 每个原料行给出一个标准名列表，名称必须逐字取自下面的词表（可以通过括号里的别名找到标准名，但输出只写标准名）。
-2. 去掉数量、规格、品牌、做法描述、备注：“红花椒 150 g”→花椒；“蒜片”→蒜；“125ml 淡奶油”→淡奶油。
-3. 并列写法表示全部需要：“葱姜蒜”→[葱,姜,蒜]；“葱姜末”→[葱,姜]。
-4. “A 或 B”“A/B”“A、B 二选一”这类备选，只取第一个；泛指而不是具体食材的（“蔬菜类”“其他调味料”“喜欢的酱”）→[]。
-5. 选词表中最贴切的标准名；“鸡腿”类写法选更具体的“鸡腿”，不要退到“鸡肉”。
-6. 水（清水、开水、热水、温水、凉白开）→[水]。冰块、包装、非食物、纯描述 → []。
-7. 只有确实是食物、词表里又没有合适项时，才在 new_items 里提出新标准名（规则同词表：家庭常用叫法、粒度适中，规格口味写进别名，category 取自 vegetable/fruit/meat/seafood/egg_dairy/soy/staple/seasoning/processed/other，可有 parent、aliases、pantry_default、bulk_default），并在对应映射里使用它。尽量少新增。
-8. 每个输入原料行都必须在 mappings 中出现一次，key 与输入逐字相同。
-
-输出格式：{"mappings":{"原料行":["标准名"]},"new_items":[{"name":"","category":"","aliases":[],"parent":null,"pantry_default":false,"bulk_default":false}]}"""
 
 
 class Vocab:
@@ -112,15 +94,6 @@ class Vocab:
     def names_prompt(self) -> str:
         return "、".join(self.items) if self.items else "(空)"
 
-    def listing(self) -> str:
-        by_cat: dict[str, list[str]] = {}
-        for it in self.items.values():
-            label = it["name"]
-            if it["aliases"]:
-                label += "(" + "/".join(it["aliases"][:3]) + ")"
-            by_cat.setdefault(it["category"], []).append(label)
-        return "\n".join(f"{zh}: " + "、".join(by_cat.get(code, [])) for code, zh in CATEGORIES)
-
     def finish(self) -> list[dict]:
         """Items for the source file; unresolved parents are logged and kept for review."""
         out = []
@@ -148,42 +121,7 @@ def draft_vocabulary(client: Client, vocab: Vocab) -> None:
         vocab.log.append(f"topic {category}: +{added} ({hint[:12]}…)")
 
 
-def draft_map(client: Client, vocab: Vocab, recipes_doc: dict) -> dict[str, list[str]]:
-    names = sorted(recipe_ingredient_names(recipes_doc))
-    mapping: dict[str, list[str]] = {}
-    valid_categories = {c for c, _ in CATEGORIES}
-    for start in range(0, len(names), BATCH_SIZE):
-        batch = names[start : start + BATCH_SIZE]
-        user = "标准食材词表：\n" + vocab.listing() + "\n\n原料行（json 数组）：\n" + _json_list(batch)
-        reply = client.complete_json(SYSTEM_B, user, max_tokens=8000)
-        for raw in reply.get("new_items") or []:
-            if isinstance(raw, dict) and raw.get("category") in valid_categories:
-                if vocab.add(raw, raw["category"]):
-                    vocab.log.append(f"new item {raw.get('name')!r} (from recipes)")
-        got = reply.get("mappings") or {}
-        for name in batch:
-            targets = got.get(name)
-            if not isinstance(targets, list):
-                vocab.log.append(f"no mapping returned for {name!r}")
-                mapping[name] = []
-                continue
-            resolved: list[str] = []
-            for t in targets:
-                std = vocab.resolve(str(t).strip())
-                if std is None:
-                    vocab.log.append(f"unknown target {t!r} for {name!r}")
-                elif std not in resolved:
-                    resolved.append(std)
-            mapping[name] = resolved
-    return mapping
-
-
-def _json_list(values: list[str]) -> str:
-    return json.dumps(values, ensure_ascii=False)
-
-
-def run_draft(client: Client, recipes_doc: dict) -> tuple[list[dict], dict[str, list[str]], list[str]]:
+def run_draft(client: Client) -> tuple[list[dict], list[str]]:
     vocab = Vocab()
     draft_vocabulary(client, vocab)
-    mapping = draft_map(client, vocab, recipes_doc)
-    return vocab.finish(), mapping, vocab.log
+    return vocab.finish(), vocab.log

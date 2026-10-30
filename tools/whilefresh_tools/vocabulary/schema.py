@@ -1,4 +1,4 @@
-"""Vocabulary / ingredient-map file formats, loading, serialisation and validation."""
+"""Vocabulary file formats, loading, serialisation and validation."""
 
 import json
 from pathlib import Path
@@ -6,9 +6,7 @@ from pathlib import Path
 PACKAGE_DIR = Path(__file__).resolve().parent
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SOURCE_PATH = PACKAGE_DIR / "vocabulary-source.json"
-MAP_PATH = PACKAGE_DIR / "ingredient-map.json"
 VOCABULARY_OUT = REPO_ROOT / "app" / "assets" / "data" / "vocabulary.json"
-RECIPES_PATH = REPO_ROOT / "app" / "assets" / "data" / "recipes.json"
 
 # Order is the display order; the codes are a contract with the UI colour mapping.
 CATEGORIES = (
@@ -58,27 +56,6 @@ def dump_vocabulary(doc: dict) -> str:
         '{\n "version": %d,\n "categories": %s,\n "items": [\n%s\n ]\n}\n'
         % (doc["version"], _line(doc["categories"]), body)
     )
-
-
-def normalize_groups(value) -> list[list[str]]:
-    """Requirement groups from a map value.
-
-    Canonical form is a list of groups; a group is a list of alternative standard
-    names, any one of which satisfies it, and groups are all required. A bare string
-    element is shorthand for a one-name group, so the old flat list ["葱", "姜"]
-    means [["葱"], ["姜"]]. Malformed input is returned as-is for validation.
-    """
-    if not isinstance(value, list):
-        return value
-    return [[g] if isinstance(g, str) else g for g in value]
-
-
-def dump_map(doc: dict) -> str:
-    """One mapping per line, keys sorted, values as requirement groups."""
-    entries = ",\n".join(
-        f"  {_line(k)}: {_line(normalize_groups(v))}" for k, v in sorted(doc["map"].items())
-    )
-    return '{\n "version": %d,\n "map": {\n%s\n }\n}\n' % (doc["version"], entries)
 
 
 def sorted_items(items: list[dict]) -> list[dict]:
@@ -172,81 +149,3 @@ def validate_vocabulary(doc: dict) -> list[str]:
             seen.append(cur)
             cur = names[cur].get("parent")
     return errors
-
-
-def validate_map(map_doc: dict, items: list[dict]) -> list[str]:
-    """Groups are non-empty, free of repeats, and only name vocabulary items; a key
-    that is itself a standard name or alias must require that item."""
-    errors: list[str] = []
-    mapping = map_doc.get("map")
-    if not isinstance(mapping, dict):
-        return ["map must be an object"]
-    names = {i["name"] for i in items if isinstance(i, dict) and isinstance(i.get("name"), str)}
-    owner = {}
-    for i in items:
-        if isinstance(i, dict) and isinstance(i.get("name"), str):
-            owner[norm_key(i["name"])] = i["name"]
-            for a in i.get("aliases") or []:
-                if isinstance(a, str):
-                    owner.setdefault(norm_key(a), i["name"])
-    for raw, value in mapping.items():
-        groups = normalize_groups(value)
-        if not isinstance(groups, list):
-            errors.append(f"map[{raw!r}]: value must be a list of requirement groups")
-            continue
-        flat: list[str] = []
-        seen_groups: set[tuple] = set()
-        for group in groups:
-            if not isinstance(group, list) or not group or not all(isinstance(t, str) for t in group):
-                errors.append(f"map[{raw!r}]: bad group {group!r} (must be a non-empty list of names)")
-                continue
-            if len(set(group)) != len(group):
-                errors.append(f"map[{raw!r}]: repeated name in group {group}")
-            if tuple(sorted(group)) in seen_groups:
-                errors.append(f"map[{raw!r}]: group {group} appears twice")
-            seen_groups.add(tuple(sorted(group)))
-            for t in group:
-                if t not in names:
-                    errors.append(f"map[{raw!r}]: target {t!r} is not in the vocabulary")
-            flat += group
-        std = owner.get(norm_key(raw))
-        if std is not None and std not in flat:
-            errors.append(f"map[{raw!r}] is the name or alias of {std!r} but does not require it: {groups}")
-    return errors
-
-
-def recipe_ingredient_names(recipes_doc: dict) -> set[str]:
-    """Names of non-tool ingredient lines; these must all be in the map."""
-    return {
-        ing["name"]
-        for r in recipes_doc["recipes"]
-        for ing in r["ingredients"]
-        if ing["kind"] != "tool"
-    }
-
-
-def validate_recipes(recipes_doc: dict, map_doc: dict) -> list[str]:
-    errors: list[str] = []
-    mapping = map_doc.get("map", {})
-    needed = recipe_ingredient_names(recipes_doc)
-    for name in sorted(needed - set(mapping)):
-        errors.append(f"recipe ingredient {name!r} has no entry in the ingredient map")
-    for name in sorted(set(mapping) - needed):
-        errors.append(f"ingredient map entry {name!r} is not used by any recipe")
-    for r in recipes_doc["recipes"]:
-        for ing in r["ingredients"]:
-            if "canonical" not in ing:
-                errors.append(f"{r['id']}: ingredient {ing['name']!r} lacks canonical")
-                continue
-            expected = [] if ing["kind"] == "tool" else normalize_groups(mapping.get(ing["name"]))
-            if expected is not None and ing["canonical"] != expected:
-                errors.append(
-                    f"{r['id']}: canonical of {ing['name']!r} differs from the map"
-                )
-    return errors
-
-
-def validate_all(vocab_doc: dict, map_doc: dict, recipes_doc: dict) -> list[str]:
-    errors = validate_vocabulary(vocab_doc)
-    items = vocab_doc.get("items") if isinstance(vocab_doc.get("items"), list) else []
-    return errors + validate_map(map_doc, items) + validate_recipes(recipes_doc, map_doc)

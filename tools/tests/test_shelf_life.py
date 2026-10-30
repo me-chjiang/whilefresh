@@ -11,7 +11,7 @@ from whilefresh_tools.shelf_life.foodkeeper import (
     product_shelf_life,
     to_days,
 )
-from whilefresh_tools.shelf_life.report import coverage_rows, covering_ancestor, make_report, recipe_counts
+from whilefresh_tools.shelf_life.report import coverage_rows, covering_ancestor, make_report
 from whilefresh_tools.shelf_life.schema import (
     MAP_PATH,
     SHELF_LIFE_OUT,
@@ -23,7 +23,7 @@ from whilefresh_tools.shelf_life.schema import (
     validate_shelf_life,
 )
 from whilefresh_tools.vocabulary import deepseek
-from whilefresh_tools.vocabulary.schema import RECIPES_PATH, VOCABULARY_OUT, load_json
+from whilefresh_tools.vocabulary.schema import VOCABULARY_OUT, load_json
 
 
 def product(pid=1, category=7, **cols):
@@ -394,20 +394,11 @@ def test_coverage_and_fallback():
     assert rows[""][2:] == (3, 1, 2)
 
 
-def test_recipe_counts_once_per_recipe():
-    recipes = {"recipes": [
-        {"ingredients": [{"canonical": [["葱"], ["姜", "蒜"]]}, {"canonical": [["葱"]]}]},
-        {"ingredients": [{"canonical": [["葱"]]}, {"canonical": []}]},
-    ]}
-    counts = recipe_counts(recipes)
-    assert counts["葱"] == 2 and counts["姜"] == 1
-
-
 def test_report_is_deterministic_and_has_all_sections():
-    args = (load_json(VOCABULARY_OUT), load_json(RECIPES_PATH), load_json(SHELF_LIFE_OUT), load_json(MAP_PATH), load_products())
+    args = (load_json(VOCABULARY_OUT), load_json(SHELF_LIFE_OUT), load_json(MAP_PATH), load_products())
     first = make_report(*args)
     assert first == make_report(*args)
-    for heading in ("### 覆盖率", "### 无参考值的高频食材", "### 抽样对照", "### 校验警告"):
+    for heading in ("### 覆盖率", "### 无参考值的食材", "### 抽样对照", "### 校验警告"):
         assert heading in first
     assert first.count("\n| ") >= 40
 

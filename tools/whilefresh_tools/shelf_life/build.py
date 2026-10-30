@@ -4,7 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from ..vocabulary.schema import RECIPES_PATH, VOCABULARY_OUT, load_json
+from ..vocabulary.schema import VOCABULARY_OUT, load_json
 from .foodkeeper import load_products
 from .schema import (
     MAP_PATH,
@@ -88,7 +88,6 @@ def cmd_report(args) -> int:
     sys.stdout.write(
         make_report(
             load_json(args.vocabulary),
-            load_json(args.recipes),
             load_json(args.out),
             load_json(args.map),
             products,
@@ -153,7 +152,6 @@ def main(argv: list[str] | None = None) -> int:
 
     r = sub.add_parser("report", help="print the Markdown coverage report")
     common(r)
-    r.add_argument("--recipes", type=Path, default=RECIPES_PATH)
     r.add_argument("--sample", type=int, default=40)
     r.add_argument("--seed", type=int, default=20261021)
     r.set_defaults(func=cmd_report)
