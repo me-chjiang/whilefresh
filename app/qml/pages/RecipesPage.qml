@@ -5,6 +5,7 @@ import WhileFresh
 Item {
     id: page
     signal recipeRequested(var recipe)
+    signal webRecipeRequested(string id)
     property string query: ""
     PageHeader {
         id: header
@@ -39,8 +40,17 @@ Item {
                     color: Theme.ink
                     background: Item {}
                     onTextChanged: page.query = text.trim()
+                    onAccepted: if (page.query !== "") App.searchRecipes(page.query)
                 }
             }
+        }
+        InkButton {
+            width: parent.width
+            text: App.web.searchState === "busy" ? "取消搜索" : "搜下厨房"
+            iconName: "notes"
+            outline: App.web.searchState === "busy"
+            enabled: App.web.searchState === "busy" || page.query !== ""
+            onClicked: App.web.searchState === "busy" ? App.cancelRecipeRequest() : App.searchRecipes(page.query)
         }
         Flickable {
             width: parent.width
@@ -52,6 +62,37 @@ Item {
                 id: list
                 width: parent.width
                 spacing: Theme.gapSmall
+                Text {
+                    visible: App.web.searchState === "busy" || App.web.searchState === "error"
+                    text: App.web.searchState === "busy" ? "搜索中…" : App.web.searchError
+                    font.pixelSize: Theme.textSubtitle
+                    color: App.web.searchState === "error" ? Theme.nearing : Theme.muted
+                }
+                Repeater {
+                    model: App.web.results
+                    delegate: Rectangle {
+                        required property var modelData
+                        width: list.width
+                        height: Theme.touch + Theme.gapSmall
+                        radius: Theme.radiusRow
+                        color: Theme.card
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: Theme.gap
+                            spacing: Theme.gapSmall
+                            Text {
+                                width: parent.width - 60
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.name
+                                elide: Text.ElideRight
+                                font.pixelSize: Theme.textRecipe
+                                color: Theme.ink
+                            }
+                            Text { anchors.verticalCenter: parent.verticalCenter; text: "下厨房"; font.pixelSize: Theme.textMeta; color: Theme.muted }
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: page.webRecipeRequested(modelData.id) }
+                    }
+                }
                 EmptyState {
                     visible: App.recipes.filter(function(r) { return r.name.indexOf(page.query) >= 0 }).length === 0
                     width: parent.width

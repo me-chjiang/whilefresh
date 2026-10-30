@@ -6,3 +6,5 @@ target_compile_definitions(application-service-test PRIVATE
 
 whilefresh_add_test(settings-model-test settings-model-test.cpp)
 target_link_libraries(settings-model-test PRIVATE whilefresh-ui)
+whilefresh_add_test(web-recipe-service-test web-recipe-service-test.cpp)
+target_link_libraries(web-recipe-service-test PRIVATE whilefresh-ui)

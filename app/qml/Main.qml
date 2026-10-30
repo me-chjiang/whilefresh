@@ -130,7 +130,10 @@ ApplicationWindow {
     }
     Component {
         id: recipesComponent
-        RecipesPage { onRecipeRequested: function(recipe) { stack.push(detailComponent, { recipe: App.recipeDetail(recipe.id) }) } }
+        RecipesPage {
+            onRecipeRequested: function(recipe) { stack.push(detailComponent, { recipe: App.recipeDetail(recipe.id) }) }
+            onWebRecipeRequested: function(id) { App.requestRecipeDetail(id); stack.push(webDetailComponent) }
+        }
     }
     Component {
         id: clearComponent
@@ -164,6 +167,10 @@ ApplicationWindow {
             onBackRequested: stack.pop()
             onShoppingRequested: window.showTab(3)
         }
+    }
+    Component {
+        id: webDetailComponent
+        WebRecipeDetailPage { onBackRequested: { App.cancelRecipeRequest(); stack.pop() } }
     }
     Component {
         id: editComponent
