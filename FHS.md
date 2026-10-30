@@ -97,8 +97,8 @@
 ## Change log
 
 - 2026-10-30 — T16：新增 `platform/key-vault.*`（`android/`、`desktop/` 各一个实现）、`app/android/.../KeyVault.java`、`ai/preference-summarizer.*`、`core/preference.h`、`ui/settings-model.*`、`ui/user-keys.*`、`qml/pages/{Services,Preferences}Page.qml`、`qml/components/KeyField.qml`、`test-data/recordings/preferences/`。文件名避开 `.gitignore` 的 `*secret*` / `*credential*`。
-- 2026-10-30 — T14：删除 `recognition/vocabulary.*`，识别统一使用 `core::IngredientCatalog`；新增 `core/vocabulary-resolver.*`、`core/name-mapping.h`、`ai/ingredient-classifier.*`、`data/name-mappings.*`，`test-data/vocabulary/resolve-cases.json`，预留 `test-data/recordings/classifier/`。
 - 2026-10-30 — T17：新增 `app/src/recipes/`（RecipeSource、下厨房 YAML 解析、RecordedRecipeSource、可选的 ProcessRecipeSource）与 `app/tests/recipes/`；创建 `test-data/recipes/xiachufang/`（样例 YAML 与 SOURCE.md）；`scripts/fetch-deps.sh` 增加 yaml-cpp（`~/.cache/whilefresh/yaml-cpp/`）。
+- 2026-10-30 — T14：删除 `recognition/vocabulary.*`，识别统一使用 `core::IngredientCatalog`；新增 `core/vocabulary-resolver.*`、`core/name-mapping.h`、`ai/ingredient-classifier.*`、`data/name-mappings.*`，`test-data/vocabulary/resolve-cases.json`，预留 `test-data/recordings/classifier/`。
 - 2026-10-30 — T13：新增 `app/src/ai/`（ChatClient、录制回放、SystemPromptBuilder、CredentialProvider）与 `app/tests/ai/`；密钥注入从 recognition 移到 ai，`recognition` 改为依赖 `ai`。
 - 2026-10-29 — 第二轮规划（T12）：PRD v5 归档，新增 `docs/prd-v6.md`、`docs/mvp/round-2-plan.md`；预留 `app/src/ai/`、`app/src/recipes/`、`test-data/recipes/xiachufang/`，由 T13、T17 创建。HowToCook 相关目录将在 T18b 移除。
 - 2026-10-21 — 文档整理：开发说明移到 docs/development.md，历史版本移到 docs/archive/。
