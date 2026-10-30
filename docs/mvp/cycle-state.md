@@ -8,7 +8,7 @@
 
 **第二轮**（2026-10-29 起）：按 [PRD v6](../prd-v6.md) 和 [第二轮计划](round-2-plan.md) 开发，任务 T12–T21。本轮先把功能做对，界面能用即可。第一轮 Phase 3 的测试并入第二轮各任务的验证。未完成事项见 [todo.md](todo.md)。
 
-2026-10-30 用户确认后，T13、T15、T14 依次以 `--no-ff` 合并到 main 并推送；`feat/recipe-source`（T17）待子模块 Lexmount 路线修复后补真实详情样例再审查。T16、T18–T21 未开始。审查结果见 [review-log](review-log.md)。
+2026-10-30 用户确认后，T13、T15、T14 依次以 `--no-ff` 合并到 main 并推送；随后 T16、T17、测试期内置密钥、T18b 依次合并到本地 main（未推送）。T18–T21 未开始。审查结果见 [review-log](review-log.md)。
 
 ### 第二轮进度
 
@@ -16,10 +16,10 @@
 - [x] T13 `feat/ai-client`：已合并（2026-10-30）
 - [x] T14 `feat/vocabulary-hierarchy`：已合并（2026-10-30）
 - [x] T15 `feat/item-model`：已合并（2026-10-30）
-- [ ] T16 `feat/services-settings`
-- [ ] T17 `feat/recipe-source`：代码已审查通过，未完成：真实详情样例待子模块 Lexmount 路线修复，见 todo.md
+- [x] T16 `feat/services-settings`：已合并（2026-10-30，含测试期内置密钥 `feat/test-build-keys`）
+- [x] T17 `feat/recipe-source`：已合并（2026-10-30；原生 Lexmount 来源，真实详情样例）
 - [ ] T18 `feat/meal-plan`
-- [ ] T18b `refactor/remove-howtocook`
+- [x] T18b `refactor/remove-howtocook`：已合并（2026-10-30，先于 T18；T18 前无本地推荐）
 - [ ] T19 `feat/home-shell`
 - [ ] T20 `feat/reminders`
 - [ ] T21 `spike/a11y-bubble`
@@ -81,6 +81,10 @@
 | 2026-10-30 | 叠放顺序调整为 T13 → T15 → T14 → T17 | T14 的名称映射依赖 T15 迁移 v5 的 `name_mappings` 表 | T14、T15 在 T16 处合流 |
 | 2026-10-30 | "删除历史"只隐藏导入记录、删除截图，不删除任何物资；已删除的导入不参与疑似重复判断 | 防止一键清空冰箱；与软删除一致 | 按单次删除规则批量删除 |
 | 2026-10-30 | T13（`10384ff`）、T15（`e5f7f63`）、T14（`29136aa`）合并到 main 并推送；T17 暂缓 | 用户确认；T17 详情样例依赖子模块修复 | 四个分支一并合并 |
+| 2026-10-30 | 测试期构建内置 DeepSeek 与 Lexmount 凭据（Lexmount 读 `~/.config/lexmount/config.yaml`）；正式模式用户密钥优先、没有则用内置，演示模式只用内置；服务页显示 已配置 / 内置 / 未配置；提交前运行 `scripts/check-keys.sh` | 用户要求测试期不必手填密钥 | T16 原设计：正式模式只用用户密钥 |
+| 2026-10-30 | T18b 提前到 T18 之前：删除 HowToCook 数据、匹配器、旧菜谱页、Python 菜谱工具与 `ingredient-map.json`；清冰箱改为用勾选食材搜下厨房 | 用户要求立即移除 | 按计划在 T18 之后 |
+| 2026-10-30 | T16（`5317513`）、T17（`ad24850`）、内置密钥（`3a57363`）、T18b（`0d3b620`）合并到本地 main | 用户确认"没问题就 merge"；未要求推送 | — |
+| 2026-10-30 | 桌面开发库 `whilefresh.db`、`demo.db` 被 Codex wip 构建升级到 v6，改名为 `*.codex-v6.bak` 备份后重建 | 用户确认 | 删除 |
 | 2026-10-30 | `build-android.sh` 调试构建显式传 `QT_ANDROID_SIGN_APK=OFF` | 修复 bash 3.2 空数组报错，并避免沿用 release 缓存签名 | 所有构建关闭签名（Codex 版本，会破坏 `--release`） |
 
 ## Agent 分工

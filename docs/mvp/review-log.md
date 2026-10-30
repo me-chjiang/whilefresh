@@ -23,7 +23,10 @@
 | `feat/ai-client` | T13 ai 层 | 2026-10-30 | 修改后可合并（无阻断） | 已修 7 项，已合并 `10384ff` |
 | `feat/item-model` | T15 物资模型与导入续传 | 2026-10-30 | 修改后可合并（1 项重要） | 重要项已修，次要 5 项延后，已合并 `e5f7f63` |
 | `feat/vocabulary-hierarchy` | T14 分层词表与名称归类 | 2026-10-30 | 可合并 | 次要 5 项延后，已合并 `29136aa` |
-| `feat/recipe-source` | T17 菜谱源层 | 2026-10-30 | 未完成 | 代码审查通过（次要 7 项延后），但真实详情样例待子模块 Lexmount 路线修复，见 todo.md |
+| `feat/services-settings` | T16 密钥存储、服务页、偏好记忆 | 2026-10-30 | 修改后可合并（1 项重要） | 重要项与 Keystore 重建已修，已合并 `5317513` |
+| `feat/recipe-source` | T17 菜谱源层 | 2026-10-30 | 修改后可合并（第 2 轮 2 项重要） | 已修，已合并 `ad24850` |
+| `feat/test-build-keys` | 测试期内置密钥 | 2026-10-30 | 可合并 | 文档 1 处已修，已合并 `3a57363` |
+| `refactor/remove-howtocook` | T18b 移除 HowToCook | 2026-10-30 | 可合并 | 已合并 `0d3b620` |
 
 ## T4 视觉稿（`feat/visual-drafts`）
 
@@ -202,3 +205,25 @@ Codex 在 `main` 工作树留下未提交、未审查的 T13–T21 改动，并�
 - 样例：两份搜索为直连真实录制（仅菜名、原页链接、封面图链接，约 29 条，无正文）；详情直连被拦、Lexmount 路线在子模块内报错，改用子模块引擎合成的两份假 id 详情。搜索样例是否保留在公开仓库待用户决定。
 - Sonnet 审查：**无阻断、无重要**。次要（均延后）：`uv` 启动时取消只杀父进程；参数传凭据在 `ps` 中可见（CLI 契约所限，已注明）；子进程输出无大小上限；`double`→`int` 越界未定义；错误类型靠消息子串判断；空名用料使整份详情失败；`WHILEFRESH_YAML_CPP_DIR` 缓存不刷新。
 - 结果：变基到 T14 后 ctest 31/31；Android 构建通过。
+
+## T17 第 2 轮：原生 Lexmount 来源（`feat/recipe-source`）
+
+- Codex 在 main 上另写了一版原生移植（未提交），存到 `wip/codex-t17-native`（`09d3698`）仅作参考。实测：搜索可用，详情两次失败；复审 3 项阻断（UI 线程同步阻塞、DELETE 无请求体致会话泄漏、Android 无凭据来源）。
+- 返工为 `LexmountRecipeSource : RecipeSource`：每请求一个异步状态机、令牌丢弃过期回复、等待目标页面加载后抓取、验证页返回 Blocked、会话总被删除、输出与子模块相同的契约 YAML；Qt6::WebSockets 在各套件均不可用，自带 `WebSocketCodec`/`CdpConnection`（Accept 校验、分片、64 位长度、4 MiB 上限、ping/close）。
+- 真实调用 5 次：搜索成功；详情 2 次成功（3–4 秒），2 次遇滑动验证（下厨房拦截）；会话均删除。两份真实详情样例裁剪为 3 种用料 + 2 步；搜索样例各留 2 条。
+- Sonnet 复审：无阻断，2 项重要已修（创建会话途中取消 / 超时不再中止请求，取得 id 后删除；对应测试原为空跑）。次要（延后）：源对象析构时无法完成 DELETE；`/search/` 验证页标题不匹配时报空结果；嵌套 id 回退可能取错；抓取中重定向报"页面脚本失败"；YAML 特殊字符与 wss 无测试。
+- 联合测试（模拟器）：服务页保存与重启保留、偏好整理（DeepSeek 1 次）、搜索与详情（Lexmount 2 次）、演示模式与清除项目 ID 均通过；日志无崩溃、无密钥。界面问题（加载中显示空结果提示、切换演示后旧结果残留）已在 T18b 修复；底栏偶发首次点击无效、emoji 缺字形留给 T19。
+
+## T16 密钥存储、服务页、偏好记忆（`feat/services-settings`）
+
+- 模拟器实测 Keystore：保存后生成 40 字节 0600 文件，重启后仍为已配置，清除后删除。偏好整理真实调用 1 次。
+- Sonnet 复审：无阻断，1 项重要已修（整理进行中增删改偏好会写回过期摘要）；Keystore 密钥失效后无法再保存（按重要处理）已修。次要（延后）：偏好文本可伪造段落标记（`【】`、`</偏好记录>`）；修改偏好不查重；摘要与来源分两次写入；未传入 KeyVault 的测试会写真实数据目录。
+
+## 测试期内置密钥（`feat/test-build-keys`）
+
+- Sonnet 复审：无阻断、无重要；确认密钥不会出现在脚本输出、CMake 消息、CMakeCache 或 compile_commands 中。已修：development.md 中"不编进程序"的过时说法。次要（延后）：`check-keys.sh` 未扫描历史中的 `sk-` 模式、吞掉 rg/git 错误、固定临时文件路径；配置只支持顶层键。
+
+## T18b 移除 HowToCook（`refactor/remove-howtocook`）
+
+- 删除约 8.1k 行：`recipes.json`、`core/recipe.*`、旧菜谱页与卡片、Python 菜谱工具与夹具、`ingredient-map.json`；保留 `ShoppingOrigin::Recipe` 以兼容已有待买记录。pytest 165 → 112（删除的均为 HowToCook 专用测试）。
+- Sonnet 复审：无阻断、无重要；QML 中所有 `App.*` 引用都存在。次要（延后）：从清冰箱跳到菜谱页时搜索框不显示关键词；`core-domain.md`、`mvp-plan.md` 等历史文档仍提到 HowToCook。
