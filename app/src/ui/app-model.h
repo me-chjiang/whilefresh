@@ -31,8 +31,6 @@ class AppModel : public QObject
     Q_PROPERTY(int nearCount READ nearCount NOTIFY changed)
     Q_PROPERTY(int attentionCount READ attentionCount NOTIFY changed)
     Q_PROPERTY(QVariantList selectedIds READ selectedIds NOTIFY changed)
-    Q_PROPERTY(QVariantList recipes READ recipes NOTIFY changed)
-    Q_PROPERTY(QVariantList clearRecipes READ clearRecipes NOTIFY changed)
     Q_PROPERTY(QVariantList shopping READ shopping NOTIFY changed)
     Q_PROPERTY(QVariantList pantry READ pantry NOTIFY changed)
     Q_PROPERTY(QVariantList suggestions READ suggestions NOTIFY changed)
@@ -66,8 +64,6 @@ public:
     int nearCount();
     int attentionCount() const;
     QVariantList selectedIds() const;
-    QVariantList recipes();
-    QVariantList clearRecipes();
     QVariantList shopping();
     QVariantList pantry() const;
     QVariantList suggestions() const;
@@ -98,8 +94,6 @@ public:
     Q_INVOKABLE void cancelRecipeRequest();
 
     Q_INVOKABLE void toggleSelected(qint64 id);
-    Q_INVOKABLE QVariantMap recipeDetail(const QString &id) const;
-    Q_INVOKABLE int addMissing(const QString &recipeId);
     Q_INVOKABLE void removeShopping(qint64 id);
     Q_INVOKABLE QString shoppingText() const;
 
@@ -168,7 +162,6 @@ private:
     void invalidate();
     void setImportState(const QString &state, const QString &error = {});
     QVariantMap itemMap(const core::FridgeItem &item) const;
-    QVariantMap summaryMap(const core::RecipeMatch &match) const;
     void applyEdits(core::FridgeItem &item, const QVariantMap &edits, bool editEntry) const;
     QString demoPath() const;
     recipes::LexmountCredentials lexmountCredentials() const;
@@ -198,8 +191,6 @@ private:
     bool m_lastConfigured = false;
 
     std::optional<QVariantList> m_items;
-    std::optional<QVariantList> m_recipes;
-    std::optional<QVariantList> m_clearRecipes;
     std::optional<QVariantList> m_shopping;
 };
 

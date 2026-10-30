@@ -69,25 +69,6 @@ private slots:
         QVERIFY(!suggestionForPurchase(QStringLiteral("未归类"), rules));
     }
 
-    void shoppingFromMissingGroups()
-    {
-        Recipe recipe;
-        recipe.id = QStringLiteral("t/汤");
-        recipe.name = QStringLiteral("奶油土豆汤");
-        recipe.ingredients = { { QStringLiteral("牛奶或淡奶油"), {}, false, QStringLiteral("ingredient"),
-                                 { { QStringLiteral("牛奶"), QStringLiteral("淡奶油") } } },
-                               { QStringLiteral("土豆"), {}, false, QStringLiteral("ingredient"), { { QStringLiteral("土豆") } } },
-                               { QStringLiteral("盐"), {}, false, QStringLiteral("ingredient"), { { QStringLiteral("盐") } } },
-                               { QStringLiteral("五花肉"), {}, true, QStringLiteral("ingredient"), { { QStringLiteral("五花肉") } } } };
-        RecipeMatcher matcher(&catalog, { { QStringLiteral("盐"), 0, true, false, false } });
-        const QList<ShoppingEntry> entries = shoppingEntriesForMissing(matcher.match(recipe), &catalog);
-        QCOMPARE(entries.size(), 2);
-        QCOMPARE(entries.at(0).displayName(), QStringLiteral("牛奶 或 淡奶油"));
-        QCOMPARE(entries.at(0).category, QStringLiteral("egg_dairy"));
-        QCOMPARE(entries.at(0).note, QStringLiteral("奶油土豆汤"));
-        QCOMPARE(entries.at(1).category, QStringLiteral("vegetable"));
-    }
-
     void shoppingGroupsAndText()
     {
         const QList<ShoppingEntry> entries{

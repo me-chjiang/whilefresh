@@ -1,5 +1,4 @@
 #include "core/pantry.h"
-#include "core/recipe.h"
 #include "core/shelf-life.h"
 #include "data/builtin-data.h"
 
@@ -8,19 +7,6 @@
 
 using namespace whilefresh::core;
 using namespace whilefresh::data;
-
-namespace {
-
-int rankOf(const QList<RecipeMatch> &matches, const QString &name)
-{
-    for (int i = 0; i < matches.size(); ++i) {
-        if (matches.at(i).recipe->name == name)
-            return i;
-    }
-    return -1;
-}
-
-}
 
 // Integration with the real shipped data (app/assets/data, embedded as qrc).
 class BuiltinDataTest : public QObject
@@ -40,12 +26,10 @@ private slots:
 
     void sizes()
     {
-        QCOMPARE(data->recipes->size(), 372);
         QCOMPARE(data->catalog->entries().size(), 581);
         QVERIFY(!data->shelfLife->isEmpty());
         QCOMPARE(data->shelfLife->sourceName(), QStringLiteral("USDA FoodKeeper"));
         QCOMPARE(data->catalog->categoryDisplayName(QStringLiteral("vegetable")), QStringLiteral("蔬菜"));
-        QCOMPARE(data->recipes->source().license, QStringLiteral("Unlicense"));
     }
 
     void realReferenceValues()
@@ -94,48 +78,16 @@ private slots:
         QSKIP("every child with a listed ancestor is listed itself");
     }
 
-    void tomatoAndEggsWithASmallFridge()
+    void pantryDefaultsOnRealData()
     {
-        const IngredientCatalog *catalog = data->catalog.get();
-        const PantryRules pantry(catalog);
+        const PantryRules pantry(data->catalog.get());
         QVERIFY(pantry.isAtHome(QStringLiteral("盐")));
         QVERIFY(pantry.isAtHome(QStringLiteral("食用油")));
-
-        QList<StockEntry> stock;
-        qint64 id = 0;
-        for (const QString &name : { QStringLiteral("五花肉"), QStringLiteral("鸡蛋"), QStringLiteral("西红柿"),
-                                     QStringLiteral("土豆") })
-            stock.append({ name, ++id, false, true, false });
-        for (const QString &name : pantry.namesAtHome())
-            stock.append({ name, 0, true, false, false });
-        const RecipeMatcher matcher(catalog, stock);
-
-        const Recipe *dish = nullptr;
-        for (const Recipe &recipe : data->recipes->recipes()) {
-            if (recipe.name == QStringLiteral("西红柿炒鸡蛋"))
-                dish = &recipe;
-        }
-        QVERIFY(dish);
-        const RecipeMatch match = matcher.match(*dish);
-        QCOMPARE(match.missingCount, 0);
-        QCOMPARE(match.selectedUsed, 2);
-
-        const QList<RecipeMatch> all = matcher.matchAll(data->recipes->recipes());
-        const QList<RecipeMatch> clearFridge = rankForClearFridge(all);
-        const int clearRank = rankOf(clearFridge, QStringLiteral("西红柿炒鸡蛋"));
-        QVERIFY2(clearRank >= 0 && clearRank < 10, qPrintable(QString::number(clearRank)));
-
-        QList<RecipeMatch> browsing = all;
-        sortForBrowsing(browsing);
-        const int browseRank = rankOf(browsing, QStringLiteral("西红柿炒鸡蛋"));
-        QVERIFY2(browseRank >= 0 && browseRank < 10, qPrintable(QString::number(browseRank)));
     }
 
     void missingShelfLifeFileIsAnEmptyTable()
     {
         QTemporaryDir dir;
-        QVERIFY(QFile::copy(BuiltinData::builtInDirectory() + QStringLiteral("/recipes.json"),
-                            dir.filePath(QStringLiteral("recipes.json"))));
         QVERIFY(QFile::copy(BuiltinData::builtInDirectory() + QStringLiteral("/vocabulary.json"),
                             dir.filePath(QStringLiteral("vocabulary.json"))));
         QString error;

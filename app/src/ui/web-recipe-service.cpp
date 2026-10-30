@@ -74,6 +74,19 @@ void WebRecipeService::cancel()
     emit changed();
 }
 
+void WebRecipeService::reset()
+{
+    cancel();
+    m_results.clear();
+    m_searchError.clear();
+    m_searchState = QStringLiteral("idle");
+    m_detail.clear();
+    m_detailError.clear();
+    m_detailState = QStringLiteral("idle");
+    m_cache.clear();
+    emit changed();
+}
+
 QVariantMap WebRecipeService::attributionMap(const RecipeAttribution &attribution)
 {
     return { { QStringLiteral("source"), attribution.sourceName == QLatin1String("xiachufang") ? QStringLiteral("下厨房") : attribution.sourceName },

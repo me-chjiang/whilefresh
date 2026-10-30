@@ -20,8 +20,6 @@ add_library(whilefresh-core STATIC
     preference.h
     quantity.cpp
     quantity.h
-    recipe.cpp
-    recipe.h
     resumable-job.cpp
     resumable-job.h
     shelf-life.cpp

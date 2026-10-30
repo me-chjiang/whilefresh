@@ -71,7 +71,6 @@ qt_add_qml_module(whilefresh
         qml/components/InkButton.qml
         qml/components/PageHeader.qml
         qml/components/PantryRow.qml
-        qml/components/RecipeCard.qml
         qml/components/EmptyState.qml
         qml/components/NoticeBanner.qml
         qml/components/BottomSheet.qml
@@ -80,7 +79,6 @@ qt_add_qml_module(whilefresh
         qml/pages/FridgePage.qml
         qml/pages/ClearFridgePage.qml
         qml/pages/RecipesPage.qml
-        qml/pages/RecipeDetailPage.qml
         qml/pages/WebRecipeDetailPage.qml
         qml/pages/ShoppingPage.qml
         qml/pages/ProfilePage.qml

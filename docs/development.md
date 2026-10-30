@@ -70,19 +70,13 @@ WHILEFRESH_TLS_SMOKE=1 build/desktop/whilefresh
 `tools/` 是用 uv 管理的 Python 工具包，用于生成随 App 内置的只读数据（输出到 `app/assets/data/`，生成物需提交）。
 
 ```bash
-# 生成菜谱数据：下载固定版本的 HowToCook 到 ~/.cache/whilefresh/howtocook/，输出 app/assets/data/recipes.json
-uv run --project tools python -m whilefresh_tools.recipes build
-
 # 标准食材词表：由人工维护的源数据生成 app/assets/data/vocabulary.json（不调用 AI）
 uv run --project tools python -m whilefresh_tools.vocabulary build
 
-# 校验词表、原料映射和 recipes.json（名称 / 别名唯一、parent 无环、每个菜谱原料都有映射等）
+# 校验词表（名称 / 别名唯一、parent 无环、生成物未陈旧等）
 uv run --project tools python -m whilefresh_tools.vocabulary validate
 
-# 复核报告：规模统计与固定种子的映射抽样（Markdown，输出到标准输出）
-uv run --project tools python -m whilefresh_tools.vocabulary report
-
-# 一次性：调用 DeepSeek 生成词表和原料映射的草稿（需钥匙串中有 landing-project-deepseek）
+# 一次性：调用 DeepSeek 生成词表的草稿（需钥匙串中有 landing-project-deepseek）
 uv run --project tools python -m whilefresh_tools.vocabulary draft
 
 # 保质期参考表：由 foodkeeper-map.json + FoodKeeper 快照生成 app/assets/data/shelf-life.json（不联网）
@@ -91,7 +85,7 @@ uv run --project tools python -m whilefresh_tools.shelf_life build
 # 校验映射与参考表（键在词表中、天数合理、FoodKeeper ID 存在、冷冻不短于冷藏、生成物未陈旧）
 uv run --project tools python -m whilefresh_tools.shelf_life validate
 
-# 参考表复核报告：覆盖率、无参考值的高频食材、固定种子的抽样对照（Markdown，输出到标准输出）
+# 参考表复核报告：覆盖率、无参考值的食材、固定种子的抽样对照（Markdown，输出到标准输出）
 uv run --project tools python -m whilefresh_tools.shelf_life report
 
 # 一次性：调用 DeepSeek 生成"标准名 → FoodKeeper 条目"的草稿（需钥匙串中有 landing-project-deepseek）
@@ -101,9 +95,7 @@ uv run --project tools python -m whilefresh_tools.shelf_life draft
 uv run --project tools pytest
 ```
 
-- 同一版本的输入，两次生成的 `recipes.json` 应逐字节一致；改动解析规则后需重新生成并一起提交。
-- `recipes.json` 每个原料项带 `canonical`（需求组列表：组内是备选标准名、任一满足即可，组间全部需要；工具和忽略项为空列表，匹配规则见复核报告）。它由 `tools/whilefresh_tools/vocabulary/ingredient-map.json` 决定；菜谱原料写法不在映射里时，`recipes build` 会报错并列出缺失项。改映射或词表后依次运行 `recipes build`、`vocabulary build`、`vocabulary validate`，并一起提交生成物。
-- 词表源数据是 `vocabulary-source.json`（人工维护，每项一行）和 `ingredient-map.json`，都在 `tools/whilefresh_tools/vocabulary/`。AI 只用于 `draft` 生成初稿：响应缓存在 `~/.cache/whilefresh/vocabulary/`（可用 `WHILEFRESH_CACHE` 改位置），草稿输出到缓存目录下的 `draft/`，由人工审阅后手工复制到源数据位置；之后的重建、校验和测试都不联网、不调用 AI。密钥只在进程内读取，不会被打印或缓存。
+- 词表源数据是 `tools/whilefresh_tools/vocabulary/vocabulary-source.json`（人工维护，每项一行）。名称归一由 App 内的 `IngredientCatalog::resolveFinest` / `VocabularyResolver` 完成，不再有离线的原料映射表。AI 只用于 `draft` 生成初稿：响应缓存在 `~/.cache/whilefresh/vocabulary/`（可用 `WHILEFRESH_CACHE` 改位置），草稿输出到缓存目录下的 `draft/`，由人工审阅后手工复制到源数据位置；之后的重建、校验和测试都不联网、不调用 AI。密钥只在进程内读取，不会被打印或缓存。
 - 词表字段约定：`name`（标准名）、`category`（品类代码）、`aliases[]`（全表唯一）、`parent` 由 App 的 `core::IngredientCatalog` 读取（识别和匹配共用这一份）；`parent` 表示"持有子项即可满足父项"；`pantry_default` 默认算家里常备；`bulk_default` 默认存量多。复核记录见 [词表复核报告](mvp/notes/vocabulary-review.md)。
 - 保质期参考表的数据源是 USDA FoodKeeper v128 快照（`tools/sources/foodkeeper/`，附 `SOURCE.md`，CC0）。映射源数据是 `tools/whilefresh_tools/shelf_life/foodkeeper-map.json`（标准名 → FoodKeeper 条目 ID，每项一行，含依据说明，人工维护）；`draft` 的草稿和响应缓存在 `~/.cache/whilefresh/shelf-life/`，由人工审阅后复制到源数据位置。取值规则与换算（周 × 7、月 × 30、年 × 365）见 `SOURCE.md`。没有对应条目的食材不列入参考表，由上层回退到 AI 判断。复核记录见 [保质期参考表复核报告](mvp/notes/shelf-life-review.md)。
 - 下载失败时可设置 `WHILEFRESH_CACHE` 指定缓存目录，或把同版本源码压缩包手动放到 `<缓存目录>/snapshot.tar.gz`。
@@ -216,7 +208,7 @@ scripts/build-desktop.sh  # 恢复无密钥构建
 - `RecordedRecipeSource`：`addFile` / `addDirectory` 读入录制的 YAML，按其回显的 query（搜索按关键词加页码，详情按 id）应答，未录制的请求返回 `NotFound`。
 - `ProcessRecipeSource`：调用子模块的 Python CLI 并解析输出，由 CMake 选项 `WHILEFRESH_XIACHUFANG_ADAPTER`（默认 OFF，Android 忽略）打开，现在只作对照。
 - 凭据：Lexmount 的 api key / project id 每次请求开始时由调用方的回调给出，只在请求期间持有，不落盘、不写日志；测试构建内置的值见“密钥注入”。`AppModel` 的回调读 `credentials()->key(ai::Service::Lexmount)` 和 `key(ai::Service::LexmountProjectId)`，即用户在“服务”页填的值，没有则用构建内置的值（演示模式只用内置值）；两者都没有时界面显示“未配置 Lexmount”。应用里没有环境变量回退；只有开发工具 `recipe-cli` 读环境变量 `WHILEFRESH_LEXMOUNT_API_KEY` / `WHILEFRESH_LEXMOUNT_PROJECT_ID`。
-- 界面：`ui/WebRecipeService`（`App.web`，另有 `App.searchRecipes / requestRecipeDetail / cancelRecipeRequest`）保存搜索结果、详情（仅内存缓存，不持久化）和状态，错误映射成短标签（未配置 Lexmount、下厨房拦截、网络错误、超时……）。菜谱页输入菜名后点“搜下厨房”，结果点开进 `WebRecipeDetailPage`（显示来源并可打开原菜谱）。这些页面会在 T18b / T19 替换。
+- 界面：`ui/WebRecipeService`（`App.web`，另有 `App.searchRecipes / requestRecipeDetail / cancelRecipeRequest`）保存搜索结果、详情（仅内存缓存，不持久化）和状态，错误映射成短标签（未配置 Lexmount、下厨房拦截、网络错误、超时……）。菜谱页输入菜名后点“搜下厨房”，结果点开进 `WebRecipeDetailPage`（显示来源并可打开原菜谱）。这些页面会在 T19 替换；清冰箱页的“搜下厨房”用所选食材名搜索，T18 / T19 会重做。
 
 ```sh
 ctest --test-dir build/desktop --output-on-failure -R 'xiachufang|recorded-recipe|websocket|lexmount|web-recipe'
@@ -278,7 +270,7 @@ $adb logcat -d | grep 'WhileFresh import:'
 ### 核心、数据与应用服务
 
 - `app/src/core/` 只依赖 QtCore：分开的购买/入库/生产/包装到期日期、拍摄日基准的日期解析、带来源的保质期、注入时钟的新鲜度、常备/存量建议、需求组匹配与待买文本。
-- `app/src/data/`：SQLite `Database` + `Store`（`PRAGMA user_version` 版本迁移），以及加载一次的 `BuiltinData`。正式词表、菜谱、FoodKeeper 表嵌入 `:/whilefresh/data`；找不到参考表按无参考值处理。
+- `app/src/data/`：SQLite `Database` + `Store`（`PRAGMA user_version` 版本迁移），以及加载一次的 `BuiltinData`。正式词表、FoodKeeper 表嵌入 `:/whilefresh/data`；找不到参考表按无参考值处理。
 - `app/src/ui/{import,kitchen}-service.*` 是普通 C++ 应用服务，不依赖 QML；可替换识别器，用户确认草稿才入库，常备建议/本地记忆需要单独确认。接线、日期语义、迁移和文件删除细节见 [核心领域实现说明](mvp/notes/core-domain.md)。
 - 第二轮（T15）：迁移 v5（食材种类 / 用量 / 忽略到期、导入软删除与跳过记录、导入续传表）；`core/quantity.*` 用量解析、`core/fridge-groups.*` 种类判定与冰箱分组排序、`core/resumable-job.*` 续传状态机。删除导入、清空历史、跳过重复、调料入库与续传的设计见 [食材模型与导入续传说明](mvp/notes/item-model.md)。
 - **FoodKeeper 不等于从生产日起的寿命**：参考表只在购买日期已知且用户确认适用条件后计算到期日；否则保留参考天数、显示待确认，不改用较长的 AI 值掩盖未知状态。`basis` 只保留作展示，不据其字符串推断逻辑。
@@ -289,11 +281,11 @@ $adb logcat -d | grep 'WhileFresh import:'
 scripts/build-desktop.sh
 ctest --test-dir build/desktop --output-on-failure
 # 只跑核心、数据与应用服务相关的测试套件（其余套件仍应在提交前全部运行）
-ctest --test-dir build/desktop --output-on-failure -R 'date-text|shelf-life|freshness|recipe-matcher|household-rules|quantity|fridge-groups|resumable-job|database-test|store-test|builtin-data|application-service'
+ctest --test-dir build/desktop --output-on-failure -R 'date-text|shelf-life|freshness|household-rules|quantity|fridge-groups|resumable-job|database-test|store-test|builtin-data|application-service'
 scripts/build-android.sh x86_64 --no-key
 ```
 
-`builtin-data-test` 用实际 372 道菜、581 项词表、290 项参考数据验证匹配和保质期；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入与跳过记录、软删除与清空历史、调料/常备食材入库、扔掉与忽略、事务回滚、建议确认及清冰箱/待买；导入续传用 `DeepSeekRecognizer` + `ai::RecordedChatClient` 验证第 2 批失败后换新服务只重发第 2 批及以后。测试数据库与图片只写临时目录。
+`builtin-data-test` 用实际 581 项词表、290 项参考数据验证保质期和常备默认值；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入与跳过记录、软删除与清空历史、调料/常备食材入库、扔掉与忽略、事务回滚、建议确认及待买；导入续传用 `DeepSeekRecognizer` + `ai::RecordedChatClient` 验证第 2 批失败后换新服务只重发第 2 批及以后。测试数据库与图片只写临时目录。
 
 ### 界面资源与模拟预览
 

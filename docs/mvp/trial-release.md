@@ -45,5 +45,5 @@
 
 - Qt 6.8.2：LGPL v3，动态链接，App"我的 → 来源与许可"中注明，源码见 qt.io。
 - OpenSSL 3（KDAB android_openssl 预编译）：Apache 2.0。
-- 菜谱 HowToCook（Unlicense）、保质期 USDA FoodKeeper（CC0）、图标 Tabler（MIT）、标题字 Noto Serif SC（SIL OFL 1.1）。
+- 保质期 USDA FoodKeeper（CC0）、图标 Tabler（MIT）、标题字 Noto Serif SC（SIL OFL 1.1）。
 - 以上为整理记录，不构成法律意见。

@@ -197,7 +197,6 @@ Item {
                     y: Theme.gap
                     width: parent.width - Theme.gap * 2
                     spacing: Theme.gapSmall
-                    Text { width: parent.width; wrapMode: Text.Wrap; text: "菜谱：HowToCook · Unlicense（原文及来源链接见菜谱详情）"; font.pixelSize: Theme.textSubtitle; color: Theme.ink }
                     Text { width: parent.width; wrapMode: Text.Wrap; text: "保质期参考：USDA FoodKeeper。仅作估计，请查看食材后决定。"; font.pixelSize: Theme.textSubtitle; color: Theme.ink }
                     Text { width: parent.width; wrapMode: Text.Wrap; text: "图标：Tabler Icons · MIT；标题字：Noto Serif SC Black · SIL OFL 1.1。许可文本随 App 附带。"; font.pixelSize: Theme.textSubtitle; color: Theme.ink }
                     Text { width: parent.width; wrapMode: Text.Wrap; text: "基于 Qt 6.8.2（LGPL v3，动态链接，源码见 qt.io）与 OpenSSL 3（Apache 2.0）构建。"; font.pixelSize: Theme.textSubtitle; color: Theme.ink }

@@ -130,6 +130,27 @@ private slots:
         QCOMPARE(ui::WebRecipeService::errorLabel(RecipeErrorKind::BadResponse), QStringLiteral("菜谱源不可用"));
     }
 
+    void resetDropsResultsDetailsAndCache()
+    {
+        auto owned = std::make_unique<ScriptedSource>();
+        ScriptedSource *source = owned.get();
+        ui::WebRecipeService service(std::move(owned));
+
+        service.search(QStringLiteral("虾仁"));
+        source->reply(1, results(QStringLiteral("清炒虾仁")));
+        service.requestDetail(QStringLiteral("9"));
+        source->reply(2, recipe(QStringLiteral("9")));
+        QCOMPARE(service.results().size(), 1);
+        QCOMPARE(service.detailState(), QStringLiteral("done"));
+
+        service.reset();
+        QVERIFY(service.results().isEmpty());
+        QCOMPARE(service.searchState(), QStringLiteral("idle"));
+        QCOMPARE(service.detailState(), QStringLiteral("idle"));
+        service.requestDetail(QStringLiteral("9")); // the cache is gone: asks the source again
+        QCOMPARE(source->details.size(), 2);
+    }
+
     void cancelStopsBothRequests()
     {
         auto owned = std::make_unique<ScriptedSource>();

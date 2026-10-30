@@ -4,7 +4,6 @@ import WhileFresh
 
 Item {
     id: page
-    signal recipeRequested(var recipe)
     signal webRecipeRequested(string id)
     property string query: ""
     PageHeader {
@@ -12,7 +11,7 @@ Item {
         x: Theme.gap
         width: parent.width - Theme.gap * 2
         heading: "菜谱"
-        subtitle: "HowToCook · 按匹配度浏览"
+        subtitle: "下厨房"
     }
     Column {
         anchors.top: header.bottom
@@ -94,21 +93,12 @@ Item {
                     }
                 }
                 EmptyState {
-                    visible: App.recipes.filter(function(r) { return r.name.indexOf(page.query) >= 0 }).length === 0
+                    visible: App.web.searchState === "done" && App.web.results.length === 0
                     width: parent.width
                     height: visible ? implicitHeight + Theme.gapLarge * 2 : 0
                     iconName: "book-2"
                     heading: "没有找到菜谱"
-                    detail: "试试别的菜名，或改选食材"
-                }
-                Repeater {
-                    model: App.recipes.filter(function(r) { return r.name.indexOf(page.query) >= 0 })
-                    delegate: RecipeCard {
-                        required property var modelData
-                        width: list.width
-                        recipe: modelData
-                        onOpened: function(recipe) { page.recipeRequested(recipe) }
-                    }
+                    detail: ""
                 }
             }
         }

@@ -31,7 +31,7 @@ Item {
                 height: visible ? implicitHeight + Theme.gapLarge * 3 : 0
                 iconName: "list-check"
                 heading: "暂时没有待买的食材"
-                detail: "选择菜谱后，可把缺料加入这里"
+                detail: ""
             }
             Repeater {
                 model: App.shopping.length ? page.categories : []

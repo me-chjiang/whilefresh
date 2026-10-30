@@ -288,54 +288,6 @@ bool KitchenService::decideSuggestion(qint64 id, bool accept)
     return finish(true);
 }
 
-QList<StockEntry> KitchenService::stock(const QSet<qint64> &selected) const
-{
-    QList<StockEntry> result;
-    for (const auto &item : fridge())
-        result.append({ item.canonicalName, item.id, false, selected.contains(item.id),
-                        freshness(item).freshness == Freshness::NearExpiry });
-    for (const auto &name : pantryRules().namesAtHome())
-        result.append({ name, 0, true, false, false });
-    return result;
-}
-
-QList<RecipeMatch> KitchenService::recipes(const QString &search) const
-{
-    auto matches = RecipeMatcher(m_builtin->catalog.get(), stock()).matchAll(m_builtin->recipes->recipes());
-    if (!search.trimmed().isEmpty())
-        matches.removeIf([&](const RecipeMatch &m) { return !m.recipe->name.contains(search.trimmed(), Qt::CaseInsensitive); });
-    sortForBrowsing(matches);
-    return matches;
-}
-
-QList<RecipeMatch> KitchenService::clearFridge(const QSet<qint64> &selected) const
-{
-    return rankForClearFridge(RecipeMatcher(m_builtin->catalog.get(), stock(selected)).matchAll(m_builtin->recipes->recipes()));
-}
-
-std::optional<RecipeMatch> KitchenService::recipe(const QString &id) const
-{
-    const auto *recipe = m_builtin->recipes->find(id);
-    if (!recipe)
-        return std::nullopt;
-    return RecipeMatcher(m_builtin->catalog.get(), stock()).match(*recipe);
-}
-
-const RecipeSource &KitchenService::recipeSource() const { return m_builtin->recipes->source(); }
-
-int KitchenService::addMissingToShopping(const QString &recipeId)
-{
-    const auto match = recipe(recipeId);
-    if (!match)
-        return 0;
-    int count = 0;
-    for (auto entry : shoppingEntriesForMissing(*match, m_builtin->catalog.get()))
-        count += m_store.addShoppingEntry(entry) > 0;
-    if (count)
-        emit changed();
-    return count;
-}
-
 qint64 KitchenService::addShopping(const QStringList &names)
 {
     for (const auto &name : names) {

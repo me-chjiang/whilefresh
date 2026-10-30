@@ -5,7 +5,7 @@ import WhileFresh
 
 Item {
     id: page
-    signal recipeRequested(var recipe)
+    signal searchRequested(string keyword)
     PageHeader {
         id: header
         x: Theme.gap
@@ -108,10 +108,12 @@ Item {
                     }
                 }
             }
-            RowLayout {
-                width: parent.width
-                Text { text: "可以做的菜"; font.family: Theme.serif; font.pixelSize: Theme.textPanel; font.weight: Theme.weightBlack; color: Theme.ink; Layout.fillWidth: true }
-                Text { text: "用到最多 · 缺料最少"; font.pixelSize: Theme.textMeta; color: Theme.muted }
+            InkButton {
+                width: content.width
+                text: "搜下厨房"
+                iconName: "notes"
+                enabled: App.selectedIds.length > 0
+                onClicked: page.searchRequested(App.items.filter(function(i) { return App.selectedIds.indexOf(i.id) >= 0 }).map(function(i) { return i.name }).join(" "))
             }
             EmptyState {
                 visible: App.selectedIds.length === 0
@@ -119,16 +121,7 @@ Item {
                 height: visible ? implicitHeight + Theme.gapLarge : 0
                 iconName: "chef-hat"
                 heading: "选几样食材试试"
-                detail: "可从上面的便签里增减食材"
-            }
-            Repeater {
-                model: App.clearRecipes
-                delegate: RecipeCard {
-                    required property var modelData
-                    width: content.width
-                    recipe: modelData
-                    onOpened: function(recipe) { page.recipeRequested(recipe) }
-                }
+                detail: ""
             }
         }
     }
