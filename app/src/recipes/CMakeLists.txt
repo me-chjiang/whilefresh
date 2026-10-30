@@ -1,16 +1,25 @@
 add_library(whilefresh-recipes STATIC
+    cdp-connection.cpp
+    cdp-connection.h
+    contract-document.cpp
+    contract-document.h
+    lexmount-recipe-source.cpp
+    lexmount-recipe-source.h
     recipe-source.h
     recipe-types.cpp
     recipe-types.h
     recipes-log.h
     recorded-recipe-source.cpp
     recorded-recipe-source.h
+    websocket-codec.cpp
+    websocket-codec.h
     xiachufang-yaml-parser.cpp
     xiachufang-yaml-parser.h
 )
 
-# Checked in app/CMakeLists.txt: nothing beyond core, Qt::Core and yaml-cpp.
-target_link_libraries(whilefresh-recipes PUBLIC whilefresh-core)
+# Checked in app/CMakeLists.txt: nothing beyond core, Qt::Core, Qt::Network and yaml-cpp.
+# (Qt6::WebSockets is not installed in the Android kits, hence websocket-codec.)
+target_link_libraries(whilefresh-recipes PUBLIC whilefresh-core Qt6::Network)
 
 # yaml-cpp parses the source's YAML contract (the external source pins the same commit). It is
 # built from the checkout scripts/fetch-deps.sh creates; configure never touches the network.

@@ -46,8 +46,8 @@ endforeach()
 # recipes parses the external recipe source's YAML; like ai it stays free of GUI and storage.
 get_target_property(_recipes_links whilefresh-recipes LINK_LIBRARIES)
 foreach(_lib IN LISTS _recipes_links)
-    if(NOT _lib MATCHES "^(whilefresh-core|Qt6?::Core|yaml-cpp::yaml-cpp)$")
-        message(FATAL_ERROR "whilefresh-recipes may only link whilefresh-core, Qt::Core and yaml-cpp, found: ${_lib}")
+    if(NOT _lib MATCHES "^(whilefresh-core|Qt6?::Core|Qt6?::Network|yaml-cpp::yaml-cpp)$")
+        message(FATAL_ERROR "whilefresh-recipes may only link whilefresh-core, Qt::Core, Qt::Network and yaml-cpp, found: ${_lib}")
     endif()
 endforeach()
 

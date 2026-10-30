@@ -13,13 +13,25 @@ enum class RecipeErrorKind {
     NotConfigured, // the source cannot even be tried (adapter not built, no program)
     InvalidQuery,  // the source rejected our parameters
     NotFound,
-    Unavailable,   // blocked, rate limited, unreachable or upstream markup changed
+    Unavailable,   // rate limited, upstream failure or upstream markup changed
+    Blocked,       // the site served a verification or other non-recipe page
+    AuthFailed,    // the Lexmount credentials were rejected
+    NetworkError,
     Timeout,
     BadResponse,   // not a YAML document of the contract, or an unsupported schema major
     Internal,
 };
 
 QString enumKey(RecipeErrorKind kind);
+
+// Lexmount cloud-browser credentials; both empty means not configured. Handed over per request by
+// a callback and never stored or logged.
+struct LexmountCredentials {
+    QString apiKey;
+    QString projectId;
+
+    bool isComplete() const { return !apiKey.isEmpty() && !projectId.isEmpty(); }
+};
 
 struct RecipeError {
     RecipeErrorKind kind = RecipeErrorKind::BadResponse;

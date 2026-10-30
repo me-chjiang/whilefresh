@@ -13,6 +13,9 @@ QString enumKey(RecipeErrorKind kind)
     case RecipeErrorKind::InvalidQuery: return QStringLiteral("invalid_query");
     case RecipeErrorKind::NotFound: return QStringLiteral("not_found");
     case RecipeErrorKind::Unavailable: return QStringLiteral("unavailable");
+    case RecipeErrorKind::Blocked: return QStringLiteral("blocked");
+    case RecipeErrorKind::AuthFailed: return QStringLiteral("auth_failed");
+    case RecipeErrorKind::NetworkError: return QStringLiteral("network_error");
     case RecipeErrorKind::Timeout: return QStringLiteral("timeout");
     case RecipeErrorKind::BadResponse: return QStringLiteral("bad_response");
     case RecipeErrorKind::Internal: return QStringLiteral("internal");

@@ -11,12 +11,6 @@ class QProcess;
 
 namespace whilefresh::recipes {
 
-// Lexmount credentials for the source's cloud-browser provider; both empty means direct access.
-struct LexmountCredentials {
-    QString apiKey;
-    QString projectId;
-};
-
 // Runs the external recipe-source CLI (recipe-sources-xiachufang-api, desktop only, built with
 // WHILEFRESH_XIACHUFANG_ADAPTER) and parses the YAML it prints. The credentials are asked for
 // when a request starts and are neither stored nor logged; the CLI takes them as arguments, so
