@@ -151,7 +151,7 @@ ctest --test-dir build/desktop --output-on-failure -R 'chat|system-prompt|deepse
 - 正式词表 `app/assets/data/vocabulary.json`（581 项，含 `parent` 上下位）由 `IngredientCatalog` 读取，识别请求、匹配和归类共用。识别提示词 v3 用 `hierarchyText()` 按品类分组列出词表，如"猪肉 > 五花肉、前腿肉、里脊"，要求取最细词条、`raw_name` 保留原文；约 3.9k 字符（v2 为 3.5k）。
 - `IngredientCatalog::resolveFinest(标题)`：精确名称 / 别名优先；否则按空格、标点和数字切词，取词内包含的名称或别名。单字名称只在词尾时算数（藕粉 ≠ 莲藕）；同时命中父项和子项时丢掉父项；词内取结束位置最靠后的（中文商品名中心词在后：五香牛肉干 → 牛肉干），再取较长的；跨词取最长的（速冻水饺 猪肉大葱 → 速冻水饺）。
 - `VocabularyResolver`（core）：用户确认过的映射 → 识别给出的标准名（标题里有它的子项，或它是上位词而标题里有同品类更细的词条时改用后者）→ `resolveFinest(原文)` → 未归类。未归类的名称（不含非食品）由 `ImportService` 收集后交 `IngredientClassifier` 一次归类；结果在核对页标"AI 归类"。用户确认入库时，保留的 AI 归类和用户改过的名称写入 `NameMappingStore`，下次同名直接命中。
-- `NameMappingStore`：core 中的接口，测试用 `MemoryNameMappingStore`；App 使用 `data::SqliteNameMappingStore`（`name_mappings` 表，由 T15 的迁移 v5 创建；表不存在时查不到、写入失败只记警告）。
+- `NameMappingStore`：core 中的接口，测试用 `MemoryNameMappingStore`；App 使用 `data::SqliteNameMappingStore`（迁移 v5 的 `name_mappings` 表；写入在入库事务之后，失败只记警告，清空数据时一并删除）。导入续传恢复出的草稿同样经过名称归类；放弃导入或跳过重复记录会取消进行中的归类请求。
 - 归类用例 `test-data/vocabulary/resolve-cases.json`（55 条，人工复核）由 `catalog-test` 逐条对正式词表运行；改词表或规则后必须全部通过，不能通过的要在用例里写明原因，不得悄悄放宽。
 
 ```sh

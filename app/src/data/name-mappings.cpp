@@ -17,7 +17,7 @@ QString SqliteNameMappingStore::mapped(const QString &rawName) const
     if (key.isEmpty())
         return {};
     QSqlQuery query(m_database.handle());
-    query.prepare(QStringLiteral("SELECT canonical FROM name_mappings WHERE raw_name = ?"));
+    query.prepare(QStringLiteral("SELECT canonical_name FROM name_mappings WHERE raw_name = ?"));
     query.addBindValue(key);
     if (!query.exec()) {
         qCWarning(lcNameMappings, "lookup failed: %s", qUtf8Printable(query.lastError().text()));
@@ -32,8 +32,8 @@ bool SqliteNameMappingStore::remember(const QString &rawName, const QString &can
     if (key.isEmpty() || canonical.isEmpty())
         return false;
     QSqlQuery query(m_database.handle());
-    query.prepare(QStringLiteral("INSERT INTO name_mappings (raw_name, canonical, confirmed_at) VALUES (?, ?, ?) "
-                                 "ON CONFLICT(raw_name) DO UPDATE SET canonical = excluded.canonical, "
+    query.prepare(QStringLiteral("INSERT INTO name_mappings (raw_name, canonical_name, confirmed_at) VALUES (?, ?, ?) "
+                                 "ON CONFLICT(raw_name) DO UPDATE SET canonical_name = excluded.canonical_name, "
                                  "confirmed_at = excluded.confirmed_at"));
     query.addBindValue(key);
     query.addBindValue(canonical);

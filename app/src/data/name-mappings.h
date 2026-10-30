@@ -7,11 +7,10 @@ namespace whilefresh::data {
 
 class Database;
 
-// NameMappingStore on the name_mappings table of migration v5 (T15):
-//   name_mappings(raw_name TEXT PRIMARY KEY, canonical TEXT NOT NULL, confirmed_at TEXT)
-// raw_name holds NameMappingStore::key(). Until that migration exists in the database, lookups
-// find nothing and remember() fails with a logged warning; callers treat both as "not
-// remembered".
+// NameMappingStore on the name_mappings table of migration v5:
+//   name_mappings(raw_name TEXT PRIMARY KEY, canonical_name TEXT NOT NULL, confirmed_at TEXT NOT NULL)
+// raw_name holds NameMappingStore::key(). Failures are logged; callers treat them as "not
+// remembered". Store::deleteAllData() clears the table.
 class SqliteNameMappingStore final : public core::NameMappingStore
 {
 public:
