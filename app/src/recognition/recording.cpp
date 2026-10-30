@@ -80,6 +80,8 @@ std::optional<Recording> readRecording(const QString &path, QString *error)
         recording.batches.append({ span.toObject().value(QStringLiteral("firstImage")).toInt(-1),
                                    span.toObject().value(QStringLiteral("lastImage")).toInt(-1) });
     }
+    for (const QJsonValue &digest : doc.object().value(QStringLiteral("requestDigests")).toArray())
+        recording.requestDigests.append(digest.toString().toLatin1());
     for (const QJsonValue &response : doc.object().value(QStringLiteral("responses")).toArray())
         recording.responses.append(QJsonDocument(response.toObject()).toJson(QJsonDocument::Compact));
     if (recording.responses.isEmpty()) {
@@ -113,6 +115,12 @@ bool writeRecording(const QString &path, const Recording &recording, QString *er
                                       { QStringLiteral("lastImage"), span.lastImage } });
         }
         root.insert(QStringLiteral("batches"), spans);
+    }
+    if (recording.requestDigests.size() == recording.responses.size() && !recording.requestDigests.isEmpty()) {
+        QJsonArray digests;
+        for (const QByteArray &digest : recording.requestDigests)
+            digests.append(QString::fromLatin1(digest));
+        root.insert(QStringLiteral("requestDigests"), digests);
     }
 
     QFile file(path);

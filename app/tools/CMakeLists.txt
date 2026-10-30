@@ -1,6 +1,6 @@
 # Desktop-only developer tools; not registered with ctest.
 add_executable(recognize-cli recognize-cli.cpp)
-target_link_libraries(recognize-cli PRIVATE whilefresh-recognition)
+target_link_libraries(recognize-cli PRIVATE whilefresh-recognition whilefresh-ai)
 
 # recognize-cli refuses to record into tracked parts of the repository. In a git worktree the
 # main checkout is a second root.

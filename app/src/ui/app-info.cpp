@@ -2,7 +2,6 @@
 
 #include "core/app-version.h"
 #include "platform/platform-info.h"
-#include "recognition/api-key.h"
 
 namespace whilefresh::ui {
 
@@ -19,11 +18,6 @@ QString AppInfo::version() const
 QString AppInfo::platform() const
 {
     return platform::platformName();
-}
-
-bool AppInfo::recognitionConfigured() const
-{
-    return recognition::isDeepSeekApiKeyConfigured();
 }
 
 }

@@ -63,7 +63,8 @@ private slots:
         const auto vocabulary = syntheticVocabulary();
         const QJsonObject body = buildChatRequest(
             InputKind::Screenshot, *vocabulary,
-            { slice(0, 0, 2, QDate(2026, 10, 18)), slice(0, 1, 2, QDate(2026, 10, 18)), slice(1, 0, 1) }, {});
+            { slice(0, 0, 2, QDate(2026, 10, 18)), slice(0, 1, 2, QDate(2026, 10, 18)), slice(1, 0, 1) }, {})
+                                    .toJson();
 
         QCOMPARE(body.value("model").toString(), QStringLiteral("deepseek-flash"));
         QCOMPARE(body.value("response_format").toObject().value("type").toString(), QStringLiteral("json_object"));
@@ -95,7 +96,7 @@ private slots:
 
     void requestCarriesTokenBudgetAndTemperature()
     {
-        const QJsonObject body = buildChatRequest(InputKind::OrderText, *syntheticVocabulary(), {}, QStringLiteral("x"));
+        const QJsonObject body = buildChatRequest(InputKind::OrderText, *syntheticVocabulary(), {}, QStringLiteral("x")).toJson();
         QCOMPARE(body.value("max_tokens").toInt(), 131072);
         QVERIFY(body.value("max_tokens").toInt() <= 393216); // documented maximum
         QCOMPARE(body.value("temperature").toInt(), 0);
@@ -107,7 +108,7 @@ private slots:
         RequestOptions options;
         options.thinking = false;
         options.maxTokens = 4000;
-        const QJsonObject body = buildChatRequest(InputKind::OrderText, *syntheticVocabulary(), {}, QStringLiteral("x"), options);
+        const QJsonObject body = buildChatRequest(InputKind::OrderText, *syntheticVocabulary(), {}, QStringLiteral("x"), options).toJson();
         QCOMPARE(body.value("thinking").toObject().value("type").toString(), QStringLiteral("disabled"));
         QCOMPARE(body.value("max_tokens").toInt(), 4000);
     }
@@ -115,7 +116,8 @@ private slots:
     void orderTextRequestDelimitsTheText()
     {
         const QJsonObject body = buildChatRequest(InputKind::OrderText, *syntheticVocabulary(), {},
-                                                  QStringLiteral("猪五花肉 500g x1"));
+                                                  QStringLiteral("猪五花肉 500g x1"))
+                                    .toJson();
         const QJsonArray content = body.value("messages").toArray().at(0).toObject().value("content").toArray();
         QCOMPARE(content.size(), 2);
         const QString text = content.at(1).toObject().value("text").toString();
@@ -126,10 +128,10 @@ private slots:
 
     void bodyContainsNoSecrets()
     {
-        // The key is added as an HTTP header by the recognizer, never to the body.
-        const QByteArray json = QJsonDocument(buildChatRequest(InputKind::Receipt, *syntheticVocabulary(),
-                                                               { slice(0, 0, 1) }, {}))
-                                    .toJson(QJsonDocument::Compact);
+        // The key is added as an HTTP header by the chat client, never to the body.
+        const QByteArray json = whilefresh::ai::encodeChatRequest(buildChatRequest(InputKind::Receipt, *syntheticVocabulary(),
+                                                                       { slice(0, 0, 1) }, {}))
+                                    .body;
         QVERIFY(!json.contains("Bearer"));
         QVERIFY(!json.contains("api_key"));
     }

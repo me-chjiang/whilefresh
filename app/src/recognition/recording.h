@@ -12,10 +12,13 @@ namespace whilefresh::recognition {
 //     "request": { "inputKind": "screenshot", "imageCount": 3, "textLength": 0,
 //                  "promptVersion": "v2" },
 //     "batches": [ { "firstImage": 0, "lastImage": 3 }, ... ],      // optional, one per response
+//     "requestDigests": [ "<hex sha-256 of the request body>", ... ], // optional, one per response
 //     "responses": [ { <raw /chat/completions body> }, ... ] }
 //
 // "batches" tells which original images each response covered; without it replay cannot tell
-// overlap duplicates from real ones and drops nothing.
+// overlap duplicates from real ones and drops nothing. "requestDigests" lets
+// ai::RecordedChatClient check that a replay sends the recorded requests (same images, prompt
+// and vocabulary). The same files are read by ai::readChatRecording.
 //
 // Files are written readable by the owner only: they hold what the user bought.
 //
@@ -28,6 +31,7 @@ struct Recording {
     QString promptVersion;
     QList<QByteArray> responses; // raw bodies, compact JSON
     QList<BatchSpan> batches;    // parallel to responses, or empty
+    QList<QByteArray> requestDigests; // parallel to responses, or empty
 };
 
 // Whether recording to `path` is acceptable: anything outside the repository roots, or inside

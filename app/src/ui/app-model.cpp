@@ -2,7 +2,6 @@
 
 #include "core/date-text.h"
 #include "platform/import-files.h"
-#include "recognition/api-key.h"
 #include "recognition/deepseek-recognizer.h"
 #include "recognition/demo-recognizer.h"
 
@@ -106,7 +105,16 @@ AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const d
 
 AppModel::~AppModel() = default;
 
-bool AppModel::recognitionConfigured() const { return rec::isDeepSeekApiKeyConfigured(); }
+bool AppModel::recognitionConfigured() const { return m_chat->isConfigured(); }
+
+void AppModel::setCredentialProvider(std::shared_ptr<ai::CredentialProvider> credentials)
+{
+    const bool wasConfigured = recognitionConfigured();
+    m_credentials = std::move(credentials);
+    m_chat->setCredentials(m_credentials);
+    if (recognitionConfigured() != wasConfigured)
+        emit recognitionConfiguredChanged();
+}
 
 QString AppModel::demoPath() const
 {
@@ -130,7 +138,7 @@ std::unique_ptr<AppModel::Session> AppModel::openSession(const QString &dbPath, 
     if (demo)
         session->recognizer = std::make_unique<rec::DemoRecognizer>();
     else
-        session->recognizer = std::make_unique<rec::DeepSeekRecognizer>();
+        session->recognizer = std::make_unique<rec::DeepSeekRecognizer>(m_chat.get());
     session->import = std::make_unique<ImportService>(*session->store, m_builtin, m_clock, *session->recognizer, demo);
 
     Session *raw = session.get();

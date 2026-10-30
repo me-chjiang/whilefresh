@@ -11,6 +11,7 @@ target_link_libraries(app-version-test PRIVATE whilefresh-core)
 target_compile_definitions(app-version-test PRIVATE WHILEFRESH_EXPECTED_VERSION="${PROJECT_VERSION}")
 
 add_subdirectory(core)
+add_subdirectory(ai)
 add_subdirectory(data)
 add_subdirectory(recognition)
 

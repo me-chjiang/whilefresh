@@ -3,13 +3,18 @@
 //   recognize-cli --vocab <vocabulary.json> [--kind screenshot|receipt] [--date YYYY-MM-DD]
 //                 [--no-thinking] [--record <file>] <image>...
 //   recognize-cli --vocab <vocabulary.json> [--record <file>] --text <order-text-file>
+//   recognize-cli --vocab <vocabulary.json> --replay <recording> (same input as when recorded)
 //
 // Calls the real DeepSeek API (billed) with the key compiled in by
 // `scripts/build-desktop.sh --with-key`, prints a summary of the parsed result, and can save a
 // recording. Recordings of real material belong in private/recordings/, never in the repository;
-// --record refuses any other path inside the repository.
+// --record refuses any other path inside the repository. --replay answers from a recording
+// through the same request path instead, offline and without a key; requests that differ from
+// the recorded ones fail when the recording holds their digests.
 
-#include "recognition/api-key.h"
+#include "ai/api-keys.h"
+#include "ai/deepseek-chat-client.h"
+#include "ai/recorded-chat-client.h"
 #include "recognition/deepseek-recognizer.h"
 #include "recognition/recording.h"
 #include "recognition/request-builder.h"
@@ -93,6 +98,7 @@ int main(int argc, char *argv[])
     parser.addOption({ QStringLiteral("date"), QStringLiteral("Capture date of the images, YYYY-MM-DD."), QStringLiteral("date") });
     parser.addOption({ QStringLiteral("no-thinking"), QStringLiteral("Send thinking disabled (default: thinking on, as validated).") });
     parser.addOption({ QStringLiteral("record"), QStringLiteral("Save the raw responses as a recording."), QStringLiteral("file") });
+    parser.addOption({ QStringLiteral("replay"), QStringLiteral("Answer from a recording instead of the network."), QStringLiteral("file") });
     parser.process(app);
 
     if (!parser.isSet(QStringLiteral("vocab"))) {
@@ -149,12 +155,32 @@ int main(int argc, char *argv[])
         return 2;
     }
 
-    if (!isDeepSeekApiKeyConfigured()) {
-        err() << "error: no API key compiled in; build with scripts/build-desktop.sh --with-key\n";
+    const bool replay = parser.isSet(QStringLiteral("replay"));
+    if (replay && parser.isSet(QStringLiteral("record"))) {
+        err() << "error: --record and --replay cannot be combined\n";
         return 2;
     }
 
-    DeepSeekRecognizer recognizer;
+    std::unique_ptr<whilefresh::ai::ChatClient> transport;
+    if (replay) {
+        QString loadError;
+        auto recorded = whilefresh::ai::readChatRecording(parser.value(QStringLiteral("replay")), &loadError);
+        if (!recorded) {
+            err() << "error: " << loadError << "\n";
+            return 2;
+        }
+        transport = std::make_unique<whilefresh::ai::RecordedChatClient>(*recorded);
+    } else {
+        transport = std::make_unique<whilefresh::ai::DeepSeekChatClient>(
+            std::make_shared<whilefresh::ai::BuiltinCredentialProvider>());
+        if (!transport->isConfigured()) {
+            err() << "error: no API key compiled in; build with scripts/build-desktop.sh --with-key\n";
+            return 2;
+        }
+    }
+    whilefresh::ai::RecordingChatClient recorder(transport.get());
+
+    DeepSeekRecognizer recognizer(&recorder);
     RequestOptions options;
     options.thinking = !parser.isSet(QStringLiteral("no-thinking"));
     recognizer.setRequestOptions(options);
@@ -166,7 +192,10 @@ int main(int argc, char *argv[])
                          if (parser.isSet(QStringLiteral("record"))) {
                              QString recordError;
                              const QString path = parser.value(QStringLiteral("record"));
-                             if (writeRecording(path, makeRecording(request, result), &recordError))
+                             Recording recording = makeRecording(request, result);
+                             for (const auto &exchange : recorder.recording().exchanges)
+                                 recording.requestDigests.append(exchange.requestDigest);
+                             if (writeRecording(path, recording, &recordError))
                                  out() << "recorded: " << path << "\n";
                              else {
                                  err() << "error: " << recordError << "\n";

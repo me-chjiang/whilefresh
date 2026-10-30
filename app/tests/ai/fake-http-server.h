@@ -22,6 +22,7 @@ public:
         QByteArray body;
         bool hang = false; // accept the request, never answer
         int delayMs = 0;   // answer only after this long
+        bool drop = false; // hang up without answering
     };
     struct Received {
         QByteArray requestLine;
@@ -80,6 +81,10 @@ private:
         const Reply reply = m_replies.isEmpty() ? Reply{ 500, "no reply scripted", false } : m_replies.takeFirst();
         if (reply.hang)
             return;
+        if (reply.drop) {
+            socket->disconnectFromHost();
+            return;
+        }
         if (reply.delayMs > 0) {
             QTimer::singleShot(reply.delayMs, socket, [this, socket, reply] { respond(socket, reply); });
             return;

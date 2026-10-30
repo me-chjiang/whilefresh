@@ -17,8 +17,10 @@ qt_standard_project_setup(REQUIRES 6.8)
 # case-insensitive macOS filesystems.
 set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
 
-# Layer libraries. Dependency direction: core <- data/recognition/platform <- ui <- app.
+# Layer libraries. Dependency direction: core <- ai <- recognition; core <- data/platform;
+# all of them <- ui <- app.
 add_subdirectory(src/core)
+add_subdirectory(src/ai)
 add_subdirectory(src/data)
 add_subdirectory(src/recognition)
 add_subdirectory(src/platform)
@@ -29,6 +31,14 @@ get_target_property(_core_links whilefresh-core LINK_LIBRARIES)
 foreach(_lib IN LISTS _core_links)
     if(NOT _lib MATCHES "^Qt6?::Core$")
         message(FATAL_ERROR "whilefresh-core may only link Qt::Core, found: ${_lib}")
+    endif()
+endforeach()
+
+# ai is shared by every AI service; it must not pull in GUI, storage or other layers.
+get_target_property(_ai_links whilefresh-ai LINK_LIBRARIES)
+foreach(_lib IN LISTS _ai_links)
+    if(NOT _lib MATCHES "^(whilefresh-core|Qt6?::Core|Qt6?::Network)$")
+        message(FATAL_ERROR "whilefresh-ai may only link whilefresh-core, Qt::Core and Qt::Network, found: ${_lib}")
     endif()
 endforeach()
 

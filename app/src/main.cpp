@@ -33,9 +33,6 @@ int main(int argc, char *argv[])
     QGuiApplication::setApplicationDisplayName(QStringLiteral("趁鲜"));
 
     whilefresh::ui::AppInfo appInfo;
-    qInfo("WhileFresh startup: version=%s platform=%s sqlite=%d recognition-configured=%d",
-          qUtf8Printable(appInfo.version()), qUtf8Printable(appInfo.platform()),
-          whilefresh::data::isSqliteDriverAvailable(), appInfo.recognitionConfigured());
 
 #ifdef WHILEFRESH_DEBUG_TOOLS
     constexpr bool debugTools = true;
@@ -53,6 +50,9 @@ int main(int argc, char *argv[])
     }
     // Opens the database, retries pending file cleanup and restores demo mode.
     whilefresh::ui::AppModel appModel(platformServices, builtin);
+    qInfo("WhileFresh startup: version=%s platform=%s sqlite=%d recognition-configured=%d",
+          qUtf8Printable(appInfo.version()), qUtf8Printable(appInfo.platform()),
+          whilefresh::data::isSqliteDriverAvailable(), appModel.recognitionConfigured());
     qmlRegisterSingletonInstance("WhileFresh", 1, 0, "App", &appModel);
 
     QQmlApplicationEngine engine;
