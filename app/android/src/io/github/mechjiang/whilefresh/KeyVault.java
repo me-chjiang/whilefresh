@@ -37,14 +37,26 @@ public final class KeyVault
     public static boolean put(Context context, String name, String value)
     {
         synchronized (lock) {
-            File target = file(context, name);
-            File temp = new File(target.getParentFile(), name + ".tmp");
+            File temp = null;
             try {
+                File target = file(context, name);
+                temp = new File(target.getParentFile(), name + ".tmp");
                 File dir = target.getParentFile();
                 if (!dir.isDirectory() && !dir.mkdirs())
                     return false;
                 Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
-                cipher.init(Cipher.ENCRYPT_MODE, key(true));
+                try {
+                    cipher.init(Cipher.ENCRYPT_MODE, key(true));
+                } catch (Exception keyFailure) {
+                    // An unusable key (e.g. invalidated by a lock-screen change) would block saving
+                    // forever; the values it protected are unreadable anyway, so start a new key.
+                    Log.w(TAG, "secret store: replacing an unusable key: " + keyFailure.getClass().getSimpleName());
+                    KeyStore store = KeyStore.getInstance(KEYSTORE);
+                    store.load(null);
+                    store.deleteEntry(KEY_ALIAS);
+                    cipher = Cipher.getInstance("AES/GCM/NoPadding");
+                    cipher.init(Cipher.ENCRYPT_MODE, key(true));
+                }
                 byte[] iv = cipher.getIV();
                 byte[] sealed = cipher.doFinal(value.getBytes(StandardCharsets.UTF_8));
                 try (FileOutputStream out = new FileOutputStream(temp)) {
@@ -58,7 +70,8 @@ public final class KeyVault
                 }
                 return true;
             } catch (Exception e) {
-                temp.delete();
+                if (temp != null)
+                    temp.delete();
                 Log.w(TAG, "secret store: could not save a value: " + e.getClass().getSimpleName());
                 return false;
             }
@@ -69,10 +82,10 @@ public final class KeyVault
     public static String get(Context context, String name)
     {
         synchronized (lock) {
-            File source = file(context, name);
-            if (!source.isFile())
-                return null;
             try {
+                File source = file(context, name);
+                if (!source.isFile())
+                    return null;
                 byte[] data = new byte[(int) source.length()];
                 try (FileInputStream in = new FileInputStream(source)) {
                     int read = 0;
@@ -101,8 +114,12 @@ public final class KeyVault
     public static boolean remove(Context context, String name)
     {
         synchronized (lock) {
-            File target = file(context, name);
-            return !target.exists() || target.delete();
+            try {
+                File target = file(context, name);
+                return !target.exists() || target.delete();
+            } catch (Exception e) {
+                return false;
+            }
         }
     }
 

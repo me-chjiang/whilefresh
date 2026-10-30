@@ -88,6 +88,7 @@ signals:
 private:
     static std::optional<ai::Service> serviceFor(const QString &field);
     QStringList preferenceTexts() const;
+    void cancelSummary();
     void summarized(quint64 id, const ai::PreferenceSummary &summary);
     void summaryFailed(quint64 id, const ai::ChatError &error);
 
@@ -98,6 +99,7 @@ private:
     core::NameMappingStore *m_names = nullptr;
     quint64 m_request = 0;
     QString m_summaryError;
+    QString m_summarySource; // joined preference texts of the request in flight
     bool m_available = false;
 };
 

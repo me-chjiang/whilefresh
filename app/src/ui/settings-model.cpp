@@ -33,14 +33,19 @@ SettingsModel::SettingsModel(ai::ChatClient *chat, std::shared_ptr<UserCredentia
     connect(&m_summarizer, &ai::PreferenceSummarizer::failed, this, &SettingsModel::summaryFailed);
 }
 
+void SettingsModel::cancelSummary()
+{
+    if (m_request == 0)
+        return;
+    m_summarizer.cancel(m_request);
+    m_request = 0;
+    m_summaryError.clear();
+    emit summarizingChanged();
+}
+
 void SettingsModel::attach(data::Store *store, core::NameMappingStore *names)
 {
-    if (m_request != 0) {
-        m_summarizer.cancel(m_request);
-        m_request = 0;
-        m_summaryError.clear();
-        emit summarizingChanged();
-    }
+    cancelSummary();
     m_store = store;
     m_names = names;
     emit preferencesChanged();
@@ -139,6 +144,7 @@ bool SettingsModel::summaryStale() const
 
 bool SettingsModel::addPreference(const QString &text)
 {
+    cancelSummary();
     if (!m_store || m_store->addPreference(text) == 0)
         return false;
     emit preferencesChanged();
@@ -148,6 +154,7 @@ bool SettingsModel::addPreference(const QString &text)
 
 bool SettingsModel::editPreference(qint64 id, const QString &text)
 {
+    cancelSummary();
     if (!m_store || !m_store->updatePreference(id, text))
         return false;
     emit preferencesChanged();
@@ -157,6 +164,7 @@ bool SettingsModel::editPreference(qint64 id, const QString &text)
 
 bool SettingsModel::deletePreference(qint64 id)
 {
+    cancelSummary();
     if (!m_store || !m_store->deletePreference(id))
         return false;
     // A summary of nothing would keep steering requests after the user removed every preference.
@@ -182,6 +190,7 @@ void SettingsModel::summarize()
         return;
     }
     m_summaryError.clear();
+    m_summarySource = texts.join(QLatin1Char('\n'));
     m_request = m_summarizer.summarize(texts);
     emit summarizingChanged();
 }
@@ -190,9 +199,9 @@ void SettingsModel::summarized(quint64 id, const ai::PreferenceSummary &summary)
 {
     if (id != m_request || !m_store)
         return;
-    const bool saved = m_store->setSetting(QString::fromLatin1(kPreferenceSummarySetting), summary.text)
-        && m_store->setSetting(QString::fromLatin1(kPreferenceSummarySourceSetting),
-                               preferenceTexts().join(QLatin1Char('\n')));
+    // The source is what was actually sent, not what the list holds now.
+    const bool saved = m_store->setSetting(QString::fromLatin1(kPreferenceSummarySourceSetting), m_summarySource)
+        && m_store->setSetting(QString::fromLatin1(kPreferenceSummarySetting), summary.text);
     m_request = 0;
     m_summaryError = saved ? QString() : QStringLiteral("保存失败");
     emit summarizingChanged();

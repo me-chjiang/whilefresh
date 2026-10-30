@@ -145,6 +145,36 @@ private slots:
         QVERIFY(!model.summaryStale());
     }
 
+    void deleteAllWhileSummarizingDropsTheResult()
+    {
+        ai::RecordedChatClient chat(summaryAnswer(QStringLiteral("不吃香菜。")));
+        SettingsModel model(&chat, credentials());
+        model.attach(m_store.get(), &m_names);
+        QVERIFY(model.addPreference(QStringLiteral("不吃香菜")));
+        model.summarize();
+        QVERIFY(model.summarizing());
+        for (const QVariant &preference : model.preferences())
+            QVERIFY(model.deletePreference(preference.toMap().value(QStringLiteral("id")).toLongLong()));
+        QVERIFY(!model.summarizing());
+        QTest::qWait(100);
+        QVERIFY(model.preferenceSummary().isEmpty());
+        QVERIFY(!model.summaryStale());
+    }
+
+    void editWhileSummarizingDropsTheResult()
+    {
+        ai::RecordedChatClient chat(summaryAnswer(QStringLiteral("不吃香菜。")));
+        SettingsModel model(&chat, credentials());
+        model.attach(m_store.get(), &m_names);
+        QVERIFY(model.addPreference(QStringLiteral("不吃香菜")));
+        model.summarize();
+        const qint64 id = model.preferences().first().toMap().value(QStringLiteral("id")).toLongLong();
+        QVERIFY(model.editPreference(id, QStringLiteral("不吃葱")));
+        QTest::qWait(100);
+        QVERIFY(model.preferenceSummary().isEmpty());
+        QVERIFY(!model.summarizing());
+    }
+
     void summarizeNeverCallsWithoutAKeyOrPreferences()
     {
         UnconfiguredChatClient chat;
