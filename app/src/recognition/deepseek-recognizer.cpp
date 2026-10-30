@@ -159,13 +159,20 @@ void DeepSeekRecognizer::preparationDone(quint64 id)
         return;
     }
     job.batches = outcome.batches;
+    if (job.request.firstBatch < 0 || job.request.firstBatch >= job.batches.size()) {
+        fail(id, makeError(ErrorKind::InvalidInput, QStringLiteral("first batch %1 of %2")
+                                                        .arg(job.request.firstBatch)
+                                                        .arg(job.batches.size())));
+        return;
+    }
+    job.batchIndex = job.request.firstBatch;
 
     qint64 bytes = 0;
     for (const PreparedBatch &batch : std::as_const(job.batches))
         bytes += batch.request.body.size();
-    qCInfo(lcRecognition, "request %llu prepared: kind=%s images=%d slices=%lld batches=%lld bytes=%lld prepare=%lldms",
+    qCInfo(lcRecognition, "request %llu prepared: kind=%s images=%d slices=%lld batches=%lld first=%d bytes=%lld prepare=%lldms",
            id, qUtf8Printable(enumKey(job.request.kind)), int(job.request.images.size()),
-           qint64(outcome.sliceCount), qint64(job.batches.size()), bytes, job.total.elapsed());
+           qint64(outcome.sliceCount), qint64(job.batches.size()), job.batchIndex, bytes, job.total.elapsed());
 
     sendBatch(id);
 }
@@ -205,7 +212,12 @@ void DeepSeekRecognizer::chatSucceeded(quint64 chatId, const ai::ChatResult &cha
 
     outcome.result->batchSpans = { job.batches.at(job.batchIndex).span };
     job.parts.append(*outcome.result);
-    if (++job.batchIndex < job.batches.size())
+    const int done = job.batchIndex++;
+    const bool more = job.batchIndex < job.batches.size();
+    emit batchSucceeded(id, done, int(batchTotal), *outcome.result);
+    if (!m_jobs.contains(id))
+        return; // cancelled by a receiver of batchSucceeded
+    if (more)
         sendBatch(id);
     else
         succeed(id);

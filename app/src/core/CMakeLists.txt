@@ -8,14 +8,20 @@ add_library(whilefresh-core STATIC
     date-text.h
     freshness.cpp
     freshness.h
+    fridge-groups.cpp
+    fridge-groups.h
     fridge-item.cpp
     fridge-item.h
     import-duplicates.cpp
     import-duplicates.h
     pantry.cpp
     pantry.h
+    quantity.cpp
+    quantity.h
     recipe.cpp
     recipe.h
+    resumable-job.cpp
+    resumable-job.h
     shelf-life.cpp
     shelf-life.h
     shopping-list.cpp

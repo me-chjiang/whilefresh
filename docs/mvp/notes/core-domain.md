@@ -37,7 +37,7 @@ ImportService(Store &, shared_ptr<const BuiltinData>, const Clock &,
 - `items[]`：原 `RecognizedItem`、可编辑 `FridgeItem`、分类、selected、三种 `DateParse`；`needsDateConfirmation()` 提示缺基准。
 - `duplicate`、`ignoredSummary`、`warning`、`ready`；无关项默认不选，`ignoredCount()` 给“已忽略”组计数。找回无关项须改为食材/调料后选中。
 - 截断时 warning 固定“可能有遗漏，请检查”。入库后的演示标识从物资的 importId 关联导入记录获得，不把演示当真识别。
-- 调料进入待确认的常备建议，不制造额外冰箱物资；已知常备且本来在家时无需重复建议。未归类调料必须先选择标准名或改成普通食材，避免静默丢掉。
+- 调料进入待确认的常备建议，不制造额外冰箱物资；已知常备且本来在家时无需重复建议。未归类调料必须先选择标准名或改成普通食材，避免静默丢掉。（第二轮 T15 起调料作为常备调料入库，见 [item-model.md](item-model.md)。）
 
 ### KitchenService
 
@@ -97,7 +97,7 @@ QObject::connect(importService, &ui::ImportService::committed,
 
 ## 数据库与图片所有权
 
-`Database::migrations()` 只追加，`PRAGMA user_version` 当前 **4**，每个迁移独立事务：
+`Database::migrations()` 只追加，`PRAGMA user_version` 在 T5 时为 **4**（v5 见 [item-model.md](item-model.md)），每个迁移独立事务：
 
 | 版本 | 内容 |
 | --- | --- |
@@ -112,7 +112,7 @@ QObject::connect(importService, &ui::ImportService::committed,
 - `suggestions` 保存 pending/accepted/dismissed 与来源导入；`shopping_items` 保存 JSON 备选名称、唯一 dedupe_key、品类、来源、备注；`settings` 为字符串键值。
 - `import_products` 存确认时的标准名+数量原文+件数，之后编辑/用掉物资不会改变购买指纹，调料也纳入。早期库缺快照的记录按现有物资回退。
 - 同 SHA 不受时间窗口限制；近 72 小时内商品多重集合交集/较大集合 ≥80% 才“可能重复”，至少两项；未知标准名不用于相似判断。只是提示，允许用户明确继续。
-- 删除一次导入：删除其物资、原图元数据、购买指纹与未确认建议；已明确确认的用户规则/常备变更不自动撤销。删除全部清掉所有用户表数据并排队清理 imports 内文件，不删 schema 或内置只读数据。
+- 删除一次导入（T5；T15 起改为软删除，见 [item-model.md](item-model.md)）：删除其物资、原图元数据、购买指纹与未确认建议；已明确确认的用户规则/常备变更不自动撤销。删除全部清掉所有用户表数据并排队清理 imports 内文件，不删 schema 或内置只读数据。
 - SQL 删除与 `file_cleanup` 入队同事务，提交后删除文件；失败保留队列供 `retryFileCleanup()` 重试，不误报彻底删除成功。只删除指定 imports 根目录的直接文件，其他导入还引用的文件暂不删除；不得把图库原件路径交给 Store 当导入私有副本。
 
 ## 验证范围与边界

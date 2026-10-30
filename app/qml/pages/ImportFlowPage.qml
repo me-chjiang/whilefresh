@@ -97,7 +97,7 @@ Item {
             spacing: Theme.gap
             NoticeBanner { width: parent.width; message: "这些图片或文字与之前的导入相同。仍要识别并入库吗？" }
             InkButton { width: parent.width; text: "仍然识别"; onClicked: App.startImport(true) }
-            InkButton { width: parent.width; text: "放弃"; outline: true; onClicked: { App.cancelImport(); flow.dismissed() } }
+            InkButton { width: parent.width; text: "跳过"; outline: true; onClicked: { App.skipImport(); flow.dismissed() } }
         }
         Column {
             visible: flow.view === "recognizing"
@@ -147,7 +147,7 @@ Item {
                 Flickable {
                     id: confirmScroll
                     width: parent.width
-                    height: parent.height - y - Theme.touch - Theme.gap
+                    height: parent.height - y - (Theme.touch + Theme.gap) * (App.draftDuplicate ? 2 : 1)
                     clip: true
                     contentHeight: groups.height + Theme.gapLarge
                     Column {
@@ -204,6 +204,7 @@ Item {
                                         font.pixelSize: Theme.textMeta
                                         color: ingredient.modelData.source === "package" ? Theme.fresh : Theme.nearing
                                     }
+                                    Text { visible: ingredient.modelData.needsShelfLife; text: "待录保质期"; font.pixelSize: Theme.textMeta; color: Theme.overdue }
                                     Text { visible: ingredient.modelData.needsDate; text: "日期写法需要拍摄日期才能换算，请在下方填写具体日期"; font.pixelSize: Theme.textMeta; color: Theme.overdue; width: parent.width; wrapMode: Text.Wrap }
                                     TextField {
                                         width: parent.width
@@ -245,7 +246,7 @@ Item {
                                 }
                             }
                         }
-                        Text { text: "调料  ·  更新常备调料"; font.family: Theme.serif; font.pixelSize: Theme.textGroup; font.weight: Theme.weightBlack; color: Theme.ink }
+                        Text { text: "常备调料  ·  " + flow.seasonings.length + " 项"; font.family: Theme.serif; font.pixelSize: Theme.textGroup; font.weight: Theme.weightBlack; color: Theme.ink }
                         Flow {
                             width: parent.width
                             height: childrenRect.height
@@ -258,7 +259,7 @@ Item {
                                     width: label.implicitWidth + Theme.gapLarge * 2
                                     height: Theme.touch
                                     Rectangle { anchors.fill: parent; anchors.margins: Theme.gapTiny; radius: Theme.radiusRow; color: Theme.selectedPaper; border.color: Theme.ink }
-                                    Text { id: label; anchors.centerIn: parent; text: seasoningChip.modelData.name; color: Theme.ink; font.pixelSize: Theme.textControl }
+                                    Text { id: label; anchors.centerIn: parent; text: seasoningChip.modelData.name + (seasoningChip.modelData.needsShelfLife ? " · 待录保质期" : ""); color: Theme.ink; font.pixelSize: Theme.textControl }
                                     TapHandler { onTapped: App.dropDraft(seasoningChip.modelData.index) }
                                 }
                             }
@@ -284,6 +285,7 @@ Item {
                         }
                     }
                 }
+                InkButton { visible: App.draftDuplicate; width: parent.width; text: "跳过"; outline: true; onClicked: { App.skipImport(); flow.dismissed() } }
                 InkButton { width: parent.width; text: (App.draftDuplicate ? "仍然入库 · " : "确认入库 · ") + flow.foods.length + " 项食材"; titleStyle: true; onClicked: App.confirmImport() }
             }
         }

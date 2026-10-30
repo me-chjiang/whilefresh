@@ -194,6 +194,7 @@ $adb logcat -d | grep 'WhileFresh import:'
 - `app/src/core/` 只依赖 QtCore：分开的购买/入库/生产/包装到期日期、拍摄日基准的日期解析、带来源的保质期、注入时钟的新鲜度、常备/存量建议、需求组匹配与待买文本。
 - `app/src/data/`：SQLite `Database` + `Store`（`PRAGMA user_version` 版本迁移），以及加载一次的 `BuiltinData`。正式词表、菜谱、FoodKeeper 表嵌入 `:/whilefresh/data`；找不到参考表按无参考值处理。
 - `app/src/ui/{import,kitchen}-service.*` 是普通 C++ 应用服务，不依赖 QML；可替换识别器，用户确认草稿才入库，常备建议/本地记忆需要单独确认。接线、日期语义、迁移和文件删除细节见 [核心领域实现说明](mvp/notes/core-domain.md)。
+- 第二轮（T15）：迁移 v5（食材种类 / 用量 / 忽略到期、导入软删除与跳过记录、导入续传表）；`core/quantity.*` 用量解析、`core/fridge-groups.*` 种类判定与冰箱分组排序、`core/resumable-job.*` 续传状态机。删除导入、清空历史、跳过重复、调料入库与续传的设计见 [食材模型与导入续传说明](mvp/notes/item-model.md)。
 - **FoodKeeper 不等于从生产日起的寿命**：参考表只在购买日期已知且用户确认适用条件后计算到期日；否则保留参考天数、显示待确认，不改用较长的 AI 值掩盖未知状态。`basis` 只保留作展示，不据其字符串推断逻辑。
 
 使用已有命令验证，不调用真实 DeepSeek：
@@ -201,12 +202,12 @@ $adb logcat -d | grep 'WhileFresh import:'
 ```sh
 scripts/build-desktop.sh
 ctest --test-dir build/desktop --output-on-failure
-# 只跑核心、数据与应用服务相关的九个测试套件（其余套件仍应在提交前全部运行）
-ctest --test-dir build/desktop --output-on-failure -R 'date-text|shelf-life|freshness|recipe-matcher|household-rules|database-test|store-test|builtin-data|application-service'
+# 只跑核心、数据与应用服务相关的测试套件（其余套件仍应在提交前全部运行）
+ctest --test-dir build/desktop --output-on-failure -R 'date-text|shelf-life|freshness|recipe-matcher|household-rules|quantity|fridge-groups|resumable-job|database-test|store-test|builtin-data|application-service'
 scripts/build-android.sh x86_64 --no-key
 ```
 
-`builtin-data-test` 用实际 372 道菜、544 项词表、290 项参考数据验证匹配和保质期；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入、事务回滚、建议确认及清冰箱/待买。测试数据库与图片只写临时目录。
+`builtin-data-test` 用实际 372 道菜、544 项词表、290 项参考数据验证匹配和保质期；`application-service-test` 用 Replay/Demo 识别器验证导入→草稿→编辑→确认→入库、取消与图片删除、重复导入与跳过记录、软删除与清空历史、调料/常备食材入库、扔掉与忽略、事务回滚、建议确认及清冰箱/待买；导入续传用 `DeepSeekRecognizer` + `ai::RecordedChatClient` 验证第 2 批失败后换新服务只重发第 2 批及以后。测试数据库与图片只写临时目录。
 
 ### 界面资源与模拟预览
 

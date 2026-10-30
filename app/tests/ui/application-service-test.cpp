@@ -1,12 +1,17 @@
 #include "ui/import-service.h"
 #include "ui/kitchen-service.h"
+#include "ai/recorded-chat-client.h"
+#include "core/fridge-groups.h"
 #include "data/database.h"
+#include "recognition/deepseek-recognizer.h"
 #include "recognition/demo-recognizer.h"
 #include "recognition/replay-recognizer.h"
 #include "recognition/recording.h"
 
 #include <QDir>
+#include <QColor>
 #include <QFile>
+#include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -19,6 +24,7 @@ using namespace whilefresh;
 using namespace whilefresh::core;
 using namespace whilefresh::ui;
 namespace rec = whilefresh::recognition;
+namespace ai = whilefresh::ai;
 
 class ApplicationServiceTest : public QObject
 {
@@ -180,7 +186,7 @@ private slots:
         QVERIFY(service.draft().record.truncated);
         QCOMPARE(service.draft().warning, QStringLiteral("可能有遗漏，请检查"));
         QVERIFY(service.confirm());
-        QCOMPARE(store->items().size(), 1);
+        QCOMPARE(store->items().size(), 2); // the seasoning is stock too (常备调料)
         QVERIFY(!kitchen->pantryRules().isAtHome(QStringLiteral("生抽")));
         QCOMPARE(kitchen->suggestions().size(), 1);
         const auto suggestion = kitchen->suggestions().first();
@@ -369,6 +375,374 @@ private slots:
         QCOMPARE(item.expiryDate, QDate(2026, 11, 8)); // production date wins over purchase date
         QVERIFY(store->imports().first().images.isEmpty());
         QCOMPARE(store->imports().first().textLength, input.text.size());
+    }
+
+    void deletingAnImportKeepsWhatWasEaten()
+    {
+        rec::ReplayRecognizer recognizer(QStringLiteral(WHILEFRESH_TEST_DATA_DIR "/recordings/synthetic-cart.json"));
+        ImportService service(*store, builtin, *clock, recognizer);
+        QSignalSpy ready(&service, &ImportService::draftReady);
+        QVERIFY(service.receive(payload()));
+        QVERIFY(service.start(true));
+        QTRY_COMPARE(ready.size(), 1);
+        QVERIFY(service.confirm());
+        auto manualEgg = manual(QStringLiteral("鸡蛋"));
+        QVERIFY(kitchen->saveItem(manualEgg));
+        const qint64 importId = store->imports().first().id;
+        const auto imported = store->itemsForImport(importId);
+        QVERIFY(imported.size() >= 3);
+        auto used = imported.at(0);
+        used.status = ItemStatus::Used;
+        QVERIFY(store->updateItem(used));
+        QVERIFY(kitchen->discardItem(imported.at(1).id));
+
+        QVERIFY(kitchen->deleteImport(importId));
+        QVERIFY(kitchen->imports().isEmpty());
+        QCOMPARE(kitchen->fridge().size(), 1); // only the manual egg remains in the fridge
+        QCOMPARE(kitchen->fridge().first().id, manualEgg.id);
+        const auto kept = store->itemsForImport(importId);
+        QCOMPARE(kept.size(), 2);
+        for (const auto &item : kept)
+            QVERIFY(item.status != ItemStatus::InStock);
+    }
+
+    void clearingHistoryKeepsTheFridge()
+    {
+        rec::ReplayRecognizer recognizer(mixedRecording());
+        ImportService service(*store, builtin, *clock, recognizer);
+        QSignalSpy ready(&service, &ImportService::draftReady);
+        const auto input = payload();
+        QVERIFY(service.receive(input));
+        QVERIFY(service.start(true));
+        QTRY_COMPARE(ready.size(), 1);
+        QVERIFY(service.confirm());
+        const auto before = kitchen->fridge().size();
+        QVERIFY(before > 0);
+        QVERIFY(kitchen->clearImportHistory());
+        QVERIFY(kitchen->imports().isEmpty());
+        QCOMPARE(kitchen->fridge().size(), before);
+        QVERIFY(!QFile::exists(input.images.first().localPath));
+    }
+
+    void skippedDuplicatesAreRecorded()
+    {
+        rec::ReplayRecognizer recognizer(mixedRecording());
+        ImportService service(*store, builtin, *clock, recognizer);
+        QSignalSpy ready(&service, &ImportService::draftReady);
+        QSignalSpy skipped(&service, &ImportService::skipped);
+        const auto first = payload();
+        QVERIFY(service.receive(first));
+        QVERIFY(!service.skipDuplicate()); // nothing to skip yet
+        QVERIFY(service.start(true));
+        QTRY_COMPARE(ready.size(), 1);
+        QVERIFY(service.confirm());
+        const qint64 original = store->imports().first().id;
+        const auto itemCount = store->items().size();
+
+        // Same image: caught before upload, skipped without recognition.
+        const auto again = payload();
+        QVERIFY(service.receive(again));
+        QCOMPARE(service.draft().duplicate.kind, DuplicateCheck::Kind::SameImage);
+        QVERIFY(service.skipDuplicate());
+        QCOMPARE(skipped.size(), 1);
+        QVERIFY(!QFile::exists(again.images.first().localPath));
+
+        // Similar items in another screenshot: caught after recognition, skipped from the draft.
+        QVERIFY(service.receive(payload(true, "different bytes")));
+        QVERIFY(service.start(true));
+        QTRY_COMPARE(ready.size(), 2);
+        QCOMPARE(service.draft().duplicate.kind, DuplicateCheck::Kind::SimilarItems);
+        QVERIFY(service.skipDuplicate());
+        QCOMPARE(skipped.size(), 2);
+        QVERIFY(!service.draft().ready);
+        QVERIFY(!service.hasUnfinishedJob());
+
+        const auto records = store->imports();
+        QCOMPARE(records.size(), 3);
+        for (int i = 0; i < 2; ++i) {
+            QCOMPARE(records.at(i).status, data::ImportStatus::SkippedDuplicate);
+            QCOMPARE(records.at(i).duplicateOf, original);
+            QVERIFY(records.at(i).images.isEmpty());
+            QVERIFY(store->itemsForImport(records.at(i).id).isEmpty());
+        }
+        QCOMPARE(records.at(2).status, data::ImportStatus::Confirmed);
+        QCOMPARE(store->items().size(), itemCount);
+    }
+
+    void seasoningsAndStaplesBecomeStock()
+    {
+        rec::ReplayRecognizer recognizer(recording(QString::fromUtf8(R"(
+          {"raw_name":"生抽500ml×2","canonical_name":"生抽","quantity_text":"500ml×2","category":"seasoning"},
+          {"raw_name":"方便面5连包","canonical_name":"方便面","quantity_text":"5包","category":"food","storage":"room"},
+          {"raw_name":"大米5kg","canonical_name":"大米","quantity_text":"5kg","category":"food","storage":"room"},
+          {"raw_name":"鲜鸡蛋","canonical_name":"鸡蛋","quantity_text":"10枚","count":2,"category":"food",
+           "storage":"fridge","shelf_life_days":{"fridge":30}},
+          {"raw_name":"某牌秘制酱","canonical_name":"未归类","quantity_text":"约350克","category":"seasoning"}
+        )")));
+        ImportService service(*store, builtin, *clock, recognizer);
+        QSignalSpy ready(&service, &ImportService::draftReady);
+        QVERIFY(service.receive(payload()));
+        QVERIFY(service.start(true));
+        QTRY_COMPARE(ready.size(), 1);
+        const auto &draft = service.draft();
+        QCOMPARE(draft.items.at(0).item.kind, ItemKind::StapleSeasoning);
+        QCOMPARE(draft.items.at(1).item.kind, ItemKind::StapleFood);
+        QVERIFY(draft.items.at(1).needsShelfLife()); // no reference, no AI value: 待录保质期
+        QCOMPARE(draft.items.at(2).item.kind, ItemKind::StapleFood);
+        QCOMPARE(draft.items.at(3).item.kind, ItemKind::Food);
+        QVERIFY(!draft.items.at(3).needsShelfLife());
+        QVERIFY(service.confirm());
+
+        QHash<QString, FridgeItem> byName;
+        for (const auto &item : store->items())
+            byName.insert(item.rawName, item);
+        QCOMPARE(byName.size(), 5);
+        QCOMPARE(byName.value(QStringLiteral("生抽500ml×2")).amount, 1000.0);
+        QCOMPARE(byName.value(QStringLiteral("生抽500ml×2")).unit, QStringLiteral("ml"));
+        QCOMPARE(byName.value(QStringLiteral("方便面5连包")).amount, 5.0);
+        QCOMPARE(byName.value(QStringLiteral("方便面5连包")).unit, QStringLiteral("包"));
+        QVERIFY(byName.value(QStringLiteral("方便面5连包")).needsShelfLife());
+        QCOMPARE(byName.value(QStringLiteral("大米5kg")).amount, 5000.0);
+        QCOMPARE(byName.value(QStringLiteral("鲜鸡蛋")).amount, 20.0);
+        QCOMPARE(byName.value(QStringLiteral("鲜鸡蛋")).unit, QStringLiteral("枚"));
+        const auto sauce = byName.value(QStringLiteral("某牌秘制酱"));
+        QCOMPARE(sauce.kind, ItemKind::StapleSeasoning);
+        QCOMPARE(sauce.amount, 350.0);
+        // The pantry flow still runs for named seasonings, and never for unknown ones.
+        QStringList suggested;
+        for (const auto &suggestion : kitchen->suggestions())
+            suggested.append(suggestion.name);
+        QVERIFY(!suggested.contains(QStringLiteral("未归类")));
+
+        const auto fridge = kitchen->fridge();
+        QStringList groups;
+        for (const auto &item : fridge)
+            groups.append(fridgeGroupName(fridgeGroup(item)));
+        QCOMPARE(groups.first(), QStringLiteral("冷藏"));
+        QCOMPARE(groups.count(QStringLiteral("常备调料")), 2);
+        QCOMPARE(groups.count(QStringLiteral("常备食材")), 2);
+    }
+
+    void discardAndSnooze()
+    {
+        auto milk = manual(QStringLiteral("牛奶"));
+        milk.manualDays = 8;
+        QVERIFY(kitchen->saveItem(milk));
+        auto pork = manual(QStringLiteral("五花肉"));
+        pork.manualDays = 2;
+        QVERIFY(kitchen->saveItem(pork));
+        clock->advanceDays(6); // milk near expiry, pork beyond the estimate
+        QCOMPARE(kitchen->attention().size(), 2);
+        QVERIFY(!kitchen->snoozeItem(pork.id)); // expired: only a new shelf life or 扔掉
+        QVERIFY(kitchen->snoozeItem(milk.id));
+        QCOMPARE(kitchen->attention().size(), 1);
+        QCOMPARE(kitchen->attention().first().id, pork.id);
+        QCOMPARE(kitchen->fridge().size(), 2); // snoozed items stay in the fridge
+        clock->advanceDays(1);
+        QCOMPARE(kitchen->attention().size(), 2); // 忽略 lasts for today only
+
+        QVERIFY(kitchen->discardItem(pork.id));
+        QCOMPARE(store->item(pork.id)->status, ItemStatus::Discarded);
+        QCOMPARE(kitchen->fridge().size(), 1);
+        QVERIFY(!kitchen->discardItem(pork.id));
+    }
+
+    void manualItemsGetAnAmount()
+    {
+        auto item = manual(QStringLiteral("土豆"));
+        item.quantityText = QStringLiteral("1.5kg");
+        QVERIFY(kitchen->saveItem(item));
+        QCOMPARE(store->item(item.id)->amount, 1500.0);
+        item.quantityText = QStringLiteral("3个");
+        QVERIFY(kitchen->saveItem(item));
+        QCOMPARE(store->item(item.id)->amount, 3.0);
+        QCOMPARE(store->item(item.id)->unit, QStringLiteral("个"));
+    }
+
+    void resumeSendsOnlyUnfinishedBatches()
+    {
+        const auto body = [](const QString &raw, const QString &canonical) {
+            const QString content = QStringLiteral("{\"source_type\":\"cart\",\"items\":[{\"raw_name\":\"%1\",\"canonical_name\":\"%2\","
+                                                   "\"category\":\"food\",\"storage\":\"fridge\"}]}").arg(raw, canonical);
+            const QJsonObject message{ { "role", "assistant" }, { "content", content } };
+            return QJsonDocument(QJsonObject{ { "choices", QJsonArray{ QJsonObject{ { "message", message }, { "finish_reason", "stop" } } } } })
+                .toJson(QJsonDocument::Compact);
+        };
+        const auto answer = [](const QByteArray &response) {
+            ai::ChatExchange exchange;
+            exchange.response = response;
+            return exchange;
+        };
+        ai::ChatExchange serverError;
+        serverError.error = ai::ChatError{ rec::ErrorKind::ServerError, QStringLiteral("scripted 503"), 503 };
+
+        // Three images, one per request.
+        platform::ImportPayload input;
+        for (int i = 0; i < 3; ++i) {
+            QImage image(400, 600, QImage::Format_RGB32);
+            image.fill(QColor::fromHsv(i * 100, 200, 200));
+            platform::ImportedImage file;
+            file.localPath = QDir(store->importsDirectory()).filePath(QStringLiteral("cart-%1.png").arg(i));
+            QVERIFY(image.save(file.localPath));
+            file.mimeType = QStringLiteral("image/png");
+            file.capturedAt = QDateTime(QDate(2026, 10, 21), QTime(9, 0));
+            file.capturedAtSource = platform::ImportedImage::DateSource::Exif;
+            input.images.append(file);
+        }
+        rec::BatchLimits onePerRequest;
+        onePerRequest.maxImages = 1;
+
+        QByteArray secondBatchBody;
+        {
+            ai::RecordedChatClient client(ai::ChatRecording{ { answer(body(QStringLiteral("鲜鸡蛋"), QStringLiteral("鸡蛋"))), serverError } });
+            rec::DeepSeekRecognizer recognizer(&client);
+            recognizer.setBatchLimits(onePerRequest);
+            ImportService service(*store, builtin, *clock, recognizer);
+            QSignalSpy failed(&service, &ImportService::failed);
+            QVERIFY(service.receive(input));
+            QVERIFY(service.start(true));
+            QTRY_COMPARE_WITH_TIMEOUT(failed.size(), 1, 20000);
+            QCOMPARE(client.requests().size(), 2);
+            secondBatchBody = client.requests().at(1).body;
+        } // the process "dies": a new service over the same database follows
+
+        for (const auto &image : input.images)
+            QVERIFY(QFile::exists(image.localPath));
+        ai::RecordedChatClient client(ai::ChatRecording{ { answer(body(QStringLiteral("纯牛奶"), QStringLiteral("牛奶"))),
+                                                           answer(body(QStringLiteral("土豆"), QStringLiteral("土豆"))) } });
+        rec::DeepSeekRecognizer recognizer(&client);
+        recognizer.setBatchLimits(onePerRequest);
+        ImportService service(*store, builtin, *clock, recognizer);
+        QSignalSpy ready(&service, &ImportService::draftReady);
+        QVERIFY(service.hasUnfinishedJob());
+        QVERIFY(service.resume());
+        QVERIFY(!service.hasUnfinishedJob());
+        QTRY_COMPARE_WITH_TIMEOUT(ready.size(), 1, 20000);
+        QCOMPARE(client.requests().size(), 2); // batches 2 and 3 only
+        QCOMPARE(client.requests().at(0).body, secondBatchBody);
+
+        QStringList names;
+        for (const auto &draft : service.draft().items)
+            names.append(draft.item.canonicalName);
+        QCOMPARE(names, (QStringList{ "鸡蛋", "牛奶", "土豆" }));
+        QCOMPARE(service.draft().record.images.size(), 3);
+        QVERIFY(service.confirm());
+        QVERIFY(!store->importJob());
+        QCOMPARE(store->imports().first().images.size(), 3);
+        QCOMPARE(store->items().size(), 3);
+    }
+
+    void finishedJobResumesWithoutRecognition()
+    {
+        const auto input = payload();
+        {
+            rec::ReplayRecognizer recognizer(mixedRecording());
+            ImportService service(*store, builtin, *clock, recognizer);
+            QSignalSpy ready(&service, &ImportService::draftReady);
+            QVERIFY(service.receive(input));
+            QVERIFY(service.start(true));
+            QTRY_COMPARE(ready.size(), 1);
+        } // closed while the draft waited for review
+        QVERIFY(QFile::exists(input.images.first().localPath));
+
+        rec::ReplayRecognizer unusable(dir->filePath(QStringLiteral("missing.json")));
+        ImportService service(*store, builtin, *clock, unusable);
+        QSignalSpy ready(&service, &ImportService::draftReady);
+        QSignalSpy failed(&service, &ImportService::failed);
+        QVERIFY(service.resume());
+        QCOMPARE(ready.size(), 1);
+        QCOMPARE(service.draft().items.size(), 3);
+        QCOMPARE(service.draft().items.first().item.productionDate.date, QDate(2026, 10, 20));
+        QVERIFY(service.confirm());
+        QCoreApplication::processEvents();
+        QCOMPARE(failed.size(), 0);
+        QVERIFY(!store->importJob());
+    }
+
+    void unfinishedJobsCanBeDiscardedOrReplaced()
+    {
+        const auto first = payload();
+        {
+            rec::ReplayRecognizer recognizer(dir->filePath(QStringLiteral("missing.json")));
+            ImportService service(*store, builtin, *clock, recognizer);
+            QSignalSpy failed(&service, &ImportService::failed);
+            QVERIFY(service.receive(first));
+            QVERIFY(service.start(true));
+            QTRY_COMPARE(failed.size(), 1);
+        }
+        rec::ReplayRecognizer recognizer(mixedRecording());
+        ImportService service(*store, builtin, *clock, recognizer);
+        QVERIFY(service.hasUnfinishedJob());
+        QVERIFY(service.discardUnfinishedJob());
+        QVERIFY(!service.hasUnfinishedJob());
+        QVERIFY(!QFile::exists(first.images.first().localPath));
+
+        // A job nobody resumed is replaced by the next import.
+        const auto second = payload(true, "second");
+        {
+            rec::ReplayRecognizer missing(dir->filePath(QStringLiteral("missing.json")));
+            ImportService stale(*store, builtin, *clock, missing);
+            QSignalSpy failed(&stale, &ImportService::failed);
+            QVERIFY(stale.receive(second));
+            QVERIFY(stale.start(true));
+            QTRY_COMPARE(failed.size(), 1);
+        }
+        QVERIFY(service.receive(payload(true, "third")));
+        QVERIFY(!QFile::exists(second.images.first().localPath));
+        QVERIFY(service.discard());
+        QVERIFY(!store->importJob());
+    }
+
+    void unrestorableJobsStillFreeTheirImages()
+    {
+        const auto orphan = [this] {
+            const auto image = payload().images.first().localPath;
+            const QByteArray json = QJsonDocument(QJsonObject{ { "images", QJsonArray{ QJsonObject{ { "path", image } } } } })
+                                        .toJson(QJsonDocument::Compact);
+            ResumableJob job;
+            const qint64 id = store->insertImportJob(json, job);
+            QSqlQuery query(database->handle());
+            // "done" without any batch: ResumableJob::restore() rejects it.
+            query.prepare(QStringLiteral("UPDATE import_jobs SET state = 'done' WHERE id = ?"));
+            query.addBindValue(id);
+            if (!query.exec())
+                qFatal("cannot corrupt job");
+            return image;
+        };
+        rec::ReplayRecognizer recognizer(mixedRecording());
+        ImportService service(*store, builtin, *clock, recognizer);
+
+        const QString first = orphan();
+        QVERIFY(!store->importJob());
+        QVERIFY(!service.hasUnfinishedJob());
+        QVERIFY(service.discardUnfinishedJob());
+        QVERIFY(store->importJobRows().isEmpty());
+        QVERIFY(!QFile::exists(first));
+
+        const QString second = orphan();
+        QVERIFY(service.receive(payload(true, "next")));
+        QVERIFY(store->importJobRows().isEmpty());
+        QVERIFY(!QFile::exists(second));
+        QVERIFY(service.discard());
+    }
+
+    void textImportsAreNotPersisted()
+    {
+        rec::ReplayRecognizer recognizer(dir->filePath(QStringLiteral("missing.json")));
+        {
+            ImportService service(*store, builtin, *clock, recognizer);
+            QSignalSpy failed(&service, &ImportService::failed);
+            platform::ImportPayload input;
+            input.kind = platform::ImportPayload::Kind::Text;
+            input.text = QStringLiteral("鸡蛋 两盒");
+            QVERIFY(service.receive(input));
+            QVERIFY(service.start(true));
+            QTRY_COMPARE(failed.size(), 1);
+            QVERIFY(!store->importJob());
+        }
+        QSqlQuery query(database->handle());
+        QVERIFY(query.exec(QStringLiteral("SELECT COUNT(*) FROM import_jobs")) && query.next());
+        QCOMPARE(query.value(0).toInt(), 0);
     }
 
     void bulkUseAbsenceAndShoppingSuggestion()

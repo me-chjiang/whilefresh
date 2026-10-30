@@ -21,12 +21,19 @@ public:
     KitchenService(data::Store &store, std::shared_ptr<const data::BuiltinData> builtin,
                    const core::Clock &clock, QObject *parent = nullptr);
 
+    // In stock, in display order (core::sortForFridge).
     QList<core::FridgeItem> fridge() const;
+    // Near expiry or beyond the estimate, minus the ones snoozed for today; in display order.
+    QList<core::FridgeItem> attention() const;
     core::FreshnessState freshness(const core::FridgeItem &item) const;
     QSet<qint64> defaultSelection() const;
     bool saveItem(core::FridgeItem &item, QString *error = nullptr);
     bool useItem(qint64 id);
     bool markAbsent(qint64 id);
+    bool discardItem(qint64 id); // 扔掉
+    // 忽略: no reminder for a near-expiry item until tomorrow. Items beyond the estimate cannot be
+    // snoozed; they only offer a new shelf life or 扔掉.
+    bool snoozeItem(qint64 id);
     bool setUseFirst(qint64 id, bool enabled);
     bool changeStorage(qint64 id, core::Storage storage);
     // Recompute locally; it never calls the recognizer or writes a rule.
@@ -59,6 +66,7 @@ public:
 
     QList<data::ImportRecord> imports() const;
     bool deleteImport(qint64 id);
+    bool clearImportHistory();
     bool deleteAllData();
     bool demoMode() const;
     bool setDemoMode(bool enabled);
@@ -69,6 +77,7 @@ signals:
 
 private:
     QList<core::StockEntry> stock(const QSet<qint64> &selected = {}) const;
+    void classify(core::FridgeItem &item) const;
     bool finish(bool ok);
     data::Store &m_store;
     std::shared_ptr<const data::BuiltinData> m_builtin;

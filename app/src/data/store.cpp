@@ -90,7 +90,8 @@ const QString itemColumns = QStringLiteral(
     "purchase_date_text, entry_date, production_date, production_date_origin, production_date_text, "
     "package_expiry_date, package_expiry_origin, package_expiry_text, labelled_days, manual_days, "
     "ai_fridge_days, ai_freezer_days, ai_room_days, shelf_life_source, shelf_life_days, expiry_date, "
-    "start_basis, shelf_life_note, created_at, updated_at, reference_conditions_confirmed");
+    "start_basis, shelf_life_note, created_at, updated_at, reference_conditions_confirmed, kind, amount, unit, "
+    "snoozed_until");
 
 void bindItem(QSqlQuery &query, const FridgeItem &item)
 {
@@ -102,6 +103,10 @@ void bindItem(QSqlQuery &query, const FridgeItem &item)
     query.bindValue(QStringLiteral(":category"), nonNull(item.category));
     query.bindValue(QStringLiteral(":quantity_text"), nonNull(item.quantityText));
     query.bindValue(QStringLiteral(":count"), item.count);
+    query.bindValue(QStringLiteral(":kind"), itemKindKey(item.kind));
+    query.bindValue(QStringLiteral(":amount"), item.amount);
+    query.bindValue(QStringLiteral(":unit"), nonNull(item.unit));
+    query.bindValue(QStringLiteral(":snoozed_until"), dateValue(item.snoozedUntil));
     query.bindValue(QStringLiteral(":storage"), storageKey(item.storage));
     query.bindValue(QStringLiteral(":storage_source"), storageSourceKey(item.storageSource));
     query.bindValue(QStringLiteral(":use_first"), item.useFirst ? 1 : 0);
@@ -152,6 +157,10 @@ FridgeItem itemFrom(const QSqlQuery &query)
     item.category = query.value(QStringLiteral("category")).toString();
     item.quantityText = query.value(QStringLiteral("quantity_text")).toString();
     item.count = query.value(QStringLiteral("count")).toInt();
+    item.kind = itemKindFromKey(query.value(QStringLiteral("kind")).toString()).value_or(ItemKind::Food);
+    item.amount = query.value(QStringLiteral("amount")).toDouble();
+    item.unit = query.value(QStringLiteral("unit")).toString();
+    item.snoozedUntil = dateFrom(query.value(QStringLiteral("snoozed_until")));
     item.storage = storageFromKey(query.value(QStringLiteral("storage")).toString()).value_or(Storage::Fridge);
     item.storageSource =
         storageSourceFromKey(query.value(QStringLiteral("storage_source")).toString()).value_or(StorageSource::Default);
@@ -201,6 +210,11 @@ QString assignments(const QString &columns)
     return pairs.join(QStringLiteral(", "));
 }
 
+}
+
+QString importStatusKey(ImportStatus status)
+{
+    return status == ImportStatus::SkippedDuplicate ? QStringLiteral("skipped_duplicate") : QStringLiteral("confirmed");
 }
 
 Store::Store(Database &database, const Clock &clock, QString importsDirectory)
@@ -300,8 +314,8 @@ qint64 Store::insertImport(ImportRecord &record)
     if (!record.createdAt.isValid())
         record.createdAt = m_clock.now();
     QSqlQuery query(m_database.handle());
-    query.prepare(QStringLiteral("INSERT INTO imports (created_at, input_kind, origin, is_demo, truncated, text_length, source_type) "
-                                 "VALUES (?, ?, ?, ?, ?, ?, ?)"));
+    query.prepare(QStringLiteral("INSERT INTO imports (created_at, input_kind, origin, is_demo, truncated, text_length, "
+                                 "source_type, status, duplicate_of) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"));
     query.addBindValue(dateTimeValue(record.createdAt));
     query.addBindValue(nonNull(record.inputKind));
     query.addBindValue(nonNull(record.origin));
@@ -309,6 +323,8 @@ qint64 Store::insertImport(ImportRecord &record)
     query.addBindValue(record.truncated ? 1 : 0);
     query.addBindValue(record.textLength);
     query.addBindValue(record.sourceType);
+    query.addBindValue(importStatusKey(record.status));
+    query.addBindValue(record.duplicateOf > 0 ? QVariant(record.duplicateOf) : QVariant(QMetaType(QMetaType::LongLong)));
     if (!run(query))
         return 0;
     record.id = query.lastInsertId().toLongLong();
@@ -339,12 +355,13 @@ std::optional<ImportRecord> Store::importRecord(qint64 id) const
     return std::nullopt;
 }
 
-QList<ImportRecord> Store::imports() const
+QList<ImportRecord> Store::imports(bool includeDeleted) const
 {
     QList<ImportRecord> records;
     QHash<qint64, int> index;
     QSqlQuery query(m_database.handle());
-    if (!run(query, QStringLiteral("SELECT * FROM imports ORDER BY created_at DESC, id DESC")))
+    if (!run(query, QStringLiteral("SELECT * FROM imports %1 ORDER BY created_at DESC, id DESC")
+                        .arg(includeDeleted ? QString() : QStringLiteral("WHERE deleted_at IS NULL"))))
         return records;
     while (query.next()) {
         ImportRecord record;
@@ -356,6 +373,10 @@ QList<ImportRecord> Store::imports() const
         record.isDemo = query.value(QStringLiteral("is_demo")).toInt() != 0;
         record.truncated = query.value(QStringLiteral("truncated")).toInt() != 0;
         record.textLength = query.value(QStringLiteral("text_length")).toInt();
+        record.status = query.value(QStringLiteral("status")).toString() == importStatusKey(ImportStatus::SkippedDuplicate)
+            ? ImportStatus::SkippedDuplicate : ImportStatus::Confirmed;
+        record.duplicateOf = query.value(QStringLiteral("duplicate_of")).toLongLong();
+        record.deletedAt = dateTimeFrom(query.value(QStringLiteral("deleted_at")));
         index.insert(record.id, records.size());
         records.append(record);
     }
@@ -478,23 +499,44 @@ bool Store::removeImportFile(const QString &path) const
 
 bool Store::deleteImport(qint64 id)
 {
-    const std::optional<ImportRecord> record = importRecord(id);
-    if (!record)
-        return false;
-    if (!transaction())
+    if (!importRecord(id) || !transaction())
         return false;
     QSqlQuery query(m_database.handle());
     bool ok = true;
     for (const QString &sql : { QStringLiteral("INSERT OR IGNORE INTO file_cleanup SELECT path FROM import_images WHERE import_id = ?"),
                                 QStringLiteral("DELETE FROM import_products WHERE import_id = ?"),
                                 QStringLiteral("DELETE FROM suggestions WHERE import_id = ? AND status = 'pending'"),
-                                QStringLiteral("DELETE FROM items WHERE import_id = ?"),
-                                QStringLiteral("UPDATE suggestions SET import_id = NULL WHERE import_id = ?"),
-                                QStringLiteral("DELETE FROM import_images WHERE import_id = ?"),
-                                QStringLiteral("DELETE FROM imports WHERE id = ?") }) {
+                                QStringLiteral("DELETE FROM items WHERE import_id = ? AND status = 'in_stock'"),
+                                QStringLiteral("DELETE FROM import_images WHERE import_id = ?") }) {
         query.prepare(sql);
         query.addBindValue(id);
         ok = ok && run(query);
+    }
+    query.prepare(QStringLiteral("UPDATE imports SET deleted_at = ? WHERE id = ?"));
+    query.addBindValue(now());
+    query.addBindValue(id);
+    ok = ok && run(query);
+    if (!ok || !commit()) {
+        rollback();
+        return false;
+    }
+    return retryFileCleanup();
+}
+
+bool Store::clearImportHistory()
+{
+    if (!transaction())
+        return false;
+    QSqlQuery query(m_database.handle());
+    const QString visible = QStringLiteral("SELECT id FROM imports WHERE deleted_at IS NULL");
+    bool ok = run(query, QStringLiteral("INSERT OR IGNORE INTO file_cleanup SELECT path FROM import_images "
+                                        "WHERE import_id IN (%1)").arg(visible))
+        && run(query, QStringLiteral("DELETE FROM import_products WHERE import_id IN (%1)").arg(visible))
+        && run(query, QStringLiteral("DELETE FROM import_images WHERE import_id IN (%1)").arg(visible));
+    if (ok) {
+        query.prepare(QStringLiteral("UPDATE imports SET deleted_at = ? WHERE deleted_at IS NULL"));
+        query.addBindValue(now());
+        ok = run(query);
     }
     if (!ok || !commit()) {
         rollback();
@@ -520,13 +562,130 @@ bool Store::deleteAllData()
                                   QStringLiteral("imports"), QStringLiteral("shelf_life_rules"),
                                   QStringLiteral("storage_rules"), QStringLiteral("ai_shelf_life_cache"),
                                   QStringLiteral("pantry_overrides"), QStringLiteral("shopping_items"),
-                                  QStringLiteral("settings") })
+                                  QStringLiteral("settings"), QStringLiteral("name_mappings"), QStringLiteral("preferences"),
+                                  QStringLiteral("import_job_batches"), QStringLiteral("import_jobs"),
+                                  QStringLiteral("cleanup_sessions") })
         ok = ok && run(query, QStringLiteral("DELETE FROM ") + table);
     if (!ok || !commit()) {
         rollback();
         return false;
     }
     return retryFileCleanup();
+}
+
+// Job and batch rows change together: a half-written job (say "done" with pending batches) could
+// not be restored, so every write is one transaction.
+qint64 Store::insertImportJob(const QByteArray &payload, const ResumableJob &job)
+{
+    if (!transaction())
+        return 0;
+    QSqlQuery query(m_database.handle());
+    query.prepare(QStringLiteral("INSERT INTO import_jobs (state, payload, created_at, updated_at) VALUES (?, ?, ?, ?)"));
+    query.addBindValue(ResumableJob::stateKey(job.state()));
+    query.addBindValue(QString::fromUtf8(payload));
+    query.addBindValue(now());
+    query.addBindValue(now());
+    const qint64 id = run(query) ? query.lastInsertId().toLongLong() : 0;
+    if (!id || !writeImportJob(id, job) || !commit()) {
+        rollback();
+        return 0;
+    }
+    return id;
+}
+
+bool Store::saveImportJob(qint64 id, const ResumableJob &job)
+{
+    if (!transaction())
+        return false;
+    if (!writeImportJob(id, job) || !commit()) {
+        rollback();
+        return false;
+    }
+    return true;
+}
+
+bool Store::writeImportJob(qint64 id, const ResumableJob &job)
+{
+    QSqlQuery query(m_database.handle());
+    query.prepare(QStringLiteral("UPDATE import_jobs SET state = ?, updated_at = ? WHERE id = ?"));
+    query.addBindValue(ResumableJob::stateKey(job.state()));
+    query.addBindValue(now());
+    query.addBindValue(id);
+    if (!run(query) || query.numRowsAffected() != 1)
+        return false;
+    query.prepare(QStringLiteral("DELETE FROM import_job_batches WHERE job_id = ? AND batch_index >= ?"));
+    query.addBindValue(id);
+    query.addBindValue(job.batchCount());
+    bool ok = run(query);
+    for (int i = 0; i < job.batchCount() && ok; ++i) {
+        const auto &batch = job.batches().at(i);
+        query.prepare(QStringLiteral("INSERT INTO import_job_batches (job_id, batch_index, state, result, updated_at) "
+                                     "VALUES (?, ?, ?, ?, ?) ON CONFLICT (job_id, batch_index) DO UPDATE SET "
+                                     "state = excluded.state, result = excluded.result, updated_at = excluded.updated_at"));
+        query.addBindValue(id);
+        query.addBindValue(i);
+        query.addBindValue(ResumableJob::batchStateKey(batch.state));
+        query.addBindValue(batch.result.isNull() ? QVariant(QMetaType(QMetaType::QByteArray)) : QVariant(batch.result));
+        query.addBindValue(now());
+        ok = run(query);
+    }
+    return ok;
+}
+
+std::optional<ImportJobRecord> Store::importJob() const
+{
+    QSqlQuery query(m_database.handle());
+    if (!run(query, QStringLiteral("SELECT id, state, payload, created_at FROM import_jobs ORDER BY id DESC LIMIT 1"))
+        || !query.next())
+        return std::nullopt;
+    ImportJobRecord record;
+    record.id = query.value(0).toLongLong();
+    const auto state = ResumableJob::stateFromKey(query.value(1).toString());
+    record.payload = query.value(2).toString().toUtf8();
+    record.createdAt = dateTimeFrom(query.value(3));
+    QSqlQuery rows(m_database.handle());
+    rows.prepare(QStringLiteral("SELECT state, result FROM import_job_batches WHERE job_id = ? ORDER BY batch_index"));
+    rows.addBindValue(record.id);
+    if (!state || !run(rows))
+        return std::nullopt;
+    QList<ResumableJob::Batch> batches;
+    while (rows.next()) {
+        const auto batchState = ResumableJob::batchStateFromKey(rows.value(0).toString());
+        if (!batchState)
+            return std::nullopt;
+        batches.append({ *batchState, rows.value(1).toByteArray() });
+    }
+    const auto job = ResumableJob::restore(*state, batches);
+    if (!job) {
+        qCWarning(lcStore, "import job %lld has inconsistent batches", record.id);
+        return std::nullopt;
+    }
+    record.job = *job;
+    return record;
+}
+
+QList<ImportJobRecord> Store::importJobRows() const
+{
+    QList<ImportJobRecord> rows;
+    QSqlQuery query(m_database.handle());
+    if (!run(query, QStringLiteral("SELECT id, payload, created_at FROM import_jobs ORDER BY id")))
+        return rows;
+    while (query.next()) {
+        ImportJobRecord record;
+        record.id = query.value(0).toLongLong();
+        record.payload = query.value(1).toString().toUtf8();
+        record.createdAt = dateTimeFrom(query.value(2));
+        rows.append(record);
+    }
+    return rows;
+}
+
+bool Store::deleteImportJob(qint64 id)
+{
+    QSqlQuery query(m_database.handle());
+    query.prepare(QStringLiteral("DELETE FROM import_jobs WHERE id = ?"));
+    query.addBindValue(id);
+    return run(query);
 }
 
 QList<ShelfLifeRule> Store::shelfLifeRules() const

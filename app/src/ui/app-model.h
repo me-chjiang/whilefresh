@@ -27,6 +27,7 @@ class AppModel : public QObject
     Q_OBJECT
     Q_PROPERTY(QVariantList items READ items NOTIFY changed)
     Q_PROPERTY(int nearCount READ nearCount NOTIFY changed)
+    Q_PROPERTY(int attentionCount READ attentionCount NOTIFY changed)
     Q_PROPERTY(QVariantList selectedIds READ selectedIds NOTIFY changed)
     Q_PROPERTY(QVariantList recipes READ recipes NOTIFY changed)
     Q_PROPERTY(QVariantList clearRecipes READ clearRecipes NOTIFY changed)
@@ -45,6 +46,7 @@ class AppModel : public QObject
     Q_PROPERTY(QString draftWarning READ draftWarning NOTIFY importChanged)
     Q_PROPERTY(bool draftDuplicate READ draftDuplicate NOTIFY importChanged)
     Q_PROPERTY(int draftFoodCount READ draftFoodCount NOTIFY importChanged)
+    Q_PROPERTY(bool hasUnfinishedImport READ hasUnfinishedImport NOTIFY importChanged)
 
 public:
     AppModel(platform::PlatformServices *platform, std::shared_ptr<const data::BuiltinData> builtin,
@@ -55,6 +57,7 @@ public:
 
     QVariantList items();
     int nearCount();
+    int attentionCount() const;
     QVariantList selectedIds() const;
     QVariantList recipes();
     QVariantList clearRecipes();
@@ -75,6 +78,7 @@ public:
     QString draftWarning() const;
     bool draftDuplicate() const;
     int draftFoodCount() const;
+    bool hasUnfinishedImport() const;
 
     Q_INVOKABLE void toggleSelected(qint64 id);
     Q_INVOKABLE QVariantMap recipeDetail(const QString &id) const;
@@ -84,6 +88,8 @@ public:
 
     Q_INVOKABLE void useItem(qint64 id);
     Q_INVOKABLE void markAbsent(qint64 id);
+    Q_INVOKABLE void discardItem(qint64 id);
+    Q_INVOKABLE void snoozeItem(qint64 id);
     Q_INVOKABLE void toggleFirst(qint64 id, bool enabled);
     Q_INVOKABLE void removeItems(const QVariantList &ids);
     // Returns { ok, error, question } ; question is non-empty when a rule can be remembered.
@@ -99,6 +105,7 @@ public:
                               const QString &days);
     Q_INVOKABLE void deleteRule(const QString &name, const QString &location, const QString &kind);
     Q_INVOKABLE void deleteImport(qint64 id);
+    Q_INVOKABLE void clearImportHistory();
     Q_INVOKABLE void deleteAllData();
     Q_INVOKABLE void setDemoMode(bool enabled);
 
@@ -107,6 +114,10 @@ public:
     Q_INVOKABLE void beginText(const QString &text);
     Q_INVOKABLE void startImport(bool allowDuplicate);
     Q_INVOKABLE void cancelImport();
+    Q_INVOKABLE void skipImport();
+    // Hook for the 计划 page's resume bar (T19).
+    Q_INVOKABLE void resumeImport();
+    Q_INVOKABLE void discardUnfinishedImport();
     Q_INVOKABLE void editDraft(int index, const QVariantMap &edits);
     Q_INVOKABLE void dropDraft(int index);
     Q_INVOKABLE void retrieveDraft(int index);
