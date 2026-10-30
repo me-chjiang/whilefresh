@@ -64,7 +64,7 @@
 - **持久化与 SQL** 只在 `app/src/data/`；迁移集中在 `database.cpp` 的递增列表中，结构变更只追加迁移，不改旧项。`Store` 管理用户数据及导入图片清理，`BuiltinData` 缓存内置只读资源。
 - **词表**：上下位与名称归类逻辑只在 core（`IngredientCatalog::resolveFinest`、`VocabularyResolver`）；识别层不再有自己的词表类型。用户确认的名称映射通过 `core::NameMappingStore` 接口读写，SQLite 实现在 `app/src/data/name-mappings.*`。
 - **AI 服务**（第二轮）放 `app/src/ai/`：只链接 core 和 Qt::Network（CMake 检查）；网络传输只在 `ChatClient`，各服务只通过它调用 DeepSeek、不自己发 HTTP，测试用 `RecordedChatClient` 回放。识别层复用它，不再自带传输。system prompt 用 `SystemPromptBuilder` 组装（偏好摘要在最后），密钥只从 `CredentialProvider` 取。
-- **菜谱源**（第二轮）放 `app/src/recipes/`：只依赖 core；外部子模块 `recipe-sources-xiachufang-api` 不复制进仓库、不修改，只通过 CMake 选项引用。
+- **菜谱源**（第二轮）放 `app/src/recipes/`：只依赖 core 和 yaml-cpp（CMake 检查）；外部子模块 `recipe-sources-xiachufang-api` 不复制进仓库、不修改，只通过 CMake 选项引用。
 - **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口（`RecognitionService`）；换服务商只新增实现，不改调用方。提示词文本集中在 `prompt-templates.h`，改动含义时同步改 `kPromptVersion`。
 - **桌面开发工具**（需要真实密钥或只在桌面有意义的命令行程序）放 `app/tools/`，仅在非 Android 构建中编译，不注册 ctest。
 - **应用服务与视图模型** 放 `app/src/ui/`；`*-service.*` 不依赖 QML，组合领域、持久化、识别与平台载荷；QML 只做展示和交互。
@@ -98,7 +98,7 @@
 
 - 2026-10-30 — T16：新增 `platform/key-vault.*`（`android/`、`desktop/` 各一个实现）、`app/android/.../KeyVault.java`、`ai/preference-summarizer.*`、`core/preference.h`、`ui/settings-model.*`、`ui/user-keys.*`、`qml/pages/{Services,Preferences}Page.qml`、`qml/components/KeyField.qml`、`test-data/recordings/preferences/`。文件名避开 `.gitignore` 的 `*secret*` / `*credential*`。
 - 2026-10-30 — T14：删除 `recognition/vocabulary.*`，识别统一使用 `core::IngredientCatalog`；新增 `core/vocabulary-resolver.*`、`core/name-mapping.h`、`ai/ingredient-classifier.*`、`data/name-mappings.*`，`test-data/vocabulary/resolve-cases.json`，预留 `test-data/recordings/classifier/`。
-
+- 2026-10-30 — T17：新增 `app/src/recipes/`（RecipeSource、下厨房 YAML 解析、RecordedRecipeSource、可选的 ProcessRecipeSource）与 `app/tests/recipes/`；创建 `test-data/recipes/xiachufang/`（样例 YAML 与 SOURCE.md）；`scripts/fetch-deps.sh` 增加 yaml-cpp（`~/.cache/whilefresh/yaml-cpp/`）。
 - 2026-10-30 — T13：新增 `app/src/ai/`（ChatClient、录制回放、SystemPromptBuilder、CredentialProvider）与 `app/tests/ai/`；密钥注入从 recognition 移到 ai，`recognition` 改为依赖 `ai`。
 - 2026-10-29 — 第二轮规划（T12）：PRD v5 归档，新增 `docs/prd-v6.md`、`docs/mvp/round-2-plan.md`；预留 `app/src/ai/`、`app/src/recipes/`、`test-data/recipes/xiachufang/`，由 T13、T17 创建。HowToCook 相关目录将在 T18b 移除。
 - 2026-10-21 — 文档整理：开发说明移到 docs/development.md，历史版本移到 docs/archive/。

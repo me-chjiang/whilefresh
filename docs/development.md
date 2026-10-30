@@ -18,7 +18,7 @@
 
 | 用途 | 命令 |
 | --- | --- |
-| 下载第三方依赖（KDAB android_openssl，固定 commit，存到 `~/.cache/whilefresh/`） | `scripts/fetch-deps.sh` |
+| 下载第三方依赖（KDAB android_openssl、yaml-cpp，固定 commit，存到 `~/.cache/whilefresh/`） | `scripts/fetch-deps.sh` |
 | 构建桌面版（Debug；`--with-key` 注入密钥，`--release` 构建 Release） | `scripts/build-desktop.sh` |
 | 运行桌面版 | `build/desktop/whilefresh` |
 | 单元测试 | `ctest --test-dir build/desktop --output-on-failure` |
@@ -191,6 +191,25 @@ scripts/build-desktop.sh  # 恢复无密钥构建
 ```
 
 录制带请求摘要，归类提示词、词表或名称列表变化后回放会失败，需要重新录制（名称列表须与 `ingredient-classifier-test` 中的 `kRecordedNames` 一致）。
+
+### 菜谱源层
+
+`app/src/recipes/`（`whilefresh-recipes`，只链接 core、Qt::Core 和 yaml-cpp，CMake 中有检查）定义菜谱源接口并解析外部子模块 `recipe-sources-xiachufang-api` 的 YAML 契约（`schema_version` 1.x）。子模块由用户维护，本项目不复制、不修改它的代码；按 PRD，菜谱正文不缓存、不打包进 APK，界面保留 `source_url` 和署名（`WebRecipe::attribution`）。
+
+- yaml-cpp 0.9.0（commit 与子模块 `native/` 相同）由 `scripts/fetch-deps.sh` 下载到 `~/.cache/whilefresh/yaml-cpp/`，在 `app/src/recipes/CMakeLists.txt` 里 `add_subdirectory` 静态编译（桌面与各 Android ABI；关闭测试、工具、contrib），配置阶段不联网。
+- `RecipeSource`：异步接口（`search(keyword, page)`、`detail(id)`、`cancel`），返回请求 id，由 `searchSucceeded` / `detailSucceeded` / `failed` 之一回复；错误为带类型的 `RecipeError`（`NotConfigured`、`InvalidQuery`、`NotFound`、`Unavailable`、`Timeout`、`BadResponse`、`Internal`）。
+- `parseXiachufangYaml`：解析一份 YAML。未知 `schema_version` 主版本、格式错误、字段类型不符都返回 `BadResponse`（不抛异常）；`status.code=error` 按 message / `incomplete` 映射为类型错误；`partial` 置位 `WebRecipe::partial` / `RecipeSearchResult::partial`；`results: null` 视为空。步骤是带 `order/text/image_url` 的映射，`tips` 与步骤分开，食材保留 `raw/name/amount`。
+- `RecordedRecipeSource`：`addFile` / `addDirectory` 读入录制的 YAML，按其回显的 query（搜索按关键词加页码，详情按 id）应答，未录制的请求返回 `NotFound`。
+- `ProcessRecipeSource`：调用子模块的 Python CLI 并解析输出，由 CMake 选项 `WHILEFRESH_XIACHUFANG_ADAPTER`（默认 OFF，Android 忽略）打开。配置为程序和前置参数，例如 `uv` + `run --project <子模块目录> python -m xiachufang_source`。Lexmount 的 api key / project id 由调用方提供的函数在每次请求开始时给出，不保存、不记日志；CLI 只接受命令行参数，运行期间同用户的其他进程能看到。无凭据时用 `--provider direct`，有凭据用 `auto`（直连失败回退 Lexmount）。
+
+```sh
+ctest --test-dir build/desktop --output-on-failure -R 'xiachufang|recorded-recipe'
+# 带适配器（也会跑 process-recipe-source-test，用 /bin/sh 代替真实 CLI）
+~/Qt/6.8.2/macos/bin/qt-cmake -S app -B /tmp/wf-adapter -G Ninja -DWHILEFRESH_XIACHUFANG_ADAPTER=ON
+cmake --build /tmp/wf-adapter && ctest --test-dir /tmp/wf-adapter -R process-recipe
+```
+
+录制样例在 `test-data/recipes/xiachufang/`，生成方式、当前限制（真实详情页抓取失败，详情样例为合成）和使用条款见该目录的 `SOURCE.md`。重新录制：在子模块目录用其 `.venv` 运行 `uv run python -m xiachufang_source --provider direct --keyword <词>`（详情加 `--operation detail --id <id>`），输出重定向到样例文件；直连被拦截时可用 `--provider lexmount`，凭据从 `~/.config/lexmount/config.yaml` 读取、经参数传入，不得打印。提交前用 `rg -i 'api.?key|project.?id|credential|token' test-data/recipes/xiachufang` 确认无凭据。
 
 ### 识别层与录制工具
 

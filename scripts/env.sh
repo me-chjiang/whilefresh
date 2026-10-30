@@ -10,7 +10,8 @@ JAVA_HOME="${JAVA_HOME:-$HOME/Library/Java/JavaVirtualMachines/jdk-17.0.20.1+1/C
 WHILEFRESH_ANDROID_OPENSSL_DIR="${WHILEFRESH_ANDROID_OPENSSL_DIR:-${WHILEFRESH_CACHE_DIR:-$HOME/.cache/whilefresh}/android_openssl}"
 ANDROID_PACKAGE="io.github.mechjiang.whilefresh"
 ADB="$ANDROID_SDK_ROOT/platform-tools/adb"
-export ANDROID_SDK_ROOT ANDROID_NDK_ROOT JAVA_HOME WHILEFRESH_ANDROID_OPENSSL_DIR
+WHILEFRESH_YAML_CPP_DIR="${WHILEFRESH_YAML_CPP_DIR:-${WHILEFRESH_CACHE_DIR:-$HOME/.cache/whilefresh}/yaml-cpp}"
+export ANDROID_SDK_ROOT ANDROID_NDK_ROOT JAVA_HOME WHILEFRESH_ANDROID_OPENSSL_DIR WHILEFRESH_YAML_CPP_DIR
 
 # Exports WHILEFRESH_DEEPSEEK_API_KEY from the macOS keychain (ADR-5), or an empty value.
 # Never print the key; only report whether it was found.

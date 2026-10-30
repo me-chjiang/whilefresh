@@ -21,6 +21,7 @@ set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
 # all of them <- ui <- app.
 add_subdirectory(src/core)
 add_subdirectory(src/ai)
+add_subdirectory(src/recipes)
 add_subdirectory(src/data)
 add_subdirectory(src/recognition)
 add_subdirectory(src/platform)
@@ -39,6 +40,14 @@ get_target_property(_ai_links whilefresh-ai LINK_LIBRARIES)
 foreach(_lib IN LISTS _ai_links)
     if(NOT _lib MATCHES "^(whilefresh-core|Qt6?::Core|Qt6?::Network)$")
         message(FATAL_ERROR "whilefresh-ai may only link whilefresh-core, Qt::Core and Qt::Network, found: ${_lib}")
+    endif()
+endforeach()
+
+# recipes parses the external recipe source's YAML; like ai it stays free of GUI and storage.
+get_target_property(_recipes_links whilefresh-recipes LINK_LIBRARIES)
+foreach(_lib IN LISTS _recipes_links)
+    if(NOT _lib MATCHES "^(whilefresh-core|Qt6?::Core|yaml-cpp::yaml-cpp)$")
+        message(FATAL_ERROR "whilefresh-recipes may only link whilefresh-core, Qt::Core and yaml-cpp, found: ${_lib}")
     endif()
 endforeach()
 

@@ -7,6 +7,10 @@ ANDROID_OPENSSL_URL="https://github.com/KDAB/android_openssl.git"
 # 2026-01-26 "Update binaries with correct symver values (#76)"; ships OpenSSL 3.x for Qt 6.5+.
 ANDROID_OPENSSL_COMMIT="b71f1470962019bd89534a2919f5925f93bc5779"
 
+YAML_CPP_URL="https://github.com/jbeder/yaml-cpp.git"
+# 0.9.0; the same commit recipe-sources-xiachufang-api/native pins, so the YAML contract is parsed by the same library.
+YAML_CPP_COMMIT="56e3bb550c91fd7005566f19c079cb7a503223cf"
+
 fetch_pinned() {
     local url="$1" commit="$2" dir="$3"
     if [[ -d "$dir/.git" ]] && [[ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" == "$commit" ]]; then
@@ -24,3 +28,4 @@ fetch_pinned() {
 }
 
 fetch_pinned "$ANDROID_OPENSSL_URL" "$ANDROID_OPENSSL_COMMIT" "$WHILEFRESH_ANDROID_OPENSSL_DIR"
+fetch_pinned "$YAML_CPP_URL" "$YAML_CPP_COMMIT" "$WHILEFRESH_YAML_CPP_DIR"
