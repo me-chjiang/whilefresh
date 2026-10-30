@@ -6,5 +6,7 @@
 namespace whilefresh::ai::generated {
 
 inline constexpr char kDeepSeekApiKey[] = "@WHILEFRESH_GENERATED_DEEPSEEK_API_KEY@";
+inline constexpr char kLexmountApiKey[] = "@WHILEFRESH_GENERATED_LEXMOUNT_API_KEY@";
+inline constexpr char kLexmountProjectId[] = "@WHILEFRESH_GENERATED_LEXMOUNT_PROJECT_ID@";
 
 }

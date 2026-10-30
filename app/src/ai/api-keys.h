@@ -3,6 +3,8 @@
 #include <QMap>
 #include <QString>
 
+#include <memory>
+
 namespace whilefresh::ai {
 
 // LexmountProjectId is not a key but is stored and fetched the same way (the Lexmount API needs
@@ -21,7 +23,8 @@ public:
     bool isConfigured(Service service) const { return !key(service).isEmpty(); }
 };
 
-// The DeepSeek key compiled in by the build script (ADR-5); no Lexmount key.
+// The keys compiled in by the build script (ADR-5): DeepSeek, Lexmount and the Lexmount project
+// id. Each is empty in a key-less build.
 class BuiltinCredentialProvider : public CredentialProvider
 {
 public:
@@ -39,6 +42,27 @@ public:
 
 private:
     QMap<Service, QString> m_keys;
+};
+
+// `primary` where it has a value, otherwise `fallback`: the user's key over the built-in one.
+class LayeredCredentialProvider final : public CredentialProvider
+{
+public:
+    LayeredCredentialProvider(std::shared_ptr<const CredentialProvider> primary,
+                              std::shared_ptr<const CredentialProvider> fallback)
+        : m_primary(std::move(primary)), m_fallback(std::move(fallback))
+    {
+    }
+
+    QString key(Service service) const override
+    {
+        const QString value = m_primary->key(service);
+        return value.isEmpty() ? m_fallback->key(service) : value;
+    }
+
+private:
+    std::shared_ptr<const CredentialProvider> m_primary;
+    std::shared_ptr<const CredentialProvider> m_fallback;
 };
 
 }

@@ -53,9 +53,11 @@ class AppModel : public QObject
     Q_PROPERTY(QObject *web READ web CONSTANT)
 
 public:
-    // `secrets` defaults to the platform's store (Android Keystore / desktop dev file).
+    // `secrets` defaults to the platform's store (Android Keystore / desktop dev file);
+    // `builtinKeys` to the keys compiled into this build (tests pass stand-ins).
     AppModel(platform::PlatformServices *platform, std::shared_ptr<const data::BuiltinData> builtin,
-             QObject *parent = nullptr, std::unique_ptr<platform::KeyVault> secrets = nullptr);
+             QObject *parent = nullptr, std::unique_ptr<platform::KeyVault> secrets = nullptr,
+             std::shared_ptr<ai::CredentialProvider> builtinKeys = nullptr);
     ~AppModel() override;
 
     bool ok() const { return m_real != nullptr; }
@@ -74,7 +76,7 @@ public:
     bool demoMode() const { return m_active && m_active->demo; }
     bool recognitionConfigured() const;
     // Where the keys come from (built-in or the user's); takes effect for the next request.
-    // Demo mode and leaving it switch this automatically (built-in key / the user's keys).
+    // Demo mode and leaving it switch this automatically (built-in keys / user keys over built-in).
     void setCredentialProvider(std::shared_ptr<ai::CredentialProvider> credentials);
     std::shared_ptr<const ai::CredentialProvider> credentials() const { return m_credentials; }
     SettingsModel *settings() const { return m_settings.get(); }
@@ -176,7 +178,10 @@ private:
     std::shared_ptr<const data::BuiltinData> m_builtin;
     core::SystemClock m_clock;
     // Declared before the sessions so their recognizers never outlive the client.
-    std::shared_ptr<ai::CredentialProvider> m_credentials = std::make_shared<ai::BuiltinCredentialProvider>();
+    std::shared_ptr<ai::CredentialProvider> m_builtinKeys;
+    // Real mode: the user's key over the built-in one. Demo mode: the built-in keys only.
+    std::shared_ptr<ai::CredentialProvider> m_realCredentials;
+    std::shared_ptr<ai::CredentialProvider> m_credentials = m_builtinKeys;
     std::unique_ptr<ai::DeepSeekChatClient> m_chat = std::make_unique<ai::DeepSeekChatClient>(m_credentials);
     std::unique_ptr<SettingsModel> m_settings;
     WebRecipeService *m_web = nullptr;

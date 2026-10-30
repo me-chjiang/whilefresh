@@ -25,8 +25,10 @@ QString failureText(ai::ErrorKind kind)
 }
 
 SettingsModel::SettingsModel(ai::ChatClient *chat, std::shared_ptr<UserCredentialProvider> credentials,
-                             QObject *parent)
-    : QObject(parent), m_chat(chat), m_credentials(std::move(credentials)), m_summarizer(chat)
+                             std::shared_ptr<const ai::CredentialProvider> builtinKeys, QObject *parent)
+    : QObject(parent), m_chat(chat), m_credentials(std::move(credentials)),
+      m_builtinKeys(builtinKeys ? std::move(builtinKeys) : std::make_shared<ai::BuiltinCredentialProvider>()),
+      m_summarizer(chat)
 {
     m_available = m_chat->isConfigured();
     connect(&m_summarizer, &ai::PreferenceSummarizer::summarized, this, &SettingsModel::summarized);
@@ -62,6 +64,13 @@ std::optional<ai::Service> SettingsModel::serviceFor(const QString &field)
     if (field == QLatin1String("lexmountProject"))
         return ai::Service::LexmountProjectId;
     return std::nullopt;
+}
+
+QString SettingsModel::sourceOf(ai::Service service) const
+{
+    if (m_credentials->isConfigured(service))
+        return QStringLiteral("user");
+    return m_builtinKeys->isConfigured(service) ? QStringLiteral("builtin") : QStringLiteral("none");
 }
 
 bool SettingsModel::saveSecret(const QString &field, const QString &value)

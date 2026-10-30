@@ -8,6 +8,7 @@ Rectangle {
     property string label: ""
     property string field: ""
     property bool configured: false
+    property string source: "none"
     property string error: ""
     width: parent.width
     height: column.height + Theme.gap * 2
@@ -22,7 +23,7 @@ Rectangle {
         RowLayout {
             width: parent.width
             Text { text: root.label; font.pixelSize: Theme.textBody; font.weight: Theme.weightBold; color: Theme.ink; Layout.fillWidth: true }
-            Text { text: root.configured ? "已配置" : "未配置"; font.pixelSize: Theme.textMeta; color: root.configured ? Theme.green : Theme.muted }
+            Text { text: root.source === "user" ? "已配置" : root.source === "builtin" ? "内置" : "未配置"; font.pixelSize: Theme.textMeta; color: root.source === "none" ? Theme.muted : Theme.green }
         }
         TextField {
             id: input
