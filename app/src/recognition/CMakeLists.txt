@@ -20,8 +20,6 @@ add_library(whilefresh-recognition STATIC
     response-parser.h
     tls-smoke.cpp
     tls-smoke.h
-    vocabulary.cpp
-    vocabulary.h
 )
 
 target_link_libraries(whilefresh-recognition PUBLIC whilefresh-ai Qt6::Gui Qt6::Network)

@@ -139,6 +139,8 @@ private:
         std::unique_ptr<data::Store> store;
         std::unique_ptr<KitchenService> kitchen;
         std::unique_ptr<recognition::RecognitionService> recognizer;
+        std::unique_ptr<core::NameMappingStore> names;
+        std::unique_ptr<ai::IngredientClassifier> classifier;
         std::unique_ptr<ImportService> import;
     };
 

@@ -30,7 +30,7 @@
 | 客户端 | Qt 6.8.2（Qt Quick / QML + C++17），同一工程构建 Android APK 与 macOS 桌面开发版 |
 | 本地存储 | SQLite（QtSql），带版本迁移 |
 | 识别 | DeepSeek 多模态 API（`deepseek-flash`），长截图切片后识别；App 直连，无后端 |
-| 内置数据 | HowToCook 菜谱、544 项标准食材词表、USDA FoodKeeper 保质期参考，由 Python 离线工具生成 |
+| 内置数据 | HowToCook 菜谱、581 项标准食材词表、USDA FoodKeeper 保质期参考，由 Python 离线工具生成 |
 | 网络 | KDAB android_openssl 提供 HTTPS |
 
 ## 快速开始

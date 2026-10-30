@@ -1,7 +1,6 @@
 #include "recognition/demo-recognizer.h"
 #include "recognition/recording.h"
 #include "recognition/replay-recognizer.h"
-#include "recognition/vocabulary.h"
 
 #include "recognition-test-support.h"
 
@@ -19,7 +18,7 @@ RecognitionRequest requestFor(InputKind kind)
 {
     RecognitionRequest request;
     request.kind = kind;
-    request.vocabulary = syntheticVocabulary();
+    request.catalog = syntheticCatalog();
     return request;
 }
 
@@ -36,41 +35,12 @@ private slots:
         qRegisterMetaType<RecognitionError>();
     }
 
-    void vocabularyLoadsFromJson()
-    {
-        QString error;
-        QTest::ignoreMessage(QtWarningMsg, QRegularExpression("vocabulary: ignored 2 entries"));
-        const auto vocabulary = Vocabulary::fromJson(
-            R"({"items":[{"name":"鸡蛋","category":"蛋奶","aliases":["土鸡蛋"],"staple":false},
-                         {"name":"鸡蛋","category":"x"},
-                         {"name":"","category":"x"},
-                         {"name":"牛奶","category":"蛋奶"}]})", &error);
-        QVERIFY2(vocabulary, qPrintable(error));
-        QCOMPARE(vocabulary->entries().size(), 2);
-        QCOMPARE(vocabulary->resolve(QStringLiteral("土鸡蛋")), QStringLiteral("鸡蛋"));
-        QCOMPARE(vocabulary->resolve(QStringLiteral(" 牛奶 ")), QStringLiteral("牛奶"));
-        QVERIFY(vocabulary->resolve(QStringLiteral("豆浆")).isEmpty());
-        QVERIFY(vocabulary->contains(QStringLiteral("牛奶")));
-        QVERIFY(!vocabulary->contains(QStringLiteral("土鸡蛋")));
-        QCOMPARE(vocabulary->namesByCategory().size(), 1);
-    }
-
-    void vocabularyAcceptsBareArrayAndRejectsGarbage()
-    {
-        QVERIFY(Vocabulary::fromJson(R"([{"name":"鸡蛋","category":"蛋奶"}])"));
-        QString error;
-        QVERIFY(!Vocabulary::fromJson("not json", &error));
-        QVERIFY(!error.isEmpty());
-        QVERIFY(!Vocabulary::fromJson(R"({"items":[]})", &error));
-        QVERIFY(!Vocabulary::fromJson(R"({"other":1})", &error));
-        QVERIFY(!Vocabulary::fromFile(QStringLiteral("/nonexistent/vocabulary.json"), &error));
-    }
-
     void syntheticVocabularyFixtureIsUsable()
     {
-        const auto vocabulary = syntheticVocabulary();
-        QVERIFY(vocabulary->entries().size() > 50);
-        QCOMPARE(vocabulary->resolve(QStringLiteral("麻辣香肠")), QStringLiteral("香肠"));
+        const auto catalog = syntheticCatalog();
+        QVERIFY(catalog->entries().size() > 50);
+        QCOMPARE(catalog->categoryOrder().first(), QStringLiteral("vegetable"));
+        QCOMPARE(catalog->resolve(QStringLiteral("麻辣香肠")), QStringLiteral("香肠"));
     }
 
     void replayReturnsTheRecordedResult()
@@ -106,7 +76,7 @@ private slots:
 
         for (const RecognizedItem &item : result.items) {
             QVERIFY(item.canonicalName == uncategorizedName()
-                    || requestFor(InputKind::Screenshot).vocabulary->contains(item.canonicalName));
+                    || requestFor(InputKind::Screenshot).catalog->contains(item.canonicalName));
         }
     }
 
@@ -144,7 +114,7 @@ private slots:
         QVERIFY2(recording, qPrintable(error));
         recording->batches.clear();
         RecognitionRequest request;
-        request.vocabulary = syntheticVocabulary();
+        request.catalog = syntheticCatalog();
         RecognitionError failure;
         const auto result = resultFromRecording(*recording, request, &failure);
         QVERIFY(result);
@@ -200,8 +170,8 @@ private slots:
     void replayAppliesTheRequestsVocabulary()
     {
         RecognitionRequest request = requestFor(InputKind::Screenshot);
-        request.vocabulary = std::make_shared<const Vocabulary>(*Vocabulary::fromJson(
-            R"({"items":[{"name":"鸡蛋","category":"蛋奶"}]})"));
+        request.catalog = std::make_shared<const whilefresh::core::IngredientCatalog>(
+            *whilefresh::core::IngredientCatalog::fromJson(R"({"items":[{"name":"鸡蛋","category":"egg_dairy"}]})"));
         ReplayRecognizer recognizer(testDataPath(QStringLiteral("recordings/synthetic-cart.json")));
         QSignalSpy succeeded(&recognizer, &RecognitionService::succeeded);
         recognizer.recognize(request);

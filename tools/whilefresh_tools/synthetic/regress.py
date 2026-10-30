@@ -52,7 +52,7 @@ def _audit(sample: Sample, doc: dict) -> None:
     if doc.get("format") != 1 or not doc.get("responses") or not isinstance(doc["responses"], list):
         raise ValueError(f"{sample.id}: not a nonempty format-1 recording")
     req = doc.get("request", {})
-    if req.get("inputKind") != _request_kind(sample) or req.get("promptVersion") != "v2":
+    if req.get("inputKind") != _request_kind(sample) or req.get("promptVersion") not in ("v2", "v3"):
         raise ValueError(f"{sample.id}: wrong input kind or prompt version")
     if req.get("imageCount") != (0 if sample.kind == "text" else 1):
         raise ValueError(f"{sample.id}: unexpected number of input images")

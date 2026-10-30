@@ -4,8 +4,10 @@
 #include "core/fridge-item.h"
 #include "core/import-duplicates.h"
 #include "core/resumable-job.h"
+#include "core/vocabulary-resolver.h"
 #include "data/builtin-data.h"
 #include "data/store.h"
+#include "ai/ingredient-classifier.h"
 #include "platform/import-payload.h"
 #include "recognition/recognition-service.h"
 
@@ -22,8 +24,10 @@ struct DraftItem {
     core::DateParse production;
     core::DateParse purchase;
     core::DateParse expiry;
+    core::NameSource nameSource = core::NameSource::Unresolved;
     bool needsDateConfirmation() const;
     bool needsShelfLife() const { return item.needsShelfLife(); } // 待录保质期
+    bool aiClassified() const { return nameSource == core::NameSource::AiClassified; }
 };
 
 struct ImportDraft {
@@ -53,10 +57,14 @@ public:
                   bool demo = false, QObject *parent = nullptr);
     ~ImportService() override;
 
+    // Optional; both must outlive this object. Without a classifier, names the vocabulary cannot
+    // resolve locally stay 未归类; without a mapping store nothing is remembered.
+    void setNameResolution(core::NameMappingStore *mappings, ai::IngredientClassifier *classifier);
+
     bool receive(const platform::ImportPayload &payload);
     // Explicit consent is required before any recognizer invocation, even after a retry.
     bool start(bool privacyConfirmed, bool allowDuplicate = false);
-    bool busy() const { return m_requestId != 0; }
+    bool busy() const { return m_requestId != 0 || m_classifyId != 0; }
     const ImportDraft &draft() const { return m_draft; }
     bool updateItem(int index, DraftItem item);
     bool setCaptureDate(int imageIndex, const QDate &date);
@@ -97,6 +105,10 @@ private:
     bool dropJob(qint64 id, const QStringList &paths);
     bool dropStoredJobs();
     void recognitionFailed(quint64 id, const recognition::RecognitionError &error);
+    void classified(quint64 id, const ai::Classification &result);
+    void classificationFailed(quint64 id, const ai::ChatError &error);
+    void finishDraft();
+    void rememberNames(const QList<DraftItem> &items);
     void parseDates(DraftItem &item) const;
     void recalculate();
     bool reject(recognition::ErrorKind kind, const QString &message);
@@ -106,13 +118,15 @@ private:
     std::shared_ptr<const data::BuiltinData> m_builtin;
     const core::Clock &m_clock;
     QPointer<recognition::RecognitionService> m_recognizer;
-    std::shared_ptr<const recognition::Vocabulary> m_vocabulary;
     platform::ImportPayload m_payload;
     ImportDraft m_draft;
+    core::NameMappingStore *m_mappings = nullptr;
+    QPointer<ai::IngredientClassifier> m_classifier;
     quint64 m_requestId = 0;
     qint64 m_jobId = 0;
     core::ResumableJob m_job;
     bool m_batchesReported = false; // in the current recognizer run
+    quint64 m_classifyId = 0;
     bool m_received = false;
     bool m_demo = false;
 };

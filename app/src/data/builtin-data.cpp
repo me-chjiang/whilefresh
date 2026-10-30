@@ -32,7 +32,6 @@ std::shared_ptr<const BuiltinData> BuiltinData::load(const QString &directory, Q
     auto catalog = core::IngredientCatalog::fromJson(*vocabulary, error);
     if (!catalog)
         return nullptr;
-    data->vocabularyJson = *vocabulary;
     data->catalog = std::make_shared<const core::IngredientCatalog>(std::move(*catalog));
 
     const auto recipesJson = readFile(dir.filePath(QStringLiteral("recipes.json")), error);

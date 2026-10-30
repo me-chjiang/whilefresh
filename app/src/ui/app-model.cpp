@@ -3,6 +3,7 @@
 #include "core/date-text.h"
 #include "core/fridge-groups.h"
 #include "core/texts.h"
+#include "data/name-mappings.h"
 #include "platform/import-files.h"
 #include "recognition/deepseek-recognizer.h"
 #include "recognition/demo-recognizer.h"
@@ -142,6 +143,11 @@ std::unique_ptr<AppModel::Session> AppModel::openSession(const QString &dbPath, 
     else
         session->recognizer = std::make_unique<rec::DeepSeekRecognizer>(m_chat.get());
     session->import = std::make_unique<ImportService>(*session->store, m_builtin, m_clock, *session->recognizer, demo);
+    if (!demo) {
+        session->names = std::make_unique<data::SqliteNameMappingStore>(*session->database, m_clock);
+        session->classifier = std::make_unique<ai::IngredientClassifier>(m_chat.get(), m_builtin->catalog);
+        session->import->setNameResolution(session->names.get(), session->classifier.get());
+    }
 
     Session *raw = session.get();
     auto *k = raw->kitchen.get();
@@ -694,7 +700,8 @@ QVariantList AppModel::draftItems() const
             { "producedAt", dateText(item.productionDate.date) },
             { "packageExpiresAt", dateText(item.packageExpiry.date) },
             { "group", group }, { "needsDate", d.needsDateConfirmation() },
-            { "kind", core::itemKindKey(item.kind) }, { "needsShelfLife", d.needsShelfLife() } });
+            { "kind", core::itemKindKey(item.kind) }, { "needsShelfLife", d.needsShelfLife() },
+            { "aiClassified", d.aiClassified() } });
     }
     return list;
 }

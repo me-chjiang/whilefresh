@@ -1,7 +1,7 @@
 #pragma once
 
 #include "recognition/recognition-types.h"
-#include "recognition/vocabulary.h"
+#include "core/catalog.h"
 
 #include <QDir>
 #include <QJsonArray>
@@ -45,13 +45,13 @@ inline QString testDataPath(const QString &relative)
     return QDir(QStringLiteral(WHILEFRESH_TEST_DATA_DIR)).filePath(relative);
 }
 
-inline std::shared_ptr<const Vocabulary> syntheticVocabulary()
+inline std::shared_ptr<const core::IngredientCatalog> syntheticCatalog()
 {
     QString error;
-    auto vocabulary = Vocabulary::fromFile(testDataPath(QStringLiteral("vocabulary/synthetic-vocabulary.json")), &error);
-    if (!vocabulary)
+    auto catalog = core::IngredientCatalog::fromFile(testDataPath(QStringLiteral("vocabulary/synthetic-vocabulary.json")), &error);
+    if (!catalog)
         qFatal("cannot load synthetic vocabulary: %s", qUtf8Printable(error));
-    return std::make_shared<const Vocabulary>(*vocabulary);
+    return std::make_shared<const core::IngredientCatalog>(*catalog);
 }
 
 // A /chat/completions body whose assistant message is `content`.

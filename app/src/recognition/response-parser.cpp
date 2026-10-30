@@ -96,15 +96,15 @@ std::optional<int> shelfLifeOf(const QJsonValue &value)
     return days;
 }
 
-QString canonicalOf(const QString &modelName, const Vocabulary *vocabulary)
+QString canonicalOf(const QString &modelName, const core::IngredientCatalog *catalog)
 {
-    if (!vocabulary)
+    if (!catalog)
         return modelName.isEmpty() ? uncategorizedName() : modelName;
-    const QString resolved = vocabulary->resolve(modelName);
+    const QString resolved = catalog->resolve(modelName);
     return resolved.isEmpty() ? uncategorizedName() : resolved;
 }
 
-std::optional<RecognizedItem> parseItem(const QJsonValue &value, const Vocabulary *vocabulary)
+std::optional<RecognizedItem> parseItem(const QJsonValue &value, const core::IngredientCatalog *catalog)
 {
     if (!value.isObject())
         return std::nullopt;
@@ -117,7 +117,7 @@ std::optional<RecognizedItem> parseItem(const QJsonValue &value, const Vocabular
         return std::nullopt;
     if (item.rawName.isEmpty())
         item.rawName = modelName;
-    item.canonicalName = canonicalOf(modelName, vocabulary);
+    item.canonicalName = canonicalOf(modelName, catalog);
 
     item.quantityText = optionalText(object.value(QStringLiteral("quantity_text")));
     item.count = qBound(1, integerOf(object.value(QStringLiteral("count"))).value_or(1), kMaxCount);
@@ -180,12 +180,12 @@ QString itemKey(const RecognizedItem &item)
 
 namespace {
 
-RecognitionResult buildResult(const QJsonObject &root, const QJsonArray &items, const Vocabulary *vocabulary,
+RecognitionResult buildResult(const QJsonObject &root, const QJsonArray &items, const core::IngredientCatalog *catalog,
                               InputKind kind)
 {
     RecognitionResult result;
     for (const QJsonValue &value : items) {
-        if (const auto item = parseItem(value, vocabulary))
+        if (const auto item = parseItem(value, catalog))
             result.items.append(*item);
     }
     result.ignoredSummary = optionalText(root.value(QStringLiteral("ignored_summary")));
@@ -260,7 +260,7 @@ QJsonArray completeItemsOfCutOffText(const QString &text)
 
 }
 
-ParseOutcome parseModelContent(const QString &content, const Vocabulary *vocabulary, InputKind kind)
+ParseOutcome parseModelContent(const QString &content, const core::IngredientCatalog *catalog, InputKind kind)
 {
     const QJsonDocument doc = parseJsonLoosely(content);
     if (doc.isNull())
@@ -277,19 +277,19 @@ ParseOutcome parseModelContent(const QString &content, const Vocabulary *vocabul
     if (!itemsValue.isArray())
         return fail(QStringLiteral("JSON has no \"items\" array"));
 
-    return { buildResult(root, itemsValue.toArray(), vocabulary, kind), {} };
+    return { buildResult(root, itemsValue.toArray(), catalog, kind), {} };
 }
 
 namespace {
 
-ParseOutcome parseCutOffContent(const QString &content, const Vocabulary *vocabulary, InputKind kind)
+ParseOutcome parseCutOffContent(const QString &content, const core::IngredientCatalog *catalog, InputKind kind)
 {
     const QString text = stripCodeFence(content);
     if (text.isEmpty())
         return fail(QStringLiteral("model reply was cut off before any output (finish_reason=length)"));
 
     // Cut off exactly at the end: still complete JSON, but unverifiable, so flagged anyway.
-    ParseOutcome whole = parseModelContent(content, vocabulary, kind);
+    ParseOutcome whole = parseModelContent(content, catalog, kind);
     if (whole.result) {
         whole.result->truncated = true;
         return whole;
@@ -305,14 +305,14 @@ ParseOutcome parseCutOffContent(const QString &content, const Vocabulary *vocabu
     if (match.hasMatch())
         root.insert(QStringLiteral("source_type"), match.captured(1));
 
-    RecognitionResult result = buildResult(root, items, vocabulary, kind);
+    RecognitionResult result = buildResult(root, items, catalog, kind);
     result.truncated = true;
     return { result, {} };
 }
 
 }
 
-ParseOutcome parseChatCompletion(const QByteArray &body, const Vocabulary *vocabulary, InputKind kind)
+ParseOutcome parseChatCompletion(const QByteArray &body, const core::IngredientCatalog *catalog, InputKind kind)
 {
     QJsonParseError parseError;
     const QJsonDocument doc = QJsonDocument::fromJson(body, &parseError);
@@ -329,8 +329,8 @@ ParseOutcome parseChatCompletion(const QByteArray &body, const Vocabulary *vocab
     const QString content = message.value(QStringLiteral("content")).toString();
     // An empty answer is never "no items": with finish_reason=length it means the output
     // budget was spent (thinking counts against it), otherwise the reply is unusable.
-    ParseOutcome outcome = finishReason == QLatin1String("length") ? parseCutOffContent(content, vocabulary, kind)
-                                                                   : parseModelContent(content, vocabulary, kind);
+    ParseOutcome outcome = finishReason == QLatin1String("length") ? parseCutOffContent(content, catalog, kind)
+                                                                   : parseModelContent(content, catalog, kind);
     if (!outcome.result)
         return outcome;
 

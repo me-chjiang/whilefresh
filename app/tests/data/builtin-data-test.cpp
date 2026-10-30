@@ -41,10 +41,9 @@ private slots:
     void sizes()
     {
         QCOMPARE(data->recipes->size(), 372);
-        QCOMPARE(data->catalog->entries().size(), 544);
+        QCOMPARE(data->catalog->entries().size(), 581);
         QVERIFY(!data->shelfLife->isEmpty());
         QCOMPARE(data->shelfLife->sourceName(), QStringLiteral("USDA FoodKeeper"));
-        QVERIFY(!data->vocabularyJson.isEmpty());
         QCOMPARE(data->catalog->categoryDisplayName(QStringLiteral("vegetable")), QStringLiteral("蔬菜"));
         QCOMPARE(data->recipes->source().license, QStringLiteral("Unlicense"));
     }

@@ -140,7 +140,7 @@ std::optional<RecognitionResult> resultFromRecording(const Recording &recording,
 {
     QList<RecognitionResult> parts;
     for (const QByteArray &body : recording.responses) {
-        ParseOutcome outcome = parseChatCompletion(body, request.vocabulary.get(), recording.inputKind);
+        ParseOutcome outcome = parseChatCompletion(body, request.catalog.get(), recording.inputKind);
         if (!outcome.result) {
             if (error)
                 *error = outcome.error;

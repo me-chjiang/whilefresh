@@ -3,6 +3,8 @@ add_library(whilefresh-data STATIC
     builtin-data.h
     database.cpp
     database.h
+    name-mappings.cpp
+    name-mappings.h
     sqlite-support.cpp
     sqlite-support.h
     store.cpp

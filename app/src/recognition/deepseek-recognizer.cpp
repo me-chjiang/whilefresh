@@ -26,7 +26,7 @@ PrepareOutcome prepareJob(const RecognitionRequest &request, const BatchLimits &
             span.lastImage = image.imageIndex;
         }
         outcome.batches.append(
-            { ai::encodeChatRequest(buildChatRequest(request.kind, *request.vocabulary, images, text, options)),
+            { ai::encodeChatRequest(buildChatRequest(request.kind, *request.catalog, images, text, options)),
               int(images.size()), span });
     };
 
@@ -79,7 +79,7 @@ quint64 DeepSeekRecognizer::recognize(const RecognitionRequest &request)
         failLater(id, makeError(ErrorKind::NotConfigured, QStringLiteral("no API key configured")));
         return id;
     }
-    if (!request.vocabulary || request.vocabulary->isEmpty()) {
+    if (!request.catalog || request.catalog->entries().isEmpty()) {
         failLater(id, makeError(ErrorKind::InvalidInput, QStringLiteral("request has no vocabulary")));
         return id;
     }
@@ -198,7 +198,7 @@ void DeepSeekRecognizer::chatSucceeded(quint64 chatId, const ai::ChatResult &cha
     const qint64 elapsed = job.batchTimer.elapsed();
     const int batchNumber = job.batchIndex + 1;
     const qsizetype batchTotal = job.batches.size();
-    ParseOutcome outcome = parseChatCompletion(chat.rawBody, job.request.vocabulary.get(), job.request.kind);
+    ParseOutcome outcome = parseChatCompletion(chat.rawBody, job.request.catalog.get(), job.request.kind);
     if (!outcome.result) {
         qCWarning(lcRecognition, "request %llu batch %d/%lld unparsable: bytes=%lld elapsed=%lldms: %s",
                   id, batchNumber, qint64(batchTotal), qint64(chat.rawBody.size()), elapsed,
