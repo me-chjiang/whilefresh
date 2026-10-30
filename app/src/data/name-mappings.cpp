@@ -45,4 +45,39 @@ bool SqliteNameMappingStore::remember(const QString &rawName, const QString &can
     return true;
 }
 
+QList<std::pair<QString, QString>> SqliteNameMappingStore::entries() const
+{
+    QList<std::pair<QString, QString>> list;
+    QSqlQuery query(m_database.handle());
+    if (!query.exec(QStringLiteral("SELECT raw_name, canonical_name FROM name_mappings ORDER BY raw_name"))) {
+        qCWarning(lcNameMappings, "list failed: %s", qUtf8Printable(query.lastError().text()));
+        return list;
+    }
+    while (query.next())
+        list.append({ query.value(0).toString(), query.value(1).toString() });
+    return list;
+}
+
+bool SqliteNameMappingStore::forget(const QString &rawName)
+{
+    QSqlQuery query(m_database.handle());
+    query.prepare(QStringLiteral("DELETE FROM name_mappings WHERE raw_name = ?"));
+    query.addBindValue(NameMappingStore::key(rawName));
+    if (!query.exec()) {
+        qCWarning(lcNameMappings, "forget failed: %s", qUtf8Printable(query.lastError().text()));
+        return false;
+    }
+    return query.numRowsAffected() > 0;
+}
+
+bool SqliteNameMappingStore::clear()
+{
+    QSqlQuery query(m_database.handle());
+    if (!query.exec(QStringLiteral("DELETE FROM name_mappings"))) {
+        qCWarning(lcNameMappings, "clear failed: %s", qUtf8Printable(query.lastError().text()));
+        return false;
+    }
+    return true;
+}
+
 }

@@ -69,9 +69,19 @@ void setDate(core::RecordedDate &recorded, const QString &text)
 }
 
 AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const data::BuiltinData> builtin,
-                   QObject *parent)
+                   QObject *parent, std::unique_ptr<platform::KeyVault> secrets)
     : QObject(parent), m_platform(platform), m_builtin(std::move(builtin))
 {
+    m_settings = std::make_unique<SettingsModel>(
+        m_chat.get(),
+        std::make_shared<UserCredentialProvider>(secrets ? std::move(secrets) : platform::KeyVault::create()));
+    m_lastConfigured = recognitionConfigured();
+    connect(m_settings.get(), &SettingsModel::servicesChanged, this, [this] {
+        if (recognitionConfigured() != m_lastConfigured) {
+            m_lastConfigured = !m_lastConfigured;
+            emit recognitionConfiguredChanged();
+        }
+    });
     m_dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(m_dataDir);
     m_real = openSession(QDir(m_dataDir).filePath(QStringLiteral("whilefresh.db")), false);
@@ -90,6 +100,7 @@ AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const d
         }
     }
     m_selected = kitchen().defaultSelection();
+    applyModeCredentials();
 
     if (m_platform) {
         connect(m_platform, &platform::PlatformServices::importReceived, this,
@@ -112,11 +123,23 @@ bool AppModel::recognitionConfigured() const { return m_chat->isConfigured(); }
 
 void AppModel::setCredentialProvider(std::shared_ptr<ai::CredentialProvider> credentials)
 {
-    const bool wasConfigured = recognitionConfigured();
     m_credentials = std::move(credentials);
     m_chat->setCredentials(m_credentials);
-    if (recognitionConfigured() != wasConfigured)
+    m_settings->refreshAvailability();
+    if (recognitionConfigured() != m_lastConfigured) {
+        m_lastConfigured = !m_lastConfigured;
         emit recognitionConfiguredChanged();
+    }
+}
+
+void AppModel::applyModeCredentials()
+{
+    // Demo mode never touches the user's keys, and real mode never falls back to the built-in one.
+    if (demoMode())
+        setCredentialProvider(std::make_shared<ai::BuiltinCredentialProvider>());
+    else
+        setCredentialProvider(m_settings->userCredentials());
+    m_settings->attach(m_active ? m_active->store.get() : nullptr, m_active ? m_active->names.get() : nullptr);
 }
 
 QString AppModel::demoPath() const
@@ -227,6 +250,7 @@ void AppModel::activate(Session *session)
     m_selected = kitchen().defaultSelection();
     setImportState(QStringLiteral("idle"));
     invalidate();
+    applyModeCredentials();
     emit demoModeChanged();
 }
 

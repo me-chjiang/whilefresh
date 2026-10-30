@@ -6,6 +6,10 @@
 //   recognize-cli --vocab <vocabulary.json> --replay <recording> (same input as when recorded)
 //   recognize-cli --vocab <vocabulary.json> --classify <names-file> [--record <file> | --replay <file>]
 //
+// --summarize <preferences-file> sends the preferences of a text file (one per line) to the
+// preference summarizer instead (one text-only call; no --vocab needed) and prints the summary;
+// it takes --record / --replay like --classify.
+//
 // --classify sends the product names of a text file (one per line) to the ingredient
 // classifier instead (one text-only call) and prints each name with its standard name; its
 // recordings are ai chat recordings (format 2).
@@ -20,6 +24,7 @@
 #include "ai/api-keys.h"
 #include "ai/deepseek-chat-client.h"
 #include "ai/ingredient-classifier.h"
+#include "ai/preference-summarizer.h"
 #include "ai/recorded-chat-client.h"
 #include "recognition/deepseek-recognizer.h"
 #include "recognition/recording.h"
@@ -127,6 +132,42 @@ int classifyNames(QCoreApplication &app, const QCommandLineParser &parser,
     return exitCode;
 }
 
+int summarizePreferences(QCoreApplication &app, const QCommandLineParser &parser,
+                         whilefresh::ai::RecordingChatClient &recorder, const QStringList &preferences)
+{
+    using whilefresh::ai::PreferenceSummary;
+    whilefresh::ai::PreferenceSummarizer summarizer(&recorder);
+    int exitCode = 1;
+    QObject::connect(&summarizer, &whilefresh::ai::PreferenceSummarizer::summarized, &app,
+                     [&](quint64, const PreferenceSummary &result) {
+                         out() << "elapsed: " << result.elapsedMs << " ms  tokens: " << result.usage.totalTokens
+                               << " (prompt " << result.usage.promptTokens << ", completion "
+                               << result.usage.completionTokens << ")  chars: " << result.text.size() << "\n"
+                               << result.text << "\n";
+                         exitCode = 0;
+                         if (parser.isSet(QStringLiteral("record"))) {
+                             QString recordError;
+                             const QString path = parser.value(QStringLiteral("record"));
+                             if (whilefresh::ai::writeChatRecording(path, recorder.recording(), &recordError))
+                                 out() << "recorded: " << path << "\n";
+                             else {
+                                 err() << "error: " << recordError << "\n";
+                                 exitCode = 1;
+                             }
+                         }
+                         out().flush();
+                         app.quit();
+                     });
+    QObject::connect(&summarizer, &whilefresh::ai::PreferenceSummarizer::failed, &app,
+                     [&](quint64, const whilefresh::ai::ChatError &failure) {
+                         err() << "failed (" << whilefresh::ai::enumKey(failure.kind) << "): " << failure.detail << "\n";
+                         app.quit();
+                     });
+    summarizer.summarize(preferences);
+    app.exec();
+    return exitCode;
+}
+
 }
 
 int main(int argc, char *argv[])
@@ -145,24 +186,40 @@ int main(int argc, char *argv[])
     parser.addOption({ QStringLiteral("record"), QStringLiteral("Save the raw responses as a recording."), QStringLiteral("file") });
     parser.addOption({ QStringLiteral("replay"), QStringLiteral("Answer from a recording instead of the network."), QStringLiteral("file") });
     parser.addOption({ QStringLiteral("classify"), QStringLiteral("Classify the product names in a file (one per line)."), QStringLiteral("file") });
+    parser.addOption({ QStringLiteral("summarize"), QStringLiteral("Summarize the preferences in a file (one per line)."), QStringLiteral("file") });
     parser.process(app);
 
-    if (!parser.isSet(QStringLiteral("vocab"))) {
+    const bool summarize = parser.isSet(QStringLiteral("summarize"));
+    if (!summarize && !parser.isSet(QStringLiteral("vocab"))) {
         err() << "error: --vocab is required\n";
         return 2;
     }
     QString error;
-    const auto vocabulary = whilefresh::core::IngredientCatalog::fromFile(parser.value(QStringLiteral("vocab")), &error);
-    if (!vocabulary) {
-        err() << "error: " << error << "\n";
-        return 2;
+    std::shared_ptr<const whilefresh::core::IngredientCatalog> catalog;
+    if (!summarize) {
+        const auto vocabulary = whilefresh::core::IngredientCatalog::fromFile(parser.value(QStringLiteral("vocab")), &error);
+        if (!vocabulary) {
+            err() << "error: " << error << "\n";
+            return 2;
+        }
+        catalog = std::make_shared<const whilefresh::core::IngredientCatalog>(*vocabulary);
     }
-
-    const auto catalog = std::make_shared<const whilefresh::core::IngredientCatalog>(*vocabulary);
+    QStringList preferencesToSummarize;
     QStringList namesToClassify;
     RecognitionRequest request;
     request.catalog = catalog;
-    if (parser.isSet(QStringLiteral("classify"))) {
+    if (summarize) {
+        QFile file(parser.value(QStringLiteral("summarize")));
+        if (!file.open(QIODevice::ReadOnly)) {
+            err() << "error: cannot read preferences file: " << file.errorString() << "\n";
+            return 2;
+        }
+        preferencesToSummarize = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        if (preferencesToSummarize.isEmpty()) {
+            err() << "error: no preferences to summarize\n";
+            return 2;
+        }
+    } else if (parser.isSet(QStringLiteral("classify"))) {
         QFile file(parser.value(QStringLiteral("classify")));
         if (!file.open(QIODevice::ReadOnly)) {
             err() << "error: cannot read names file: " << file.errorString() << "\n";
@@ -240,6 +297,8 @@ int main(int argc, char *argv[])
     }
     whilefresh::ai::RecordingChatClient recorder(transport.get());
 
+    if (summarize)
+        return summarizePreferences(app, parser, recorder, preferencesToSummarize);
     if (!namesToClassify.isEmpty())
         return classifyNames(app, parser, recorder, catalog, namesToClassify);
 

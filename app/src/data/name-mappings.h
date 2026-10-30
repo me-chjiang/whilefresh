@@ -18,6 +18,9 @@ public:
 
     QString mapped(const QString &rawName) const override;
     bool remember(const QString &rawName, const QString &canonical) override;
+    QList<std::pair<QString, QString>> entries() const override;
+    bool forget(const QString &rawName) override;
+    bool clear() override;
 
 private:
     Database &m_database;

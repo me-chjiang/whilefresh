@@ -11,6 +11,8 @@ add_library(whilefresh-platform STATIC
     platform-info.h
     platform-services.cpp
     platform-services.h
+    key-vault.cpp
+    key-vault.h
 )
 
 target_link_libraries(whilefresh-platform PUBLIC whilefresh-core Qt6::Gui)
@@ -19,6 +21,8 @@ if(ANDROID)
     target_sources(whilefresh-platform PRIVATE
         android/android-platform-services.cpp
         android/android-platform-services.h
+        android/android-key-vault.cpp
+        android/android-key-vault.h
     )
 else()
     # QFileDialog stands in for the system picker and camera; it needs a QApplication (main.cpp).
@@ -26,6 +30,8 @@ else()
     target_sources(whilefresh-platform PRIVATE
         desktop/desktop-platform-services.cpp
         desktop/desktop-platform-services.h
+        desktop/file-key-vault.cpp
+        desktop/file-key-vault.h
     )
     target_link_libraries(whilefresh-platform PUBLIC Qt6::Widgets)
 endif()

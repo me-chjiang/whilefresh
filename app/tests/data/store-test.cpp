@@ -303,6 +303,43 @@ private slots:
         QCOMPARE(query.value(0).toInt(), 0);
     }
 
+    void preferencesCrud()
+    {
+        QVERIFY(m_store->preferences().isEmpty());
+        const qint64 first = m_store->addPreference(QStringLiteral(" 不吃  香菜 "));
+        const qint64 second = m_store->addPreference(QStringLiteral("少油"), QStringLiteral("ai"));
+        QVERIFY(first > 0 && second > first);
+        QCOMPARE(m_store->addPreference(QStringLiteral("不吃 香菜")), qint64(0)); // duplicate
+        QCOMPARE(m_store->addPreference(QStringLiteral("   ")), qint64(0));
+        QCOMPARE(m_store->addPreference(QStringLiteral("x"), QStringLiteral("other")), qint64(0));
+        auto list = m_store->preferences();
+        QCOMPARE(list.size(), 2);
+        QCOMPARE(list.at(0).text, QStringLiteral("不吃 香菜"));
+        QCOMPARE(list.at(0).source, QStringLiteral("user"));
+        QCOMPARE(list.at(1).source, QStringLiteral("ai"));
+        QVERIFY(m_store->updatePreference(first, QStringLiteral("不吃香菜和折耳根")));
+        QVERIFY(!m_store->updatePreference(first, QStringLiteral(" ")));
+        QVERIFY(!m_store->updatePreference(9999, QStringLiteral("x")));
+        QCOMPARE(m_store->preferences().at(0).text, QStringLiteral("不吃香菜和折耳根"));
+        QVERIFY(m_store->deletePreference(second));
+        QVERIFY(!m_store->deletePreference(second));
+        QCOMPARE(m_store->preferences().size(), 1);
+        QVERIFY(m_store->deleteAllData());
+        QVERIFY(m_store->preferences().isEmpty());
+    }
+
+    void preferencesAreCapped()
+    {
+        for (int i = 0; i < kPreferenceMaxCount; ++i)
+            QVERIFY(m_store->addPreference(QStringLiteral("偏好%1").arg(i)) > 0);
+        QCOMPARE(m_store->addPreference(QStringLiteral("多出来的")), qint64(0));
+        QCOMPARE(m_store->addPreference(QString(kPreferenceMaxChars + 50, QLatin1Char('a')).replace(0, 1, QLatin1Char('z'))), qint64(0));
+        QVERIFY(m_store->deletePreference(m_store->preferences().first().id));
+        const qint64 id = m_store->addPreference(QString(kPreferenceMaxChars + 50, QLatin1Char('a')));
+        QVERIFY(id > 0);
+        QCOMPARE(m_store->preferences().last().text.size(), kPreferenceMaxChars);
+    }
+
     void deleteAllData()
     {
         const QString image = QDir(importsDir()).filePath(QStringLiteral("a.jpg"));

@@ -17,6 +17,7 @@ add_library(whilefresh-core STATIC
     name-mapping.h
     pantry.cpp
     pantry.h
+    preference.h
     quantity.cpp
     quantity.h
     recipe.cpp

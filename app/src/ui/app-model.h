@@ -10,6 +10,7 @@
 #include "recognition/recognition-service.h"
 #include "ui/import-service.h"
 #include "ui/kitchen-service.h"
+#include "ui/settings-model.h"
 
 #include <QObject>
 #include <QSet>
@@ -38,6 +39,7 @@ class AppModel : public QObject
     Q_PROPERTY(QVariantList imports READ imports NOTIFY changed)
     Q_PROPERTY(bool demoMode READ demoMode NOTIFY demoModeChanged)
     Q_PROPERTY(bool recognitionConfigured READ recognitionConfigured NOTIFY recognitionConfiguredChanged)
+    Q_PROPERTY(QObject *settings READ settings CONSTANT)
     Q_PROPERTY(QString startupNotice READ startupNotice CONSTANT)
     Q_PROPERTY(QString privacyNotice READ privacyNotice CONSTANT)
     Q_PROPERTY(QString importState READ importState NOTIFY importChanged)
@@ -49,8 +51,9 @@ class AppModel : public QObject
     Q_PROPERTY(bool hasUnfinishedImport READ hasUnfinishedImport NOTIFY importChanged)
 
 public:
+    // `secrets` defaults to the platform's store (Android Keystore / desktop dev file).
     AppModel(platform::PlatformServices *platform, std::shared_ptr<const data::BuiltinData> builtin,
-             QObject *parent = nullptr);
+             QObject *parent = nullptr, std::unique_ptr<platform::KeyVault> secrets = nullptr);
     ~AppModel() override;
 
     bool ok() const { return m_real != nullptr; }
@@ -68,8 +71,11 @@ public:
     QVariantList imports() const;
     bool demoMode() const { return m_active && m_active->demo; }
     bool recognitionConfigured() const;
-    // Where the DeepSeek key comes from (built-in or the user's); takes effect for the next request.
+    // Where the keys come from (built-in or the user's); takes effect for the next request.
+    // Demo mode and leaving it switch this automatically (built-in key / the user's keys).
     void setCredentialProvider(std::shared_ptr<ai::CredentialProvider> credentials);
+    std::shared_ptr<const ai::CredentialProvider> credentials() const { return m_credentials; }
+    SettingsModel *settings() const { return m_settings.get(); }
     QString startupNotice() const { return m_startupNotice; }
     static QString privacyNotice() { return ImportService::privacyNotice(); }
     QString importState() const { return m_importState; }
@@ -147,6 +153,7 @@ private:
     std::unique_ptr<Session> openSession(const QString &dbPath, bool demo);
     void seedDemo(Session &session);
     void activate(Session *session);
+    void applyModeCredentials();
     void invalidate();
     void setImportState(const QString &state, const QString &error = {});
     QVariantMap itemMap(const core::FridgeItem &item) const;
@@ -161,6 +168,7 @@ private:
     // Declared before the sessions so their recognizers never outlive the client.
     std::shared_ptr<ai::CredentialProvider> m_credentials = std::make_shared<ai::BuiltinCredentialProvider>();
     std::unique_ptr<ai::DeepSeekChatClient> m_chat = std::make_unique<ai::DeepSeekChatClient>(m_credentials);
+    std::unique_ptr<SettingsModel> m_settings;
     std::unique_ptr<Session> m_real;
     std::unique_ptr<Session> m_demo;
     Session *m_active = nullptr;
@@ -171,6 +179,7 @@ private:
     QString m_importState = QStringLiteral("idle");
     QString m_importError;
     bool m_consented = false;
+    bool m_lastConfigured = false;
 
     std::optional<QVariantList> m_items;
     std::optional<QVariantList> m_recipes;
