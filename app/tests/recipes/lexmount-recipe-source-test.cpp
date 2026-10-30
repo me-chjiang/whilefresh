@@ -247,17 +247,41 @@ private slots:
         QTRY_COMPARE(source.pendingCleanups(), 0);
     }
 
-    void cancelBeforeAnySessionExistsLeavesNothingBehind()
+    void cancelWhileTheSessionIsBeingCreatedStillDeletesIt()
     {
         FakeLexmountServer server;
+        server.createDelayMs = 400;
         server.detailScrape = detailScrape();
         LexmountRecipeSource source(credentials(), fastConfig(server));
         QSignalSpy ok(&source, &RecipeSource::detailSucceeded);
+        QSignalSpy bad(&source, &RecipeSource::failed);
         const quint64 id = source.detail(QStringLiteral("1"));
+        QTRY_COMPARE(server.created, 1); // the create call is in flight, its answer is delayed
+        QCOMPARE(server.deletes(), 0);
         source.cancel(id);
-        QTest::qWait(300);
+        QTRY_COMPARE_WITH_TIMEOUT(server.deletes(), 1, 5000);
+        QCOMPARE(server.http.last().method, QByteArray("DELETE"));
+        QCOMPARE(QJsonDocument::fromJson(server.http.last().body).object().value(QLatin1String("session_id")).toString(), QStringLiteral("s1"));
+        QTRY_COMPARE(source.pendingCleanups(), 0);
         QCOMPARE(ok.size(), 0);
-        QCOMPARE(server.deletes(), server.created); // a session created in flight is still deleted
+        QCOMPARE(bad.size(), 0);
+        QCOMPARE(server.commands.size(), 0); // it never went on to drive the browser
+    }
+
+    void timeoutWhileTheSessionIsBeingCreatedStillDeletesIt()
+    {
+        FakeLexmountServer server;
+        server.createDelayMs = 600;
+        auto config = fastConfig(server);
+        config.httpTimeoutMs = 200;
+        LexmountRecipeSource source(credentials(), config);
+        QSignalSpy bad(&source, &RecipeSource::failed);
+        source.detail(QStringLiteral("1"));
+        QTRY_COMPARE_WITH_TIMEOUT(bad.size(), 1, 5000);
+        QCOMPARE(bad.first().at(1).value<RecipeError>().kind, RecipeErrorKind::Timeout);
+        QTRY_COMPARE_WITH_TIMEOUT(server.deletes(), server.created, 5000);
+        QCOMPARE(server.created, 1);
+        QTRY_COMPARE(source.pendingCleanups(), 0);
     }
 
     void aCancelledRequestsLateRepliesDoNotLeakIntoTheNextOne()

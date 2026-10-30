@@ -7,6 +7,8 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QList>
+#include <QPointer>
+#include <QTimer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QUrl>
@@ -51,6 +53,7 @@ public:
 
     // Behaviour switches, set before the request under test.
     int createStatus = 200;
+    int createDelayMs = 0;            // answer POST /instance/v2 this late
     int versionStatus = 200;
     int sessionPollsBeforeActive = 1;
     int staleStatePolls = 2;          // polls that still see about:blank after Page.navigate
@@ -145,6 +148,15 @@ private:
             }
             const QString id = QStringLiteral("s%1").arg(++created);
             m_polls.insert(id, 0);
+            if (createDelayMs > 0) {
+                QPointer<QTcpSocket> guard(socket);
+                QTimer::singleShot(createDelayMs, this, [this, guard, id] {
+                    if (guard) {
+                        reply(guard, 200, { { QStringLiteral("session_id"), id } });
+                    }
+                });
+                return;
+            }
             reply(socket, 200, { { QStringLiteral("session_id"), id } });
         } else if (record.method == "POST" && record.path == "/instance/session") {
             const QString id = body.value(QLatin1String("session_id")).toString();

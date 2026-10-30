@@ -131,6 +131,7 @@ public:
         m_elapsed.start();
         m_totalTimer.start(m_config.totalTimeoutMs);
         qCInfo(lcRecipes, "recipe %llu: creating browser session", m_id);
+        m_creating = true;
         http("POST", QStringLiteral("/instance/v2"),
             QJsonObject { { QStringLiteral("browser_mode"), QStringLiteral("normal") },
                 { QStringLiteral("enable_lightmount_layout"), true }, { QStringLiteral("enable_captcha"), false },
@@ -192,6 +193,7 @@ private:
             if (m_reply == reply) {
                 m_reply = nullptr;
             }
+            m_creating = false; // only the first call (session creation) sets it
             if (m_done || token != m_token) {
                 return; // a stale reply must not move a newer step
             }
@@ -488,10 +490,17 @@ private:
         ++m_token;
         m_stepTimer.stop();
         m_totalTimer.stop();
+        bool adopted = false;
         if (m_reply) {
             m_reply->disconnect(this);
-            m_reply->abort();
-            m_reply->deleteLater();
+            if (m_creating) {
+                // The server may already have created the session; let the reply arrive and delete it.
+                adoptCreateReply(m_reply);
+                adopted = true;
+            } else {
+                m_reply->abort();
+                m_reply->deleteLater();
+            }
             m_reply = nullptr;
         }
         if (m_cdp) {
@@ -499,15 +508,50 @@ private:
             m_cdp->close();
         }
         m_pending.clear();
-        startCleanup();
+        if (!adopted) {
+            startCleanup(m_sessionId);
+        }
         if (m_owner) {
             m_owner->jobFinished(m_id, isSearch(), silent ? std::optional<RecipeError>() : error, yaml, silent, this);
         }
     }
 
-    void startCleanup()
+    // A cancelled or timed-out POST /instance/v2 is not aborted: its reply tells us the session id.
+    void adoptCreateReply(QNetworkReply *reply)
     {
-        if (m_sessionId.isEmpty()) {
+        if (m_owner) {
+            ++m_owner->m_cleaning;
+        }
+        auto *timer = new QTimer(reply);
+        timer->setSingleShot(true);
+        connect(timer, &QTimer::timeout, reply, &QNetworkReply::abort);
+        timer->start(m_config.cleanupTimeoutMs);
+        connect(reply, &QNetworkReply::finished, this, [this, reply] {
+            reply->deleteLater();
+            QString sessionId;
+            if (reply->error() == QNetworkReply::NoError) {
+                sessionId = findString(QJsonDocument::fromJson(reply->readAll()).object(),
+                    { QStringLiteral("session_id"), QStringLiteral("sessionId"), QStringLiteral("instance_id"), QStringLiteral("id") });
+            }
+            if (!sessionId.isEmpty()) {
+                qCInfo(lcRecipes, "recipe %llu: removing the session of an abandoned create call", m_id);
+                startCleanup(sessionId); // counts itself before this one is released
+            } else {
+                qCWarning(lcRecipes, "recipe %llu: abandoned create call returned no session (error %d)", m_id, int(reply->error()));
+                deleteLater();
+            }
+            if (m_owner) {
+                --m_owner->m_cleaning;
+                if (sessionId.isEmpty()) {
+                    emit m_owner->cleanupFinished(m_id, false);
+                }
+            }
+        });
+    }
+
+    void startCleanup(const QString &sessionId)
+    {
+        if (sessionId.isEmpty()) {
             deleteLater();
             return;
         }
@@ -516,7 +560,7 @@ private:
         }
         // Exactly the request lexmount.py sends: DELETE <base>/instance with {"session_id": ...} as JSON.
         const QNetworkRequest request = makeRequest(QStringLiteral("/instance"));
-        const QByteArray body = QJsonDocument(QJsonObject { { QStringLiteral("session_id"), m_sessionId } }).toJson(QJsonDocument::Compact);
+        const QByteArray body = QJsonDocument(QJsonObject { { QStringLiteral("session_id"), sessionId } }).toJson(QJsonDocument::Compact);
         QNetworkReply *reply = m_network->sendCustomRequest(request, "DELETE", body);
         auto *timer = new QTimer(reply);
         timer->setSingleShot(true);
@@ -547,6 +591,7 @@ private:
     ContractQuery m_query;
 
     bool m_done = false;
+    bool m_creating = false;
     int m_token = 0;
     QString m_sessionId;
     QString m_cdpSession;
