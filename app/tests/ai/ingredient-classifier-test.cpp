@@ -145,7 +145,7 @@ private slots:
 
     // A real DeepSeek answer for synthetic names, recorded with recognize-cli --classify. The
     // recording holds the request digest, so a change to the prompt or the vocabulary shows up
-    // here and needs a new recording (docs/development.md).
+    // here and needs a new recording (docs/done/development.md).
     void liveRecordingReplays()
     {
         const QString path = QStringLiteral(WHILEFRESH_TEST_DATA_DIR "/recordings/classifier/synthetic-names.json");

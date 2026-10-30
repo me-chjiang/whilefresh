@@ -27,7 +27,7 @@ add_subdirectory(src/recognition)
 add_subdirectory(src/platform)
 add_subdirectory(src/ui)
 
-# core must stay testable on the desktop without GUI, network or other layers (FHS.md).
+# core must stay testable on the desktop without GUI, network or other layers (STD.md).
 get_target_property(_core_links whilefresh-core LINK_LIBRARIES)
 foreach(_lib IN LISTS _core_links)
     if(NOT _lib MATCHES "^Qt6?::Core$")
