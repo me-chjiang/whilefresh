@@ -39,6 +39,14 @@ public:
         m_server.listen(QHostAddress::LocalHost, 0);
     }
 
+    ~FakeLexmountServer() override
+    {
+        // The sockets are children of m_server and outlive m_connections; stop their slots first.
+        for (QTcpSocket *socket : m_connections.keys()) {
+            socket->disconnect(this);
+        }
+    }
+
     QUrl baseUrl() const { return QUrl(QStringLiteral("http://127.0.0.1:%1").arg(m_server.serverPort())); }
 
     // Behaviour switches, set before the request under test.

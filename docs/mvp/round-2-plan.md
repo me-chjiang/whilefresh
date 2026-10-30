@@ -16,7 +16,7 @@ ui ──► ai ──► core          ai：DeepSeek 对话传输与各 AI 服�
 ```
 
 - `ai` 只依赖 core 和 Qt::Network；`recognition` 改为依赖 `ai`。CMake 中的分层检查同步更新。
-- `recipes` 只依赖 core；YAML 解析使用 yaml-cpp，版本与菜谱源子模块一致，由 `scripts/fetch-deps.sh` 下载。
+- `recipes` 依赖 core、Qt::Network 和 yaml-cpp（CMake 分层检查同步更新）。YAML 解析使用 yaml-cpp，版本与菜谱源子模块一致，由 `scripts/fetch-deps.sh` 下载。原计划“只依赖 core”，改动原因：实时来源 `LexmountRecipeSource` 要用 QNetworkAccessManager 和套接字访问 Lexmount 与 DevTools（2026-10-30，T17 第二轮）。
 
 ## 2. 架构决策
 

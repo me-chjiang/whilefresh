@@ -14,6 +14,10 @@ namespace whilefresh::recipes {
 
 class LexmountJob;
 
+// Temporary credential source for desktop use until the settings page stores them (T16):
+// WHILEFRESH_LEXMOUNT_API_KEY and WHILEFRESH_LEXMOUNT_PROJECT_ID.
+LexmountCredentials lexmountCredentialsFromEnvironment();
+
 struct LexmountConfig {
     QUrl baseUrl { QStringLiteral("https://api.lexmount.cn") };
     int httpTimeoutMs = 15000;      // one Lexmount HTTP call
@@ -61,6 +65,8 @@ public:
 signals:
     // The contract document a successful request was built from (for recording samples).
     void documentReady(quint64 requestId, const QByteArray &yaml);
+    // The browser session of a request was deleted (ok) or deleting it failed.
+    void cleanupFinished(quint64 requestId, bool ok);
 
 private:
     friend class LexmountJob;

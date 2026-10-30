@@ -13,7 +13,7 @@ private slots:
     void directoryIsLoaded()
     {
         RecordedRecipeSource source;
-        QCOMPARE(source.addDirectory(QStringLiteral(WHILEFRESH_RECIPE_SAMPLES_DIR)), 6);
+        QCOMPARE(source.addDirectory(QStringLiteral(WHILEFRESH_RECIPE_SAMPLES_DIR)), 7);
         QVERIFY(!source.addFile(QStringLiteral(WHILEFRESH_RECIPE_SAMPLES_DIR "/SOURCE.md")));
         QVERIFY(!source.addFile(QStringLiteral("/nonexistent.yaml")));
     }

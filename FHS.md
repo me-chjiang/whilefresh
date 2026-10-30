@@ -25,14 +25,14 @@
 │   │   ├── data/              # SQLite 存储、迁移、内置只读数据加载
 │   │   ├── ai/                # DeepSeek 对话传输（ChatClient）、录制回放、system prompt 组装、密钥来源（T13）；之后的各 AI 服务（归类、方案、平替、偏好整理）
 │   │   ├── recognition/       # 识别接口与实现（DeepSeek、回放、演示）、切片、解析、去重
-│   │   ├── recipes/           # 第二轮（T17）：菜谱源接口、下厨房 YAML 解析、录制样例回放、子模块适配
+│   │   ├── recipes/           # 第二轮（T17）：菜谱源接口、下厨房 YAML 解析、Lexmount 云浏览器实时来源（含 WebSocket/CDP）、录制样例回放、子模块适配
 │   │   ├── platform/          # 平台适配的 C++ 侧（分享、相机、文件、剪贴板）、导入载荷与日期来源
 │   │   │   ├── android/       # JNI 胶水（只在 Android 构建中编译）
 │   │   │   └── desktop/       # 桌面替代实现（文件对话框、剪贴板）
 │   │   └── ui/                # 应用服务（ImportService / KitchenService，不依赖 QML）及暴露给 QML 的视图模型
 │   ├── qml/                   # QML 页面与组件；Theme 单例
 │   ├── android/               # AndroidManifest、Java 桥接（src/io/github/mechjiang/whilefresh/）、res（xml/ 为 FileProvider 路径）
-│   ├── tools/                 # 仅桌面可用的 C++ 开发工具（如 recognize-cli 真实识别与录制），不进 ctest、不进 APK
+│   ├── tools/                 # 仅桌面可用的 C++ 开发工具（如 recognize-cli 真实识别与录制、recipe-cli 真实菜谱读取与录制），不进 ctest、不进 APK
 │   ├── assets/
 │   │   ├── data/              # 内置只读数据（由 tools/ 生成并提交）：菜谱、词表、参考表
 │   │   ├── icons/             # Tabler 线条 SVG（附许可文件）
@@ -64,7 +64,7 @@
 - **持久化与 SQL** 只在 `app/src/data/`；迁移集中在 `database.cpp` 的递增列表中，结构变更只追加迁移，不改旧项。`Store` 管理用户数据及导入图片清理，`BuiltinData` 缓存内置只读资源。
 - **词表**：上下位与名称归类逻辑只在 core（`IngredientCatalog::resolveFinest`、`VocabularyResolver`）；识别层不再有自己的词表类型。用户确认的名称映射通过 `core::NameMappingStore` 接口读写，SQLite 实现在 `app/src/data/name-mappings.*`。
 - **AI 服务**（第二轮）放 `app/src/ai/`：只链接 core 和 Qt::Network（CMake 检查）；网络传输只在 `ChatClient`，各服务只通过它调用 DeepSeek、不自己发 HTTP，测试用 `RecordedChatClient` 回放。识别层复用它，不再自带传输。system prompt 用 `SystemPromptBuilder` 组装（偏好摘要在最后），密钥只从 `CredentialProvider` 取。
-- **菜谱源**（第二轮）放 `app/src/recipes/`：只依赖 core 和 yaml-cpp（CMake 检查）；外部子模块 `recipe-sources-xiachufang-api` 不复制进仓库、不修改，只通过 CMake 选项引用。
+- **菜谱源**（第二轮）放 `app/src/recipes/`：只依赖 core、Qt::Network 和 yaml-cpp（CMake 检查）；实时来源全部异步，不得阻塞 UI 线程；外部子模块 `recipe-sources-xiachufang-api` 不复制进仓库、不修改，只通过 CMake 选项引用。
 - **识别服务实现** 放 `app/src/recognition/`，都实现同一个接口（`RecognitionService`）；换服务商只新增实现，不改调用方。提示词文本集中在 `prompt-templates.h`，改动含义时同步改 `kPromptVersion`。
 - **桌面开发工具**（需要真实密钥或只在桌面有意义的命令行程序）放 `app/tools/`，仅在非 Android 构建中编译，不注册 ctest。
 - **应用服务与视图模型** 放 `app/src/ui/`；`*-service.*` 不依赖 QML，组合领域、持久化、识别与平台载荷；QML 只做展示和交互。
@@ -97,6 +97,7 @@
 ## Change log
 
 - 2026-10-30 — T16：新增 `platform/key-vault.*`（`android/`、`desktop/` 各一个实现）、`app/android/.../KeyVault.java`、`ai/preference-summarizer.*`、`core/preference.h`、`ui/settings-model.*`、`ui/user-keys.*`、`qml/pages/{Services,Preferences}Page.qml`、`qml/components/KeyField.qml`、`test-data/recordings/preferences/`。文件名避开 `.gitignore` 的 `*secret*` / `*credential*`。
+- 2026-10-30 — T17 第二轮：`app/src/recipes/` 增加 LexmountRecipeSource、CdpConnection、WebSocketCodec、契约 YAML 生成；`app/tools/recipe-cli`；`app/src/ui/web-recipe-service.*` 与 `WebRecipeDetailPage.qml`；`recipes` 层改为依赖 core、Qt::Network、yaml-cpp；样例目录换成真实详情。
 - 2026-10-30 — T17：新增 `app/src/recipes/`（RecipeSource、下厨房 YAML 解析、RecordedRecipeSource、可选的 ProcessRecipeSource）与 `app/tests/recipes/`；创建 `test-data/recipes/xiachufang/`（样例 YAML 与 SOURCE.md）；`scripts/fetch-deps.sh` 增加 yaml-cpp（`~/.cache/whilefresh/yaml-cpp/`）。
 - 2026-10-30 — T14：删除 `recognition/vocabulary.*`，识别统一使用 `core::IngredientCatalog`；新增 `core/vocabulary-resolver.*`、`core/name-mapping.h`、`ai/ingredient-classifier.*`、`data/name-mappings.*`，`test-data/vocabulary/resolve-cases.json`，预留 `test-data/recordings/classifier/`。
 - 2026-10-30 — T13：新增 `app/src/ai/`（ChatClient、录制回放、SystemPromptBuilder、CredentialProvider）与 `app/tests/ai/`；密钥注入从 recognition 移到 ai，`recognition` 改为依赖 `ai`。

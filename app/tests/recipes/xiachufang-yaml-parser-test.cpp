@@ -63,46 +63,58 @@ private slots:
 
     void detailSampleKeepsStepsIngredientsAndTipsApart()
     {
-        const ParsedRecipeDocument parsed = parseXiachufangYaml(sample("detail-synthetic-full.yaml"));
+        const ParsedRecipeDocument parsed = parseXiachufangYaml(sample("detail-lexmount-103468406.yaml"));
         QVERIFY(parsed.ok());
         QCOMPARE(*parsed.operation, RecipeDocument::Operation::Detail);
-        QCOMPARE(parsed.queryId, QStringLiteral("900000001"));
+        QCOMPARE(parsed.queryId, QStringLiteral("103468406"));
         QVERIFY(parsed.document->recipe.has_value());
         const WebRecipe &recipe = *parsed.document->recipe;
         QVERIFY(!recipe.partial);
-        QCOMPARE(recipe.id, QStringLiteral("900000001"));
-        QCOMPARE(recipe.name, QStringLiteral("示例番茄炒蛋"));
-        QCOMPARE(recipe.attribution.sourceUrl, QStringLiteral("https://www.xiachufang.com/recipe/900000001/"));
-        QCOMPARE(recipe.imageUrl, QStringLiteral("https://i2.chuimg.com/example-cover.jpg"));
+        QCOMPARE(recipe.id, QStringLiteral("103468406"));
+        QCOMPARE(recipe.name, QStringLiteral("【虾仁滑蛋】超嫩滑，复刻茶餐厅经典"));
+        QCOMPARE(recipe.attribution.sourceUrl, QStringLiteral("https://www.xiachufang.com/recipe/103468406/"));
+        QCOMPARE(recipe.attribution.provider, QStringLiteral("lexmount"));
+        QVERIFY(recipe.imageUrl.startsWith(QStringLiteral("https://i2.chuimg.com/")));
         QVERIFY(recipe.rating.has_value());
-        QCOMPARE(*recipe.rating, 8.6);
+        QCOMPARE(*recipe.rating, 8.1);
         QVERIFY(!recipe.ratingCount.has_value());
 
-        QCOMPARE(recipe.steps.size(), 3);
+        QCOMPARE(recipe.steps.size(), 2);
         QCOMPARE(recipe.steps[0].order, 1);
-        QCOMPARE(recipe.steps[0].text, QStringLiteral("番茄洗净切块，鸡蛋打散加少许盐。"));
-        QCOMPARE(recipe.steps[0].imageUrl, QStringLiteral("https://i2.chuimg.com/example-step1.jpg"));
+        QCOMPARE(recipe.steps[0].text, QStringLiteral("准备食材"));
+        QVERIFY(recipe.steps[0].imageUrl.startsWith(QStringLiteral("https://i2.chuimg.com/")));
         QCOMPARE(recipe.steps[1].order, 2);
-        QVERIFY(recipe.steps[1].imageUrl.isEmpty());
-        QCOMPARE(recipe.steps[2].order, 3);
+        QVERIFY(recipe.steps[1].text.startsWith(QStringLiteral("虾仁冲洗后")));
 
-        QCOMPARE(recipe.tips, QStringList { QStringLiteral("番茄先用开水烫一下更容易去皮。") });
+        QCOMPARE(recipe.tips.size(), 1);
+        QVERIFY(recipe.tips.first().contains(QStringLiteral("冷冻虾仁")));
         for (const RecipeStep &step : recipe.steps) {
-            QVERIFY(!step.text.contains(QStringLiteral("开水烫")));
+            QVERIFY(!step.text.contains(QStringLiteral("冷冻虾仁")));
         }
 
-        QCOMPARE(recipe.ingredients.size(), 4);
-        QCOMPARE(recipe.ingredients[0].raw, QStringLiteral("番茄 2个"));
-        QCOMPARE(recipe.ingredients[0].name, QStringLiteral("番茄"));
-        QCOMPARE(recipe.ingredients[0].amount, QStringLiteral("2个"));
+        QCOMPARE(recipe.ingredients.size(), 3);
+        QCOMPARE(recipe.ingredients[0].raw, QStringLiteral("鸡蛋 4个"));
+        QCOMPARE(recipe.ingredients[0].name, QStringLiteral("鸡蛋"));
+        QCOMPARE(recipe.ingredients[0].amount, QStringLiteral("4个"));
         QCOMPARE(recipe.ingredients[0].required, QStringLiteral("unknown"));
-        QCOMPARE(recipe.ingredients[3].raw, QStringLiteral("葱花"));
-        QVERIFY(recipe.ingredients[3].amount.isEmpty());
+        QCOMPARE(recipe.ingredients[2].raw, QStringLiteral("葱 1束"));
+    }
+
+    void secondDetailSampleHasNoTips()
+    {
+        const ParsedRecipeDocument parsed = parseXiachufangYaml(sample("detail-lexmount-107114615.yaml"));
+        QVERIFY(parsed.ok());
+        const WebRecipe &recipe = *parsed.document->recipe;
+        QCOMPARE(recipe.name, QStringLiteral("清炒虾仁"));
+        QCOMPARE(*recipe.rating, 7.2);
+        QVERIFY(recipe.tips.isEmpty());
+        QCOMPARE(recipe.ingredients[0].raw, QStringLiteral("南美虾 12"));
+        QCOMPARE(recipe.steps[1].text, QStringLiteral("剥虾小技巧，放冰箱冷冻20分钟拿出来非常好剥"));
     }
 
     void partialDetailSetsTheFlag()
     {
-        const ParsedRecipeDocument parsed = parseXiachufangYaml(sample("detail-synthetic-partial.yaml"));
+        const ParsedRecipeDocument parsed = parseXiachufangYaml(sample("detail-partial-synthetic.yaml"));
         QVERIFY(parsed.ok());
         const WebRecipe &recipe = *parsed.document->recipe;
         QVERIFY(recipe.partial);

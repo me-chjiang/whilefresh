@@ -45,15 +45,15 @@ private slots:
     {
         int asked = 0;
         const QString script = QStringLiteral("case \"$*\" in *\"--api-key k1 --project-id p1\"*) cat ")
-            + QStringLiteral(WHILEFRESH_RECIPE_SAMPLES_DIR "/detail-synthetic-full.yaml") + QStringLiteral(";; esac");
+            + QStringLiteral(WHILEFRESH_RECIPE_SAMPLES_DIR "/detail-lexmount-103468406.yaml") + QStringLiteral(";; esac");
         ProcessRecipeSource source({ QStringLiteral("/bin/sh"), { QStringLiteral("-c"), script, QStringLiteral("sh") } },
             [&asked] {
                 ++asked;
                 return LexmountCredentials { QStringLiteral("k1"), QStringLiteral("p1") };
             });
         QSignalSpy ok(&source, &RecipeSource::detailSucceeded);
-        source.detail(QStringLiteral("900000001"));
-        source.detail(QStringLiteral("900000001"));
+        source.detail(QStringLiteral("103468406"));
+        source.detail(QStringLiteral("103468406"));
         QCOMPARE(asked, 2);
         QTRY_COMPARE_WITH_TIMEOUT(ok.size(), 2, 10000);
     }

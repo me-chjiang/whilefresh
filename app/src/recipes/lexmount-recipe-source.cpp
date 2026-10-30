@@ -524,7 +524,8 @@ private:
         timer->start(m_config.cleanupTimeoutMs);
         connect(reply, &QNetworkReply::finished, this, [this, reply] {
             const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-            if (reply->error() == QNetworkReply::NoError && status >= 200 && status < 300) {
+            const bool deleted = reply->error() == QNetworkReply::NoError && status >= 200 && status < 300;
+            if (deleted) {
                 qCInfo(lcRecipes, "recipe %llu: browser session deleted (HTTP %d)", m_id, status);
             } else {
                 qCWarning(lcRecipes, "recipe %llu: deleting the browser session failed (HTTP %d, error %d)", m_id, status, int(reply->error()));
@@ -532,6 +533,7 @@ private:
             reply->deleteLater();
             if (m_owner) {
                 --m_owner->m_cleaning;
+                emit m_owner->cleanupFinished(m_id, deleted);
             }
             deleteLater();
         });
@@ -560,6 +562,11 @@ private:
     QString m_lastTitle;
     int m_stablePolls = 0;
 };
+
+LexmountCredentials lexmountCredentialsFromEnvironment()
+{
+    return { qEnvironmentVariable("WHILEFRESH_LEXMOUNT_API_KEY"), qEnvironmentVariable("WHILEFRESH_LEXMOUNT_PROJECT_ID") };
+}
 
 LexmountRecipeSource::LexmountRecipeSource(CredentialsFn credentials, Config config, QObject *parent)
     : RecipeSource(parent), m_credentials(std::move(credentials)), m_config(std::move(config)), m_network(new QNetworkAccessManager(this))
