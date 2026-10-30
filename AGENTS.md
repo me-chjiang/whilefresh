@@ -13,7 +13,7 @@
 
 1. `STD.md`：文件树、放置规则与编码规范。
 2. `docs/todo/cycle-state.md`：当前阶段、进度与决策。
-3. `docs/todo/round-2-plan.md` 中当前任务所在的行。
+3. `docs/todo/round-2-plan.md` 中当前任务所在的行。当前任务 = cycle-state「第二轮进度」中第一个未勾选的任务。
 4. 模块细节见 `docs/done/development.md` 与 `docs/done/notes/`。
 
 ## 目录与规范
@@ -51,7 +51,7 @@ Skill 实际文件保存在 `.agents/skills/`，`.claude/skills/` 通过同名�
 - 测试：Qt Test + CTest，仅桌面构建。改动 C++ 后至少运行 `scripts/build-desktop.sh` 与 `ctest --test-dir build/desktop --output-on-failure`。
 - 密钥：只由构建脚本从钥匙串读取并生成到构建目录的 `generated/api-config.h`；脚本不得打印密钥或开启 `set -x`；测试阶段 DeepSeek 密钥（钥匙串）与 Lexmount 凭据（`~/.config/lexmount/config.yaml`）一同注入。需要密钥或更换密钥时，一律通过 `scripts/` 下的构建脚本重新构建，不要在构建目录里直接运行 `ninja`（自动重新配置会得到无密钥构建）。提交前运行 `scripts/check-keys.sh`（`sk-` 模式与真实 Lexmount 值的扫描）确认无密钥。
 - 新增代码或工具链时，先在 `docs/done/development.md` 中记录用途、运行方式和验证命令，再补充本节。
-- 执行验证前遵循用户当次要求；如未要求测试，不擅自运行会产生大量文件或访问外部服务的操作。
+- 执行验证前遵循用户当次要求。改动 C++ 后的桌面构建与 ctest 是必做项；“未要求不擅自运行”只针对会产生大量文件或访问外部服务的操作，如真实 DeepSeek / Lexmount 调用、录制、Android 构建与安装。
 - 构建和测试输出写到文件，只读末尾或失败行。
 
 常用命令：
@@ -76,10 +76,22 @@ scripts/check-keys.sh                             # 提交前检查无密钥
   6. 把摘要交用户。
   7. **用户确认后才以 `--no-ff` 合并到 main**；未经要求不推送。
 - 分工：开发由主会话分派子代理完成；过程记入 `docs/todo/cycle-state.md` 的决策日志，审查结果记入 `docs/done/review-log.md`。
-- 迭代上限：审查/修复最多 2 轮，只有 blocker / major 才进入下一轮；minor 记入 review-log 后放行。同一问题的测试修复单轮最多 5 次（loop-dev-cycle）。
+- 迭代上限：审查/修复最多 2 轮，只有 blocker / major 才进入下一轮；minor 记入 review-log 后放行。同一问题的测试修复单轮最多 5 次。loop-dev-cycle skill 中的迭代规则与本文件冲突时，以本文件为准。
 - 正常结束：测试全部通过且审查无 blocker / major。
 - 必须停下汇报：达到迭代上限；需求存在影响结果的歧义且查材料无法判断；需要计划外的计费调用；需要超出任务范围或破坏性的操作；用户说"暂停""停止"。
 - 子代理：实现者与审查者默认用中档模型（Claude Code 下为 Sonnet，effort medium）；自第二轮 T16 起执行。
+
+## 合并后更新
+
+用户确认合并后，同一次提交内完成：
+
+1. `docs/done/review-log.md`：记录该分支的审查结果与处理状态。
+2. `docs/todo/cycle-state.md`：在「第二轮进度」勾选任务、写明合并提交；决策日志加一行。
+3. `docs/todo/todo.md`：删除已完成的条目，新发现的问题补进来。
+4. `docs/todo/prd-v6.md`：更新受影响条目的“状态”列。
+5. `docs/done/development.md`（新命令、工具）与 `docs/done/notes/<模块>.md`（复杂模块的实现说明）。
+6. `STD.md`：目录或放置规则变化时更新文件树与 Change log。
+7. 一份 `docs/todo/` 文档描述的工作全部合并后，移到 `docs/done/`。
 
 ## Review 标准
 
