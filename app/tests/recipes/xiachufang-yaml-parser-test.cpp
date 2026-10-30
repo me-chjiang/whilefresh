@@ -39,8 +39,8 @@ private slots:
         QCOMPARE(parsed.document->schemaVersion, QStringLiteral("1.0"));
         QCOMPARE(search.keyword, QStringLiteral("番茄炒蛋"));
         QCOMPARE(search.page, 1);
-        QCOMPARE(search.items.size(), 15);
-        QCOMPARE(search.totalCandidates, 15);
+        QCOMPARE(search.items.size(), 2);
+        QCOMPARE(search.totalCandidates, 2);
         QVERIFY(search.partial);
         QCOMPARE(search.incomplete, QStringList { QStringLiteral("full_details") });
         const RecipeSummary &first = search.items.first();
@@ -56,7 +56,7 @@ private slots:
     {
         const ParsedRecipeDocument parsed = parseXiachufangYaml(sample("search-shrimp.yaml"));
         QVERIFY(parsed.ok());
-        QCOMPARE(parsed.document->search.items.size(), 14);
+        QCOMPARE(parsed.document->search.items.size(), 2);
         QCOMPARE(parsed.document->search.items.first().id, QStringLiteral("103468406"));
         QVERIFY(parsed.document->search.items.first().name.contains(QStringLiteral("虾仁")));
     }

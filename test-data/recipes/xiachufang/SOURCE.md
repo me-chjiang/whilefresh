@@ -6,12 +6,14 @@
 
 | 文件 | 内容 | 来源 |
 |---|---|---|
-| `search-tomato-egg.yaml` | 搜索“番茄炒蛋”第 1 页，15 条摘要 | 2026-10-30 实录，`--provider direct` |
-| `search-shrimp.yaml` | 搜索“虾仁”第 1 页，14 条摘要 | 同上 |
+| `search-tomato-egg.yaml` | 搜索“番茄炒蛋”第 1 页，保留前 2 条摘要 | 2026-10-30 实录，`--provider direct` |
+| `search-shrimp.yaml` | 搜索“虾仁”第 1 页，保留前 2 条摘要 | 同上 |
 | `error-detail-blocked.yaml` | 详情 107722218，直连被拦截（`unrecognized detail page`），status error | 同上，真实错误输出 |
 | `error-invalid-id.yaml` | 详情 id `abc`，参数错误，status error | 同上 |
 | `detail-synthetic-full.yaml` | 详情 900000001，完整（步骤、食材、小贴士） | 合成，见下 |
 | `detail-synthetic-partial.yaml` | 详情 900000002，缺步骤和小贴士，status partial | 合成，见下 |
+
+注：两个搜索样例因仓库公开，已从 CLI 原始输出裁剪为前 2 条结果，并把 `pagination.returned` 与 `total_candidates_after_filter` 同步改为 2（原始输出分别为 15 和 14 条）；其余字段保持原样。
 
 ## 生成方式
 

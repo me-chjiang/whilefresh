@@ -31,7 +31,7 @@ private slots:
         QCOMPARE(bad.size(), 0);
         QCOMPARE(ok.first().at(0).toULongLong(), id);
         const auto result = ok.first().at(1).value<RecipeSearchResult>();
-        QCOMPARE(result.items.size(), 14);
+        QCOMPARE(result.items.size(), 2);
     }
 
     void detailAnswers()

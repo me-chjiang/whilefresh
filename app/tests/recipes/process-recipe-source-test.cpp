@@ -27,7 +27,7 @@ private slots:
         QSignalSpy ok(&source, &RecipeSource::searchSucceeded);
         source.search(QStringLiteral("虾仁"));
         QTRY_COMPARE_WITH_TIMEOUT(ok.size(), 1, 10000);
-        QCOMPARE(ok.first().at(1).value<RecipeSearchResult>().items.size(), 14);
+        QCOMPARE(ok.first().at(1).value<RecipeSearchResult>().items.size(), 2);
     }
 
     void errorDocumentWithFailingExitCode()
