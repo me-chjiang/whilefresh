@@ -1,6 +1,6 @@
 # Cycle State
 
-> 本文件即 loop-dev-cycle 的 `CYCLE_STATE.md`。第二轮的需求与计划以 [PRD v6](prd-v6.md) 和 [第二轮计划](round-2-plan.md) 为准；第一轮的 `REQUIREMENTS.md`/`PLAN.md` 对应 [`../done/round-1/mvp-requirements.md`](../done/round-1/mvp-requirements.md) 和 [`../done/round-1/mvp-plan.md`](../done/round-1/mvp-plan.md)（文件名使用 kebab-case）。每次会话开始先读本文件和第二轮计划。
+> 本文件即 loop-dev-cycle 的 `CYCLE_STATE.md`。第二轮的需求与计划以 [PRD v6](prd-v6.md) 和 [第二轮计划](round-2-plan.md) 为准；第一轮的 `REQUIREMENTS.md`/`PLAN.md` 对应 [`../done/round-1/mvp-requirements.md`](../done/round-1/mvp-requirements.md) 和 [`../done/round-1/mvp-plan.md`](../done/round-1/mvp-plan.md)（文件名使用 kebab-case）。每次会话开始先读本文件和第二轮计划。现行流程规则以 [AGENTS.md](../../AGENTS.md) 为准；下文的决策日志、代决记录、偏差日志是历史记录，只反映当时的情况。
 
 ## 当前阶段
 
@@ -83,7 +83,7 @@
 | 2026-10-30 | T13（`10384ff`）、T15（`e5f7f63`）、T14（`29136aa`）合并到 main 并推送；T17 暂缓 | 用户确认；T17 详情样例依赖子模块修复 | 四个分支一并合并 |
 | 2026-10-30 | 测试期构建内置 DeepSeek 与 Lexmount 凭据（Lexmount 读 `~/.config/lexmount/config.yaml`）；正式模式用户密钥优先、没有则用内置，演示模式只用内置；服务页显示 已配置 / 内置 / 未配置；提交前运行 `scripts/check-keys.sh` | 用户要求测试期不必手填密钥 | T16 原设计：正式模式只用用户密钥 |
 | 2026-10-30 | T18b 提前到 T18 之前：删除 HowToCook 数据、匹配器、旧菜谱页、Python 菜谱工具与 `ingredient-map.json`；清冰箱改为用勾选食材搜下厨房 | 用户要求立即移除 | 按计划在 T18 之后 |
-| 2026-10-30 | T16（`5317513`）、T17（`ad24850`）、内置密钥（`3a57363`）、T18b（`0d3b620`）合并到本地 main | 用户确认"没问题就 merge"；未要求推送 | — |
+| 2026-10-30 | T16（`5317513`）、T17（`ad24850`）、内置密钥（`3a57363`）、T18b（`0d3b620`）合并到本地 main（当日稍后已推送） | 用户确认"没问题就 merge"；未要求推送 | — |
 | 2026-10-30 | 桌面开发库 `whilefresh.db`、`demo.db` 被 Codex wip 构建升级到 v6，改名为 `*.codex-v6.bak` 备份后重建 | 用户确认 | 删除 |
 | 2026-10-30 | `build-android.sh` 调试构建显式传 `QT_ANDROID_SIGN_APK=OFF` | 修复 bash 3.2 空数组报错，并避免沿用 release 缓存签名 | 所有构建关闭签名（Codex 版本，会破坏 `--release`） |
 | 2026-10-30 | 文档重组：FHS.md 改名为 STD.md 并增加编码规范；docs/ 拆为 done/ 与 todo/；README 只面向人，AI 规则、停止条件与 Review 标准集中到 AGENTS.md | 按完成状态区分文档；规则只有一处来源 | 保留 docs/mvp/ 平铺 |
