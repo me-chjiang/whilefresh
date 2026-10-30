@@ -123,12 +123,9 @@ AppModel::~AppModel() = default;
 
 recipes::LexmountCredentials AppModel::lexmountCredentials() const
 {
-    // The key comes from the credential provider; the project id has no home until the T16
-    // service page exists, so it and a missing key fall back to the environment (desktop only,
-    // temporary).
-    recipes::LexmountCredentials fromEnvironment = recipes::lexmountCredentialsFromEnvironment();
-    const QString key = m_credentials->key(ai::Service::Lexmount);
-    return { key.isEmpty() ? fromEnvironment.apiKey : key, fromEnvironment.projectId };
+    // What the user entered on the 服务 page. Demo mode's provider holds no Lexmount values, so the
+    // web recipes report 未配置 Lexmount there.
+    return { m_credentials->key(ai::Service::Lexmount), m_credentials->key(ai::Service::LexmountProjectId) };
 }
 
 void AppModel::setRecipeSource(std::unique_ptr<recipes::RecipeSource> source)

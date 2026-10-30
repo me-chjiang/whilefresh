@@ -203,7 +203,7 @@ scripts/build-desktop.sh  # 恢复无密钥构建
 - `WebSocketCodec` / `CdpConnection`：Qt6::WebSockets 不在 Android 套件里（三个套件都没有），所以自带 RFC 6455 帧编解码（校验 `Sec-WebSocket-Accept`、FIN/续帧重组、16/64 位长度、4 MiB 上限、任意长度 ping 应答、关闭握手），测试对照本地假服务器。
 - `RecordedRecipeSource`：`addFile` / `addDirectory` 读入录制的 YAML，按其回显的 query（搜索按关键词加页码，详情按 id）应答，未录制的请求返回 `NotFound`。
 - `ProcessRecipeSource`：调用子模块的 Python CLI 并解析输出，由 CMake 选项 `WHILEFRESH_XIACHUFANG_ADAPTER`（默认 OFF，Android 忽略）打开，现在只作对照。
-- 凭据：Lexmount 的 api key / project id 每次请求开始时由调用方的回调给出，只在请求期间持有，不落盘、不写日志、不编进程序。`AppModel` 的回调先问 `ai::CredentialProvider`（`Service::Lexmount`）；project id 在 T16 服务页出现之前只能来自环境变量，**临时方案**：`WHILEFRESH_LEXMOUNT_API_KEY` / `WHILEFRESH_LEXMOUNT_PROJECT_ID`（仅桌面可用；Android 上没有，界面显示“未配置 Lexmount”）。
+- 凭据：Lexmount 的 api key / project id 每次请求开始时由调用方的回调给出，只在请求期间持有，不落盘、不写日志、不编进程序。`AppModel` 的回调读 `credentials()->key(ai::Service::Lexmount)` 和 `key(ai::Service::LexmountProjectId)`，即用户在“服务”页填的值；演示模式没有这两项，界面显示“未配置 Lexmount”。应用里没有环境变量回退；只有开发工具 `recipe-cli` 读环境变量 `WHILEFRESH_LEXMOUNT_API_KEY` / `WHILEFRESH_LEXMOUNT_PROJECT_ID`。
 - 界面：`ui/WebRecipeService`（`App.web`，另有 `App.searchRecipes / requestRecipeDetail / cancelRecipeRequest`）保存搜索结果、详情（仅内存缓存，不持久化）和状态，错误映射成短标签（未配置 Lexmount、下厨房拦截、网络错误、超时……）。菜谱页输入菜名后点“搜下厨房”，结果点开进 `WebRecipeDetailPage`（显示来源并可打开原菜谱）。这些页面会在 T18b / T19 替换。
 
 ```sh

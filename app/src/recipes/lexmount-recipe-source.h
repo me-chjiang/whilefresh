@@ -14,8 +14,8 @@ namespace whilefresh::recipes {
 
 class LexmountJob;
 
-// Temporary credential source for desktop use until the settings page stores them (T16):
-// WHILEFRESH_LEXMOUNT_API_KEY and WHILEFRESH_LEXMOUNT_PROJECT_ID.
+// For developer tools only (recipe-cli): WHILEFRESH_LEXMOUNT_API_KEY and
+// WHILEFRESH_LEXMOUNT_PROJECT_ID. The app reads the credentials the user entered on the 服务 page.
 LexmountCredentials lexmountCredentialsFromEnvironment();
 
 struct LexmountConfig {
