@@ -12,6 +12,7 @@ target_compile_definitions(app-version-test PRIVATE WHILEFRESH_EXPECTED_VERSION=
 
 add_subdirectory(core)
 add_subdirectory(ai)
+add_subdirectory(recipes)
 add_subdirectory(data)
 add_subdirectory(recognition)
 

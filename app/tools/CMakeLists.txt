@@ -2,6 +2,9 @@
 add_executable(recognize-cli recognize-cli.cpp)
 target_link_libraries(recognize-cli PRIVATE whilefresh-recognition whilefresh-ai)
 
+add_executable(recipe-cli recipe-cli.cpp)
+target_link_libraries(recipe-cli PRIVATE whilefresh-recipes)
+
 # recognize-cli refuses to record into tracked parts of the repository. In a git worktree the
 # main checkout is a second root.
 get_filename_component(_repo_root "${PROJECT_SOURCE_DIR}/.." ABSOLUTE)

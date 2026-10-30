@@ -7,6 +7,7 @@
 #include "platform/import-files.h"
 #include "recognition/deepseek-recognizer.h"
 #include "recognition/demo-recognizer.h"
+#include "recipes/lexmount-recipe-source.h"
 
 #include <QDir>
 #include <QFile>
@@ -82,6 +83,7 @@ AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const d
             emit recognitionConfiguredChanged();
         }
     });
+    setRecipeSource(std::make_unique<recipes::LexmountRecipeSource>([this] { return lexmountCredentials(); }));
     m_dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(m_dataDir);
     m_real = openSession(QDir(m_dataDir).filePath(QStringLiteral("whilefresh.db")), false);
@@ -118,6 +120,23 @@ AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const d
 }
 
 AppModel::~AppModel() = default;
+
+recipes::LexmountCredentials AppModel::lexmountCredentials() const
+{
+    // What the user entered on the 服务 page. Demo mode's provider holds no Lexmount values, so the
+    // web recipes report 未配置 Lexmount there.
+    return { m_credentials->key(ai::Service::Lexmount), m_credentials->key(ai::Service::LexmountProjectId) };
+}
+
+void AppModel::setRecipeSource(std::unique_ptr<recipes::RecipeSource> source)
+{
+    delete m_web;
+    m_web = new WebRecipeService(std::move(source), this);
+}
+
+void AppModel::searchRecipes(const QString &keyword) { m_web->search(keyword); }
+void AppModel::requestRecipeDetail(const QString &id) { m_web->requestDetail(id); }
+void AppModel::cancelRecipeRequest() { m_web->cancel(); }
 
 bool AppModel::recognitionConfigured() const { return m_chat->isConfigured(); }
 

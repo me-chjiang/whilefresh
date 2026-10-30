@@ -4,20 +4,6 @@
 
 ## 发布前必须做
 
-- [ ] **T17 未完成：真实详情样例待子模块 Lexmount 路线修复**（录制于 2026-10-30，子模块 `recipe-sources-xiachufang-api` 版本 0.1.0，依赖以 `uv.lock` 为准，其版本库尚无提交）。直连搜索可用，直连详情被站点拦截（`unrecognized detail page (blocked or upstream markup changed)`，id 107722218，`--provider direct`）。`--provider lexmount` 的搜索和详情都在子模块内报错，因此 `test-data/recipes/xiachufang/detail-synthetic-*.yaml` 是用子模块引擎 + 固定数据合成的。
-  - 复现命令（在子模块目录用 `uv run`；凭据读自 `~/.config/lexmount/config.yaml`，此处已脱敏；配置里有 `base-url`，当时以 `--lexmount-base-url <base-url>` 一并传入）：
-    1. `python -m xiachufang_source --provider lexmount --api-key <api-key> --project-id <project-id> --operation detail --id 104493058 --search-type detail` → `status.code: error`，`message: xiachufang-api response requires one Content recipe`，`incomplete: [source_request]`，耗时约 2237 ms。
-    2. 同上但省略 `--search-type`，id 104493058 → 同样错误，约 3133 ms。
-    3. 同 2，id 103468406 → 同样错误，约 3583 ms。
-    4. 同 2，id 101829462（子模块 README 的示例 id）→ 同样错误，约 3156 ms。
-    5. `python -m xiachufang_source --provider lexmount --api-key <api-key> --project-id <project-id> --keyword 虾仁`（搜索，省略 `--search-type`）→ `message: source recipe must have a name`，约 2811 ms。
-  - 路径：以上都是 Lexmount 云浏览器 DOM 提取（`engine.py` 在 provider 为 lexmount 时选 `LexmountBrowserClient`；搜索在 `search_type` 为空时被 `LexmountAPI.search` 强制为 browser）；没有走 Web Fetch 文本路线，该路线未单独测试。
-  - 报错位置（只读推断，未改子模块）：
-    - `response requires one Content recipe`：`src/xiachufang_source/engine.py` `RecipeEngine.run` 的 detail 分支（`rows = payload.get("Content")`，不是长度为 1 的列表就抛出）。浏览器抓取脚本（`lexmount.py` 的 `_scrape_script`，约 179–195 行）在找不到 `h1.page-title[itemprop="name"]` 时返回 `{Recipe: [...]}` 而不是 `{Content: [...]}`，而 `lexmount.py` 第 249 行只检查两者之一存在，所以拦截页、验证页或改版页面会走到这里。疑似原因：云浏览器打开的详情页不是预期的菜谱页，或 `Page.navigate` 后立即 evaluate、页面尚未加载完。
-    - `source recipe must have a name`：`engine.py` `normalize()` 开头（`row["name"]` 为空即抛）。搜索结果名由 `_scrape_script` 的 `text(a)` 取得，选择器 `.info .name a, a[href*="/recipe/"]` 可能命中无文字的图片链接，得到空名。
-    - 可能相关：`engine.py` 把 `budget` 限制在 2.5 秒，而云浏览器会话创建与轮询（`lexmount.py` `extract`，`while time.monotonic() < deadline`）本身就要数秒；实测耗时 2.2–3.6 s。上面几次返回的是解析错误而非 deadline 错误。
-  - 无法从输出判断云浏览器取回的页面实际内容；修复时建议先在子模块里把原始 JSON / 页面标题打到本地调试输出（不含凭据）。
-  - 子模块修复后 T17 剩余：① 用 `--provider lexmount`（或直连可用时直连）录制 2–3 个真实详情，存入 `test-data/recipes/xiachufang/`（同样只留必要内容）；② 删除 `detail-synthetic-full.yaml`、`detail-synthetic-partial.yaml`，改 `app/tests/recipes/` 三个测试中引用 900000001/900000002 和合成步骤文字的断言（`xiachufang-yaml-parser-test.cpp`、`recorded-recipe-source-test.cpp`、`process-recipe-source-test.cpp`），并保留一个 partial 详情样例（真实或经子模块引擎合成）；③ 更新 `SOURCE.md` 的文件表和生成方式；④ 用 `rg -i 'api.?key|project.?id|credential|token'` 确认样例无凭据；⑤ 把 cycle-state 中 T17 改回已完成，并更新 review-log。
 - [ ] **arm64 真机实测**：目前只在 x86_64 模拟器上走查过。在一台真实手机上安装 `whilefresh-arm64-v8a-release.apk`，走一遍：分享截图入库 → 核对 → 清冰箱 → 菜谱 → 待买。
 - [ ] **备份签名材料**：`~/.config/whilefresh/release.keystore` 与钥匙串条目 `landing-project-android-keystore`。丢失后无法覆盖升级。
 - [ ] **DeepSeek 密钥设额度上限**：试用包内嵌密钥，可被提取；在 DeepSeek 控制台设消费上限，试用结束后作废。

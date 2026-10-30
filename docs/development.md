@@ -18,7 +18,7 @@
 
 | 用途 | 命令 |
 | --- | --- |
-| 下载第三方依赖（KDAB android_openssl，固定 commit，存到 `~/.cache/whilefresh/`） | `scripts/fetch-deps.sh` |
+| 下载第三方依赖（KDAB android_openssl、yaml-cpp，固定 commit，存到 `~/.cache/whilefresh/`） | `scripts/fetch-deps.sh` |
 | 构建桌面版（Debug；`--with-key` 注入密钥，`--release` 构建 Release） | `scripts/build-desktop.sh` |
 | 运行桌面版 | `build/desktop/whilefresh` |
 | 单元测试 | `ctest --test-dir build/desktop --output-on-failure` |
@@ -191,6 +191,31 @@ scripts/build-desktop.sh  # 恢复无密钥构建
 ```
 
 录制带请求摘要，归类提示词、词表或名称列表变化后回放会失败，需要重新录制（名称列表须与 `ingredient-classifier-test` 中的 `kRecordedNames` 一致）。
+
+### 菜谱源层
+
+`app/src/recipes/`（`whilefresh-recipes`，只链接 core、Qt::Core、Qt::Network 和 yaml-cpp，CMake 中有检查）定义菜谱源接口，解析菜谱源 YAML 契约（`schema_version` 1.x），并经 Lexmount 云浏览器实时读取下厨房。契约来自外部子模块 `recipe-sources-xiachufang-api`；它由用户维护，本项目不复制、不修改它的代码。按 PRD，菜谱正文不缓存、不打包进 APK，界面保留 `source_url` 和署名（`WebRecipe::attribution`）。
+
+- yaml-cpp 0.9.0（commit 与子模块 `native/` 相同）由 `scripts/fetch-deps.sh` 下载到 `~/.cache/whilefresh/yaml-cpp/`，在 `app/src/recipes/CMakeLists.txt` 里 `add_subdirectory` 静态编译（桌面与各 Android ABI；关闭测试、工具、contrib）。配置阶段不联网；缺少时直接报错并提示运行 `scripts/fetch-deps.sh`。
+- `RecipeSource`：异步接口（`search(keyword, page)`、`detail(id)`、`cancel`），返回请求 id，由 `searchSucceeded` / `detailSucceeded` / `failed` 之一回复；错误为带类型的 `RecipeError`（`NotConfigured`、`AuthFailed`、`InvalidQuery`、`NotFound`、`Blocked`、`NetworkError`、`Timeout`、`Unavailable`、`BadResponse`、`Internal`）。
+- `parseXiachufangYaml`：解析一份 YAML。未知 `schema_version` 主版本、格式错误、字段类型不符都返回 `BadResponse`（不抛异常）；`status.code=error` 按 message / `incomplete` 映射为类型错误；`partial` 置位 `WebRecipe::partial` / `RecipeSearchResult::partial`；`results: null` 视为空。步骤是带 `order/text/image_url` 的映射，`tips` 与步骤分开，食材保留 `raw/name/amount`。
+- `LexmountRecipeSource`（实时）：全部异步（QNetworkAccessManager + QSslSocket，UI 线程不阻塞），每个请求一个状态机：创建会话 `POST /instance/v2` → 轮询 `POST /instance/session` 到 active → `GET /json/version` → CDP WebSocket → `Target.getTargets / attachToTarget`、`Page.enable`、`Runtime.enable` → `Page.navigate` → 轮询 `location.href`/`readyState` 直到目标页加载完成（`about:blank` 不算）→ 页面脚本等待内容出现后抓取 DOM。每一步有超时，另有整体超时（默认 90 s，不再沿用子模块的 2.5 s）。`cancel()` 在步骤之间生效；成功、失败、超时、取消都会用与子模块 `lexmount.py` 相同的请求删除会话（`DELETE <base>/instance`，JSON 体 `{"session_id": ...}`）；每一步带令牌，过期回复被丢弃；搜索和详情可同时进行。浏览器路线失败就如实报错，没有回退到 `/v1/extract`。页面不是菜谱页（验证码等）时返回 `Blocked`，详情里带页面标题与 host/path，不含凭据。抓取结果由 `buildContractDocument` 写成与子模块 CLI 相同的 YAML 契约，再交给 `parseXiachufangYaml`；`documentReady` 信号带出这份 YAML 供录制。没有名字的搜索行被跳过并记 warning。
+- `WebSocketCodec` / `CdpConnection`：Qt6::WebSockets 不在 Android 套件里（三个套件都没有），所以自带 RFC 6455 帧编解码（校验 `Sec-WebSocket-Accept`、FIN/续帧重组、16/64 位长度、4 MiB 上限、任意长度 ping 应答、关闭握手），测试对照本地假服务器。
+- `RecordedRecipeSource`：`addFile` / `addDirectory` 读入录制的 YAML，按其回显的 query（搜索按关键词加页码，详情按 id）应答，未录制的请求返回 `NotFound`。
+- `ProcessRecipeSource`：调用子模块的 Python CLI 并解析输出，由 CMake 选项 `WHILEFRESH_XIACHUFANG_ADAPTER`（默认 OFF，Android 忽略）打开，现在只作对照。
+- 凭据：Lexmount 的 api key / project id 每次请求开始时由调用方的回调给出，只在请求期间持有，不落盘、不写日志、不编进程序。`AppModel` 的回调读 `credentials()->key(ai::Service::Lexmount)` 和 `key(ai::Service::LexmountProjectId)`，即用户在“服务”页填的值；演示模式没有这两项，界面显示“未配置 Lexmount”。应用里没有环境变量回退；只有开发工具 `recipe-cli` 读环境变量 `WHILEFRESH_LEXMOUNT_API_KEY` / `WHILEFRESH_LEXMOUNT_PROJECT_ID`。
+- 界面：`ui/WebRecipeService`（`App.web`，另有 `App.searchRecipes / requestRecipeDetail / cancelRecipeRequest`）保存搜索结果、详情（仅内存缓存，不持久化）和状态，错误映射成短标签（未配置 Lexmount、下厨房拦截、网络错误、超时……）。菜谱页输入菜名后点“搜下厨房”，结果点开进 `WebRecipeDetailPage`（显示来源并可打开原菜谱）。这些页面会在 T18b / T19 替换。
+
+```sh
+ctest --test-dir build/desktop --output-on-failure -R 'xiachufang|recorded-recipe|websocket|lexmount|web-recipe'
+# 带适配器（也会跑 process-recipe-source-test，用 /bin/sh 代替真实 CLI）
+~/Qt/6.8.2/macos/bin/qt-cmake -S app -B /tmp/wf-adapter -G Ninja -DWHILEFRESH_XIACHUFANG_ADAPTER=ON
+cmake --build /tmp/wf-adapter && ctest --test-dir /tmp/wf-adapter -R process-recipe
+```
+
+`recipe-cli`（`app/tools/`，仅桌面，不进 ctest）：`recipe-cli search <词> [--page N] [--record <文件>]`、`recipe-cli detail <id> [--record <文件>]`。**调用真实 Lexmount（按会话计费）**，凭据只读环境变量 `WHILEFRESH_LEXMOUNT_API_KEY` / `WHILEFRESH_LEXMOUNT_PROJECT_ID`（不接受参数）；输出结果摘要，结束时在 stderr 报告会话是否已删除。`--record` 写出契约 YAML，格式即 `test-data/recipes/xiachufang/` 的样例。下厨房有滑动验证，连续请求几次后会返回 `blocked`，隔几十秒再试。
+
+重新录制样例：从 `~/.config/lexmount/config.yaml` 读出凭据放进环境变量（不要打印，不要 `set -x`），运行 `build/desktop/tools/recipe-cli detail <id> --record /tmp/x.yaml`，再按 `test-data/recipes/xiachufang/SOURCE.md` 裁剪后放入样例目录（公开仓库，详情只留前 3 项食材、前 2 步）。提交前用 `rg -i 'api.?key|project.?id|credential|token' test-data/recipes/xiachufang` 确认无凭据。搜索和错误样例来自子模块 CLI 的直连模式，命令见 SOURCE.md。
 
 ### 识别层与录制工具
 

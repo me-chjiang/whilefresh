@@ -11,6 +11,7 @@
 #include "ui/import-service.h"
 #include "ui/kitchen-service.h"
 #include "ui/settings-model.h"
+#include "ui/web-recipe-service.h"
 
 #include <QObject>
 #include <QSet>
@@ -49,6 +50,7 @@ class AppModel : public QObject
     Q_PROPERTY(bool draftDuplicate READ draftDuplicate NOTIFY importChanged)
     Q_PROPERTY(int draftFoodCount READ draftFoodCount NOTIFY importChanged)
     Q_PROPERTY(bool hasUnfinishedImport READ hasUnfinishedImport NOTIFY importChanged)
+    Q_PROPERTY(QObject *web READ web CONSTANT)
 
 public:
     // `secrets` defaults to the platform's store (Android Keystore / desktop dev file).
@@ -85,6 +87,13 @@ public:
     bool draftDuplicate() const;
     int draftFoodCount() const;
     bool hasUnfinishedImport() const;
+
+    // Web recipes (T17): state lives in the WebRecipeService exposed as App.web.
+    QObject *web() const { return m_web; }
+    void setRecipeSource(std::unique_ptr<recipes::RecipeSource> source);
+    Q_INVOKABLE void searchRecipes(const QString &keyword);
+    Q_INVOKABLE void requestRecipeDetail(const QString &id);
+    Q_INVOKABLE void cancelRecipeRequest();
 
     Q_INVOKABLE void toggleSelected(qint64 id);
     Q_INVOKABLE QVariantMap recipeDetail(const QString &id) const;
@@ -160,6 +169,7 @@ private:
     QVariantMap summaryMap(const core::RecipeMatch &match) const;
     void applyEdits(core::FridgeItem &item, const QVariantMap &edits, bool editEntry) const;
     QString demoPath() const;
+    recipes::LexmountCredentials lexmountCredentials() const;
     KitchenService &kitchen() const { return *m_active->kitchen; }
 
     platform::PlatformServices *m_platform;
@@ -169,6 +179,7 @@ private:
     std::shared_ptr<ai::CredentialProvider> m_credentials = std::make_shared<ai::BuiltinCredentialProvider>();
     std::unique_ptr<ai::DeepSeekChatClient> m_chat = std::make_unique<ai::DeepSeekChatClient>(m_credentials);
     std::unique_ptr<SettingsModel> m_settings;
+    WebRecipeService *m_web = nullptr;
     std::unique_ptr<Session> m_real;
     std::unique_ptr<Session> m_demo;
     Session *m_active = nullptr;
