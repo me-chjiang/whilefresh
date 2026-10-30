@@ -3,7 +3,8 @@
 # Usage: scripts/build-android.sh <x86_64|arm64-v8a> [--no-key] [--release]
 # --release signs with ~/.config/whilefresh/release.keystore; its password comes from the
 # keychain entry landing-project-android-keystore and is only passed through the environment.
-# The DeepSeek key is read from the macOS keychain unless --no-key is given (ADR-5).
+# The DeepSeek key (keychain) and the Lexmount credentials (~/.config/lexmount/config.yaml) are
+# embedded unless --no-key is given (ADR-5).
 set -euo pipefail
 source "$(dirname "$0")/env.sh"
 
@@ -34,8 +35,10 @@ done
 
 if [[ $with_key -eq 1 ]]; then
     export_deepseek_key
+    export_lexmount_credentials
 else
     disable_deepseek_key
+    disable_lexmount_credentials
 fi
 
 build_type=Debug

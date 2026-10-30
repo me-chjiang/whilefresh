@@ -238,6 +238,44 @@ private slots:
         QCOMPARE(changed.size(), 2);
     }
 
+    void layeredProviderPrefersThePrimaryKey()
+    {
+        auto primary = std::make_shared<ai::StaticCredentialProvider>();
+        auto fallback = std::make_shared<ai::StaticCredentialProvider>(QStringLiteral("sk-built"));
+        fallback->setKey(ai::Service::Lexmount, QStringLiteral("lx-built"));
+        ai::LayeredCredentialProvider layered(primary, fallback);
+        QCOMPARE(layered.key(ai::Service::DeepSeek), QStringLiteral("sk-built"));
+        QCOMPARE(layered.key(ai::Service::Lexmount), QStringLiteral("lx-built"));
+        QVERIFY(!layered.isConfigured(ai::Service::LexmountProjectId));
+        primary->setKey(ai::Service::DeepSeek, QStringLiteral("sk-user"));
+        QCOMPARE(layered.key(ai::Service::DeepSeek), QStringLiteral("sk-user"));
+        QCOMPARE(layered.key(ai::Service::Lexmount), QStringLiteral("lx-built"));
+        primary->setKey(ai::Service::DeepSeek, QString());
+        QCOMPARE(layered.key(ai::Service::DeepSeek), QStringLiteral("sk-built"));
+    }
+
+    void sourceReportsUserBuiltinOrNone()
+    {
+        auto builtin = std::make_shared<ai::StaticCredentialProvider>(QStringLiteral("sk-built"));
+        builtin->setKey(ai::Service::Lexmount, QStringLiteral("lx-built"));
+        ai::RecordedChatClient chat({});
+        SettingsModel model(&chat, credentials(), builtin);
+        QCOMPARE(model.deepSeekSource(), QStringLiteral("builtin"));
+        QCOMPARE(model.lexmountSource(), QStringLiteral("builtin"));
+        QCOMPARE(model.lexmountProjectSource(), QStringLiteral("none"));
+        QVERIFY(!model.deepSeekConfigured()); // 已配置 means the user's own key
+        QSignalSpy changed(&model, &SettingsModel::servicesChanged);
+        QVERIFY(model.saveSecret(QStringLiteral("deepseek"), QStringLiteral("sk-user")));
+        QVERIFY(model.saveSecret(QStringLiteral("lexmountProject"), QStringLiteral("p1")));
+        QCOMPARE(model.deepSeekSource(), QStringLiteral("user"));
+        QCOMPARE(model.lexmountProjectSource(), QStringLiteral("user"));
+        QVERIFY(model.clearSecret(QStringLiteral("deepseek")));
+        QCOMPARE(model.deepSeekSource(), QStringLiteral("builtin"));
+        QVERIFY(model.clearSecret(QStringLiteral("lexmountProject")));
+        QCOMPARE(model.lexmountProjectSource(), QStringLiteral("none"));
+        QCOMPARE(changed.size(), 4);
+    }
+
     void modeSwitchChoosesTheKeySource()
     {
         QString error;
@@ -246,35 +284,64 @@ private slots:
         QStandardPaths::setTestModeEnabled(true);
         QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).removeRecursively();
 
+        auto builtinKeys = std::make_shared<ai::StaticCredentialProvider>(QStringLiteral("sk-built"));
+        builtinKeys->setKey(ai::Service::Lexmount, QStringLiteral("lx-built"));
         AppModel app(nullptr, builtin, nullptr,
-                     std::make_unique<platform::FileKeyVault>(m_dir->filePath(QStringLiteral("app-keys"))));
+                     std::make_unique<platform::FileKeyVault>(m_dir->filePath(QStringLiteral("app-keys"))), builtinKeys);
         QVERIFY(app.ok());
         QVERIFY(!app.demoMode());
-        QVERIFY(dynamic_cast<const UserCredentialProvider *>(app.credentials().get()));
-        // No user key: not configured, whatever the build contains.
-        QVERIFY(!app.recognitionConfigured());
+        // No user key: the built-in one is used.
+        QVERIFY(app.recognitionConfigured());
+        QCOMPARE(app.credentials()->key(ai::Service::DeepSeek), QStringLiteral("sk-built"));
+        QCOMPARE(app.credentials()->key(ai::Service::Lexmount), QStringLiteral("lx-built"));
+        QVERIFY(!app.credentials()->isConfigured(ai::Service::LexmountProjectId));
         QSignalSpy configured(&app, &AppModel::recognitionConfiguredChanged);
 
+        // The user's key wins; recognition stays configured, so no signal.
+        QVERIFY(app.settings()->saveSecret(QStringLiteral("deepseek"), QStringLiteral("sk-user")));
+        QVERIFY(app.recognitionConfigured());
+        QCOMPARE(configured.size(), 0);
+        QCOMPARE(app.credentials()->key(ai::Service::DeepSeek), QStringLiteral("sk-user"));
+
+        // Demo mode ignores the user's keys.
+        app.setDemoMode(true);
+        QVERIFY(app.demoMode());
+        QCOMPARE(app.credentials()->key(ai::Service::DeepSeek), QStringLiteral("sk-built"));
+        QVERIFY(app.recognitionConfigured());
+        QVERIFY(app.settings()->deepSeekConfigured()); // the user's key is untouched
+
+        app.setDemoMode(false);
+        QCOMPARE(app.credentials()->key(ai::Service::DeepSeek), QStringLiteral("sk-user"));
+
+        // Clearing the user's key falls back to the built-in one.
+        QVERIFY(app.settings()->clearSecret(QStringLiteral("deepseek")));
+        QCOMPARE(app.credentials()->key(ai::Service::DeepSeek), QStringLiteral("sk-built"));
+        QVERIFY(app.recognitionConfigured());
+        QCOMPARE(configured.size(), 0);
+    }
+
+    void keyLessBuildNeedsTheUsersKeys()
+    {
+        QString error;
+        const auto builtin = data::BuiltinData::builtIn(&error);
+        QVERIFY2(builtin, qPrintable(error));
+        QStandardPaths::setTestModeEnabled(true);
+        QDir(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)).removeRecursively();
+
+        AppModel app(nullptr, builtin, nullptr,
+                     std::make_unique<platform::FileKeyVault>(m_dir->filePath(QStringLiteral("app-keys"))),
+                     std::make_shared<ai::StaticCredentialProvider>());
+        QVERIFY(app.ok());
+        QVERIFY(!app.recognitionConfigured());
+        QSignalSpy configured(&app, &AppModel::recognitionConfiguredChanged);
         QVERIFY(app.settings()->saveSecret(QStringLiteral("deepseek"), QStringLiteral("sk-user")));
         QVERIFY(app.recognitionConfigured());
         QCOMPARE(configured.size(), 1);
-        QCOMPARE(app.credentials()->key(ai::Service::DeepSeek), QStringLiteral("sk-user"));
-
         app.setDemoMode(true);
-        QVERIFY(app.demoMode());
-        QVERIFY(dynamic_cast<const ai::BuiltinCredentialProvider *>(app.credentials().get()));
-        QVERIFY(app.credentials()->key(ai::Service::DeepSeek) != QStringLiteral("sk-user"));
-        QCOMPARE(app.recognitionConfigured(), ai::BuiltinCredentialProvider().isConfigured(ai::Service::DeepSeek));
-        // The user's key is untouched by demo mode.
-        QVERIFY(app.settings()->deepSeekConfigured());
-
+        QVERIFY(!app.recognitionConfigured());
         app.setDemoMode(false);
-        QVERIFY(dynamic_cast<const UserCredentialProvider *>(app.credentials().get()));
-        QVERIFY(app.recognitionConfigured());
-
         QVERIFY(app.settings()->clearSecret(QStringLiteral("deepseek")));
-        QVERIFY(!app.recognitionConfigured()); // no silent fall back to the built-in key
-        QVERIFY(app.credentials()->key(ai::Service::DeepSeek).isEmpty());
+        QVERIFY(!app.recognitionConfigured());
     }
 };
 

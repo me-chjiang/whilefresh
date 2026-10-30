@@ -17,9 +17,9 @@ Item {
             x: Theme.gap
             width: parent.width - Theme.gap * 2
             spacing: Theme.gap
-            KeyField { label: "DeepSeek 密钥"; field: "deepseek"; configured: App.settings.deepSeekConfigured }
-            KeyField { label: "Lexmount 密钥"; field: "lexmount"; configured: App.settings.lexmountConfigured }
-            KeyField { label: "Lexmount 项目 ID"; field: "lexmountProject"; configured: App.settings.lexmountProjectConfigured }
+            KeyField { label: "DeepSeek 密钥"; field: "deepseek"; configured: App.settings.deepSeekConfigured; source: App.settings.deepSeekSource }
+            KeyField { label: "Lexmount 密钥"; field: "lexmount"; configured: App.settings.lexmountConfigured; source: App.settings.lexmountSource }
+            KeyField { label: "Lexmount 项目 ID"; field: "lexmountProject"; configured: App.settings.lexmountProjectConfigured; source: App.settings.lexmountProjectSource }
         }
     }
 }

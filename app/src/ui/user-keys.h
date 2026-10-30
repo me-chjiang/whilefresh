@@ -11,7 +11,7 @@ namespace whilefresh::ui {
 
 // The user's own keys, kept in the platform KeyVault (R-ADR-3). Reads are cached for the
 // session; save() and clear() are the only writers, so the cache cannot go stale. An unset key is
-// "not configured": nothing falls back to the built-in demo key.
+// "not configured" here; falling back to the built-in key is the caller's layer.
 class UserCredentialProvider final : public ai::CredentialProvider
 {
 public:

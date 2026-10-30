@@ -30,6 +30,34 @@ disable_deepseek_key() {
     export WHILEFRESH_DEEPSEEK_API_KEY="" WHILEFRESH_KEY_FROM_SCRIPT=1
 }
 
+LEXMOUNT_CONFIG="${WHILEFRESH_LEXMOUNT_CONFIG:-$HOME/.config/lexmount/config.yaml}"
+
+# Prints the value of a top-level `name: value` line of the Lexmount config (quotes stripped).
+lexmount_config_value() {
+    [[ -f "$LEXMOUNT_CONFIG" ]] || return 0
+    sed -n -E "s/^$1:[[:space:]]*//p" "$LEXMOUNT_CONFIG" | head -n 1 \
+        | sed -E "s/[[:space:]]+#.*$//; s/^[\"']//; s/[\"'][[:space:]]*$//; s/[[:space:]]+$//"
+}
+
+# Exports WHILEFRESH_LEXMOUNT_API_KEY and WHILEFRESH_LEXMOUNT_PROJECT_ID from the Lexmount config
+# (ADR-5, same rules as the DeepSeek key): never print the values, only whether they were found.
+export_lexmount_credentials() {
+    local key project
+    key="$(lexmount_config_value api-key)"
+    project="$(lexmount_config_value project-id)"
+    export WHILEFRESH_LEXMOUNT_API_KEY="$key" WHILEFRESH_LEXMOUNT_PROJECT_ID="$project"
+    if [[ -n "$key" && -n "$project" ]]; then
+        echo "Lexmount credentials: read from $LEXMOUNT_CONFIG"
+    else
+        echo "Lexmount credentials: not found in $LEXMOUNT_CONFIG, building without them"
+        export WHILEFRESH_LEXMOUNT_API_KEY="" WHILEFRESH_LEXMOUNT_PROJECT_ID=""
+    fi
+}
+
+disable_lexmount_credentials() {
+    export WHILEFRESH_LEXMOUNT_API_KEY="" WHILEFRESH_LEXMOUNT_PROJECT_ID=""
+}
+
 require_path() {
     local path="$1" what="$2" override="$3"
     if [[ ! -e "$path" ]]; then

@@ -28,6 +28,9 @@ class SettingsModel : public QObject
     Q_PROPERTY(bool deepSeekConfigured READ deepSeekConfigured NOTIFY servicesChanged)
     Q_PROPERTY(bool lexmountConfigured READ lexmountConfigured NOTIFY servicesChanged)
     Q_PROPERTY(bool lexmountProjectConfigured READ lexmountProjectConfigured NOTIFY servicesChanged)
+    Q_PROPERTY(QString deepSeekSource READ deepSeekSource NOTIFY servicesChanged)
+    Q_PROPERTY(QString lexmountSource READ lexmountSource NOTIFY servicesChanged)
+    Q_PROPERTY(QString lexmountProjectSource READ lexmountProjectSource NOTIFY servicesChanged)
     Q_PROPERTY(QVariantList preferences READ preferences NOTIFY preferencesChanged)
     Q_PROPERTY(QString preferenceSummary READ preferenceSummary NOTIFY summaryChanged)
     Q_PROPERTY(bool summaryStale READ summaryStale NOTIFY summaryChanged)
@@ -38,7 +41,10 @@ class SettingsModel : public QObject
 
 public:
     // `chat` must outlive this object.
-    SettingsModel(ai::ChatClient *chat, std::shared_ptr<UserCredentialProvider> credentials, QObject *parent = nullptr);
+    // `builtinKeys` only tells the 服务 page which fields have a built-in value; it is never read
+    // out. Defaults to the keys compiled into this build.
+    SettingsModel(ai::ChatClient *chat, std::shared_ptr<UserCredentialProvider> credentials,
+                  std::shared_ptr<const ai::CredentialProvider> builtinKeys = nullptr, QObject *parent = nullptr);
 
     // Points the model at the active session's store and name mappings (either may be null).
     void attach(data::Store *store, core::NameMappingStore *names);
@@ -47,6 +53,10 @@ public:
     bool deepSeekConfigured() const { return m_credentials->isConfigured(ai::Service::DeepSeek); }
     bool lexmountConfigured() const { return m_credentials->isConfigured(ai::Service::Lexmount); }
     bool lexmountProjectConfigured() const { return m_credentials->isConfigured(ai::Service::LexmountProjectId); }
+    // "user" (entered on the page), "builtin" (only the build's key) or "none". Never the value.
+    QString deepSeekSource() const { return sourceOf(ai::Service::DeepSeek); }
+    QString lexmountSource() const { return sourceOf(ai::Service::Lexmount); }
+    QString lexmountProjectSource() const { return sourceOf(ai::Service::LexmountProjectId); }
     QVariantList preferences() const;
     QString preferenceSummary() const;
     bool summaryStale() const;
@@ -87,6 +97,7 @@ signals:
 
 private:
     static std::optional<ai::Service> serviceFor(const QString &field);
+    QString sourceOf(ai::Service service) const;
     QStringList preferenceTexts() const;
     void cancelSummary();
     void summarized(quint64 id, const ai::PreferenceSummary &summary);
@@ -94,6 +105,7 @@ private:
 
     ai::ChatClient *m_chat;
     std::shared_ptr<UserCredentialProvider> m_credentials;
+    std::shared_ptr<const ai::CredentialProvider> m_builtinKeys;
     ai::PreferenceSummarizer m_summarizer;
     data::Store *m_store = nullptr;
     core::NameMappingStore *m_names = nullptr;

@@ -54,6 +54,6 @@ Skill 实际文件保存在 `.agents/skills/`，`.claude/skills/` 通过同名�
 - 构建一律通过 `scripts/` 中的脚本，产物在被忽略的 `build/<目标>/`；第三方依赖由 `scripts/fetch-deps.sh` 下载到 `~/.cache/whilefresh/` 并固定 commit，不放进仓库。
 - 分层依赖：`core` 只链接 Qt::Core（CMake 中有检查）；`data`、`recognition`、`platform` 依赖 `core`；`ui` 依赖以上各层；QML 只做展示。
 - 测试：Qt Test + CTest，仅桌面构建。改动 C++ 后至少运行 `scripts/build-desktop.sh` 与 `ctest --test-dir build/desktop --output-on-failure`。
-- 密钥：只由构建脚本从钥匙串读取并生成到构建目录的 `generated/api-config.h`；脚本不得打印密钥或开启 `set -x`。需要密钥或更换密钥时，一律通过 `scripts/` 下的构建脚本重新构建，不要在构建目录里直接运行 `ninja`（自动重新配置会得到无密钥构建）。提交前用 `rg -uu -e 'sk-[0-9a-f]{32}' --glob '!build/**' .` 确认无密钥。
+- 密钥：只由构建脚本从钥匙串读取并生成到构建目录的 `generated/api-config.h`；脚本不得打印密钥或开启 `set -x`；测试阶段 DeepSeek 密钥（钥匙串）与 Lexmount 凭据（`~/.config/lexmount/config.yaml`）一同注入。需要密钥或更换密钥时，一律通过 `scripts/` 下的构建脚本重新构建，不要在构建目录里直接运行 `ninja`（自动重新配置会得到无密钥构建）。提交前运行 `scripts/check-keys.sh`（`sk-` 模式与真实 Lexmount 值的扫描）确认无密钥。
 - 新增代码或工具链时，先在 `docs/development.md` 中记录用途、运行方式和验证命令，再补充本节。
 - 执行验证前遵循用户当次要求；如未要求测试，不擅自运行会产生大量文件或访问外部服务的操作。

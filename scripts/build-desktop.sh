@@ -16,8 +16,10 @@ done
 
 if [[ $with_key -eq 1 ]]; then
     export_deepseek_key
+    export_lexmount_credentials
 else
     disable_deepseek_key
+    disable_lexmount_credentials
 fi
 
 build_dir="$REPO_ROOT/build/desktop"

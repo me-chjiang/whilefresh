@@ -98,6 +98,7 @@
 
 - 2026-10-30 — T16：新增 `platform/key-vault.*`（`android/`、`desktop/` 各一个实现）、`app/android/.../KeyVault.java`、`ai/preference-summarizer.*`、`core/preference.h`、`ui/settings-model.*`、`ui/user-keys.*`、`qml/pages/{Services,Preferences}Page.qml`、`qml/components/KeyField.qml`、`test-data/recordings/preferences/`。文件名避开 `.gitignore` 的 `*secret*` / `*credential*`。
 - 2026-10-30 — T17 第二轮：`app/src/recipes/` 增加 LexmountRecipeSource、CdpConnection、WebSocketCodec、契约 YAML 生成；`app/tools/recipe-cli`；`app/src/ui/web-recipe-service.*` 与 `WebRecipeDetailPage.qml`；`recipes` 层改为依赖 core、Qt::Network、yaml-cpp；样例目录换成真实详情。
+- 2026-10-30 — 测试期内置密钥：新增 `scripts/check-keys.sh`（提交前密钥扫描）；`scripts/env.sh` 同时读取 Lexmount 配置并随 DeepSeek 密钥注入。
 - 2026-10-30 — T17：新增 `app/src/recipes/`（RecipeSource、下厨房 YAML 解析、RecordedRecipeSource、可选的 ProcessRecipeSource）与 `app/tests/recipes/`；创建 `test-data/recipes/xiachufang/`（样例 YAML 与 SOURCE.md）；`scripts/fetch-deps.sh` 增加 yaml-cpp（`~/.cache/whilefresh/yaml-cpp/`）。
 - 2026-10-30 — T14：删除 `recognition/vocabulary.*`，识别统一使用 `core::IngredientCatalog`；新增 `core/vocabulary-resolver.*`、`core/name-mapping.h`、`ai/ingredient-classifier.*`、`data/name-mappings.*`，`test-data/vocabulary/resolve-cases.json`，预留 `test-data/recordings/classifier/`。
 - 2026-10-30 — T13：新增 `app/src/ai/`（ChatClient、录制回放、SystemPromptBuilder、CredentialProvider）与 `app/tests/ai/`；密钥注入从 recognition 移到 ai，`recognition` 改为依赖 `ai`。

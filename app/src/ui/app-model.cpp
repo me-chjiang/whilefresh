@@ -70,12 +70,18 @@ void setDate(core::RecordedDate &recorded, const QString &text)
 }
 
 AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const data::BuiltinData> builtin,
-                   QObject *parent, std::unique_ptr<platform::KeyVault> secrets)
-    : QObject(parent), m_platform(platform), m_builtin(std::move(builtin))
+                   QObject *parent, std::unique_ptr<platform::KeyVault> secrets,
+                   std::shared_ptr<ai::CredentialProvider> builtinKeys)
+    : QObject(parent), m_platform(platform), m_builtin(std::move(builtin)),
+      m_builtinKeys(builtinKeys ? std::move(builtinKeys) : std::make_shared<ai::BuiltinCredentialProvider>())
 {
     m_settings = std::make_unique<SettingsModel>(
         m_chat.get(),
-        std::make_shared<UserCredentialProvider>(secrets ? std::move(secrets) : platform::KeyVault::create()));
+        std::make_shared<UserCredentialProvider>(secrets ? std::move(secrets) : platform::KeyVault::create()),
+        m_builtinKeys);
+    m_realCredentials = std::make_shared<ai::LayeredCredentialProvider>(m_settings->userCredentials(), m_builtinKeys);
+    // Until a session is active the client reads the real-mode keys.
+    setCredentialProvider(m_realCredentials);
     m_lastConfigured = recognitionConfigured();
     connect(m_settings.get(), &SettingsModel::servicesChanged, this, [this] {
         if (recognitionConfigured() != m_lastConfigured) {
@@ -123,8 +129,7 @@ AppModel::~AppModel() = default;
 
 recipes::LexmountCredentials AppModel::lexmountCredentials() const
 {
-    // What the user entered on the 服务 page. Demo mode's provider holds no Lexmount values, so the
-    // web recipes report 未配置 Lexmount there.
+    // Real mode: the user's 服务 page values, else the built-in ones. Demo mode: built-in only.
     return { m_credentials->key(ai::Service::Lexmount), m_credentials->key(ai::Service::LexmountProjectId) };
 }
 
@@ -153,11 +158,8 @@ void AppModel::setCredentialProvider(std::shared_ptr<ai::CredentialProvider> cre
 
 void AppModel::applyModeCredentials()
 {
-    // Demo mode never touches the user's keys, and real mode never falls back to the built-in one.
-    if (demoMode())
-        setCredentialProvider(std::make_shared<ai::BuiltinCredentialProvider>());
-    else
-        setCredentialProvider(m_settings->userCredentials());
+    // Demo mode never touches the user's keys; real mode prefers them over the built-in ones.
+    setCredentialProvider(demoMode() ? m_builtinKeys : m_realCredentials);
     m_settings->attach(m_active ? m_active->store.get() : nullptr, m_active ? m_active->names.get() : nullptr);
 }
 

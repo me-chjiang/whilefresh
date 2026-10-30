@@ -32,9 +32,21 @@ APK 输出为 `build/android-<abi>/whilefresh-<abi>-debug.apk`。编辑器诊断
 
 ### 密钥注入
 
-`scripts/build-android.sh` 从 macOS 钥匙串读取服务名为 `landing-project-deepseek` 的密钥，通过环境变量交给 CMake，生成到构建目录的 `generated/api-config.h`，源码目录和 `CMakeCache.txt` 中都不出现。钥匙串中没有该条目时照常构建，App 显示"识别服务：未配置"。
+测试阶段（2026-10-30 决定）测试者不必自己填密钥，构建时内置三个值：
 
-- 桌面版默认不注入密钥，需要时加 `--with-key`。注意 `scripts/build-desktop.sh --release --with-key` 会把密钥编进 Release 二进制，不要分发这样的产物。
+| 值 | 来源 | 环境变量（只给 CMake） |
+| --- | --- | --- |
+| DeepSeek 密钥 | macOS 钥匙串，服务名 `landing-project-deepseek` | `WHILEFRESH_DEEPSEEK_API_KEY` |
+| Lexmount 密钥 | `~/.config/lexmount/config.yaml` 的 `api-key` | `WHILEFRESH_LEXMOUNT_API_KEY` |
+| Lexmount 项目 ID | 同一文件的 `project-id` | `WHILEFRESH_LEXMOUNT_PROJECT_ID` |
+
+`scripts/env.sh` 读取后导出，CMake 只从环境变量读取（不是缓存变量），校验字符集 `[A-Za-z0-9_-]`，只写入构建目录的 `generated/api-config.h`；源码目录和 `CMakeCache.txt` 中都不出现。脚本只输出"已读取/未找到"，不打印值。三个值同时注入：桌面 `--with-key`，Android 默认注入（`--no-key` 关闭）。取不到时照常构建，对应服务显示"未配置"。
+
+取值顺序：非演示模式先用用户在"服务"页填的值，没有则用内置值（`LayeredCredentialProvider`，用户值优先）；演示模式只用内置值，不碰用户的值。服务页每项显示"已配置"（用户值）、"内置"（只有内置值）或"未配置"，从不回显取值；清除用户值后回落到"内置"。测试用 `StaticCredentialProvider` 充当内置值，不依赖真实注入的密钥。
+
+提交前运行 `scripts/check-keys.sh`：除 `sk-` 模式外，还会用配置文件里的真实 Lexmount 值在工作区和所有提交中搜索（只输出文件名，不输出内容）。
+
+- 桌面版默认不注入密钥（生成的头文件里三个值都是空串），需要时加 `--with-key`。注意 `scripts/build-desktop.sh --release --with-key` 会把密钥编进 Release 二进制，不要分发这样的产物。
 - 密钥只在 CMake 配置阶段读取。需要密钥或更换密钥时，一律重新运行 `scripts/` 下的构建脚本，不要在构建目录里直接运行 `ninja`：ninja 自动重新配置时拿不到脚本导出的环境变量，会生成无密钥构建，CMake 会给出"本次为无密钥构建"的警告。
 - 修改了 CMakeLists.txt 后同样用构建脚本重新构建。
 
@@ -134,7 +146,7 @@ scripts/build-desktop.sh  # 用完密钥后恢复为不带密钥的桌面构建
 
 - `ChatClient`：一次 chat-completions 调用的异步接口（请求 id、可取消）。请求为 `ChatRequest`（system/user 消息，user 可含 image_url、JSON 模式、max_tokens、temperature、thinking）；大请求可在工作线程先 `encodeChatRequest` 再 `sendEncoded`。结果为正文、finish_reason、token 用量、耗时、截断标记和原始响应；失败为带类型的 `ChatError`（`ErrorKind` 与 HTTP/网络错误分类也在这里）。
 - `DeepSeekChatClient`：每次尝试空闲超时 150 s，整次调用（含重试）总时限 240 s，单个请求可用 `ChatRequest::idleTimeoutMs` / `deadlineMs` 覆盖；只有 HTTP 5xx 和服务器断开连接（RemoteHostClosed）重试一次，协议错误、超时和 4xx 不重试；`finish_reason=length` 时作为成功返回部分正文并标记 `truncated`。日志只记大小、数量、耗时、token、状态码。密钥在发送时向 `CredentialProvider` 取，没有密钥直接报 `NotConfigured`，不发请求。
-- `CredentialProvider`（`api-keys.h`；文件名避开 `.gitignore` 的 `*credential*`）：`key(Service)`，Service 为 DeepSeek / Lexmount / LexmountProjectId（项目 ID 不是密钥，但与密钥同样存取，T17 从同一个提供者取）。现有 `BuiltinCredentialProvider`（构建时注入的密钥）和 `StaticCredentialProvider`（测试、工具）；`AppModel` 持有提供者和应用级 `DeepSeekChatClient`，运行时用 `AppModel::setCredentialProvider()` 更换（同时通知 QML 的 `recognitionConfigured`）。
+- `CredentialProvider`（`api-keys.h`；文件名避开 `.gitignore` 的 `*credential*`）：`key(Service)`，Service 为 DeepSeek / Lexmount / LexmountProjectId（项目 ID 不是密钥，但与密钥同样存取，T17 从同一个提供者取）。现有 `BuiltinCredentialProvider`（构建时注入的 DeepSeek、Lexmount 密钥和项目 ID）、`LayeredCredentialProvider`（主提供者有值用主，否则用备用）和 `StaticCredentialProvider`（测试、工具）；`AppModel` 持有提供者和应用级 `DeepSeekChatClient`，运行时用 `AppModel::setCredentialProvider()` 更换（同时通知 QML 的 `recognitionConfigured`）。
 - `RecordedChatClient` / `RecordingChatClient`：传输层回放与录制。录制格式 2 只存请求摘要和请求体 SHA-256，不存提示词和图片；也能读 `recognize-cli` 的格式 1（可带 `requestDigests`）。带摘要的录制只回答相同的请求，提示词或输入变了会失败，需要重新录制。
 - `parseJsonContent(ChatResult)`：把 JSON 模式的回答正文（可带 ```json 围栏）解析成对象，失败时返回 BadResponse，供纯文本 JSON 服务使用。
 - `SystemPromptBuilder`：基础文本 + 按顺序追加的段落，偏好摘要永远放最后；空段落省略。
@@ -150,9 +162,9 @@ ctest --test-dir build/desktop --output-on-failure -R 'chat|system-prompt|deepse
 ### 密钥存储、服务页与偏好记忆（T16）
 
 - **存储**（`app/src/platform/key-vault.h`，接口 `KeyVault`；文件名避开 `.gitignore` 的 `*secret*`）：保存 DeepSeek 密钥、Lexmount 密钥、Lexmount 项目 ID 三个值，不进 SQLite、不写日志。Android 实现 `android/android-key-vault.*` 通过 JNI 调 `KeyVault.java`：AES-256-GCM，密钥在 AndroidKeyStore（不可导出），每个值一个文件 `files/secrets/<名称>.bin`（12 字节 IV + 密文），`allowBackup=false`。桌面实现 `desktop/file-key-vault.*` 只供开发：应用数据目录下的 `secrets.json`，目录 0700、文件 0600，**明文，不加密，不得用于分发**。
-- **提供者**：`ui/user-keys.h` 的 `UserCredentialProvider` 读写上述存储（会话内缓存，写入只经它）。`AppModel` 在非演示模式使用它，演示模式使用 `BuiltinCredentialProvider` 和独立的 demo.db；切换演示模式、保存或清除密钥都会更新 `recognitionConfigured`。非演示模式下用户没填 DeepSeek 密钥即"未配置"，不回退到内置密钥。T17 取 Lexmount 凭据用 `AppModel::credentials()->key(Service::Lexmount / LexmountProjectId)`。
+- **提供者**：`ui/user-keys.h` 的 `UserCredentialProvider` 读写上述存储（会话内缓存，写入只经它）。`AppModel` 在非演示模式使用"用户值优先、其次内置值"的分层提供者，演示模式只用内置值和独立的 demo.db；切换演示模式、保存或清除密钥都会更新 `recognitionConfigured`。无密钥构建且用户没填时即"未配置"。T17 取 Lexmount 凭据用 `AppModel::credentials()->key(Service::Lexmount / LexmountProjectId)`。
 - **子模型**：`ui/settings-model.*` 的 `SettingsModel` 以 `App.settings` 暴露给 QML（R-ADR-11 的第一步）：密钥的保存/清除与"已配置/未配置"状态（只写不读，不回显）、偏好 CRUD、摘要、已记住的名称映射。
-- **页面**：我的 → 服务（`ServicesPage.qml`，三个密码框，每项保存/清除）；我的 → 偏好记忆（`PreferencesPage.qml`：偏好列表与添加/删除，摘要与"整理"按钮，无密钥时按钮禁用并显示未配置；"已记住的名称"列表可逐条删除或全部清除）。
+- **页面**：我的 → 服务（`ServicesPage.qml`，三个密码框，每项保存/清除；状态标签为"已配置"/"内置"/"未配置"，由 `SettingsModel` 的 `*Source` 属性给出）；我的 → 偏好记忆（`PreferencesPage.qml`：偏好列表与添加/删除，摘要与"整理"按钮，无密钥时按钮禁用并显示未配置；"已记住的名称"列表可逐条删除或全部清除）。
 - **偏好记忆**：`preferences` 表由 `Store::addPreference/updatePreference/deletePreference/preferences` 读写（单条 ≤100 字，最多 50 条，去重，来源 user/ai）。摘要存在 `settings.preference_summary`，生成时的偏好文本存在 `preference_summary_source`，两者不一致时页面显示"待整理"；偏好全部删除时摘要同时清空。T18 取摘要：`AppModel::settings()->preferenceSummary()`，或用 `SettingsModel::cookingSystemPrompt(builder)` 得到摘要在最后的 system prompt。
 - **名称映射**：`core::NameMappingStore` 增加 `entries()/forget()/clear()`，AI 归类被记住的名称可在偏好记忆页清除。
 
@@ -203,7 +215,7 @@ scripts/build-desktop.sh  # 恢复无密钥构建
 - `WebSocketCodec` / `CdpConnection`：Qt6::WebSockets 不在 Android 套件里（三个套件都没有），所以自带 RFC 6455 帧编解码（校验 `Sec-WebSocket-Accept`、FIN/续帧重组、16/64 位长度、4 MiB 上限、任意长度 ping 应答、关闭握手），测试对照本地假服务器。
 - `RecordedRecipeSource`：`addFile` / `addDirectory` 读入录制的 YAML，按其回显的 query（搜索按关键词加页码，详情按 id）应答，未录制的请求返回 `NotFound`。
 - `ProcessRecipeSource`：调用子模块的 Python CLI 并解析输出，由 CMake 选项 `WHILEFRESH_XIACHUFANG_ADAPTER`（默认 OFF，Android 忽略）打开，现在只作对照。
-- 凭据：Lexmount 的 api key / project id 每次请求开始时由调用方的回调给出，只在请求期间持有，不落盘、不写日志、不编进程序。`AppModel` 的回调读 `credentials()->key(ai::Service::Lexmount)` 和 `key(ai::Service::LexmountProjectId)`，即用户在“服务”页填的值；演示模式没有这两项，界面显示“未配置 Lexmount”。应用里没有环境变量回退；只有开发工具 `recipe-cli` 读环境变量 `WHILEFRESH_LEXMOUNT_API_KEY` / `WHILEFRESH_LEXMOUNT_PROJECT_ID`。
+- 凭据：Lexmount 的 api key / project id 每次请求开始时由调用方的回调给出，只在请求期间持有，不落盘、不写日志、不编进程序。`AppModel` 的回调读 `credentials()->key(ai::Service::Lexmount)` 和 `key(ai::Service::LexmountProjectId)`，即用户在“服务”页填的值，没有则用构建内置的值（演示模式只用内置值）；两者都没有时界面显示“未配置 Lexmount”。应用里没有环境变量回退；只有开发工具 `recipe-cli` 读环境变量 `WHILEFRESH_LEXMOUNT_API_KEY` / `WHILEFRESH_LEXMOUNT_PROJECT_ID`。
 - 界面：`ui/WebRecipeService`（`App.web`，另有 `App.searchRecipes / requestRecipeDetail / cancelRecipeRequest`）保存搜索结果、详情（仅内存缓存，不持久化）和状态，错误映射成短标签（未配置 Lexmount、下厨房拦截、网络错误、超时……）。菜谱页输入菜名后点“搜下厨房”，结果点开进 `WebRecipeDetailPage`（显示来源并可打开原菜谱）。这些页面会在 T18b / T19 替换。
 
 ```sh
