@@ -1,7 +1,6 @@
 #pragma once
 
 #include "core/catalog.h"
-#include "core/recipe.h"
 
 #include <QDateTime>
 #include <QList>
@@ -36,8 +35,6 @@ struct ShoppingSection {
 
 ShoppingEntry makeShoppingEntry(const QStringList &names, ShoppingOrigin origin, const QString &note,
                                 const IngredientCatalog *catalog);
-// One entry per missing required group of the recipe.
-QList<ShoppingEntry> shoppingEntriesForMissing(const RecipeMatch &match, const IngredientCatalog *catalog);
 
 // Entries grouped by category in vocabulary order, keeping insertion order inside a category.
 QList<ShoppingSection> groupShoppingEntries(const QList<ShoppingEntry> &entries, const IngredientCatalog *catalog);

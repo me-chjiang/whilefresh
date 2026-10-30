@@ -34,14 +34,6 @@ std::shared_ptr<const BuiltinData> BuiltinData::load(const QString &directory, Q
         return nullptr;
     data->catalog = std::make_shared<const core::IngredientCatalog>(std::move(*catalog));
 
-    const auto recipesJson = readFile(dir.filePath(QStringLiteral("recipes.json")), error);
-    if (!recipesJson)
-        return nullptr;
-    auto recipes = core::RecipeBook::fromJson(*recipesJson, error);
-    if (!recipes)
-        return nullptr;
-    data->recipes = std::make_shared<const core::RecipeBook>(std::move(*recipes));
-
     // The reference table is optional: without it every lookup falls through to the AI estimate.
     const QString shelfLifePath = dir.filePath(QStringLiteral("shelf-life.json"));
     core::ShelfLifeTable table;

@@ -1,6 +1,8 @@
 # 标准食材词表复核报告（T2）
 
-范围：`app/assets/data/vocabulary.json`（由 `tools/whilefresh_tools/vocabulary/vocabulary-source.json` 生成）、`tools/whilefresh_tools/vocabulary/ingredient-map.json`、`recipes.json` 的 `canonical` 字段。统计和抽样部分由 `uv run --project tools python -m whilefresh_tools.vocabulary report` 生成（固定随机种子，可复现）；其余为人工记录。
+范围：`app/assets/data/vocabulary.json`（由 `tools/whilefresh_tools/vocabulary/vocabulary-source.json` 生成），以及当时的原料映射 `ingredient-map.json` 与 `recipes.json` 的 `canonical` 字段。
+
+> T18b 更新：HowToCook、`recipes.json`、`ingredient-map.json` 及其构建 / 报告工具（`recipes build`、`vocabulary report`）已删除，下文涉及它们的内容仅作历史记录。名称归一现由 `IngredientCatalog::resolveFinest` 与 `VocabularyResolver`（T14）负责；词表本身仍由 `vocabulary-source.json` 生成。
 
 ## AI 初稿与人工复核的关系
 

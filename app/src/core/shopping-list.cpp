@@ -58,15 +58,6 @@ ShoppingEntry makeShoppingEntry(const QStringList &names, ShoppingOrigin origin,
     return entry;
 }
 
-QList<ShoppingEntry> shoppingEntriesForMissing(const RecipeMatch &match, const IngredientCatalog *catalog)
-{
-    QList<ShoppingEntry> entries;
-    const QString note = match.recipe ? match.recipe->name : QString();
-    for (const RequirementGroup &group : match.missingGroups())
-        entries.append(makeShoppingEntry(group, ShoppingOrigin::Recipe, note, catalog));
-    return entries;
-}
-
 QList<ShoppingSection> groupShoppingEntries(const QList<ShoppingEntry> &entries, const IngredientCatalog *catalog)
 {
     QList<ShoppingSection> sections;

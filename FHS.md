@@ -42,9 +42,9 @@
 │   └── tests/                 # Qt Test 单元 / 集成测试，按被测层分子目录（core/、platform/ …）
 ├── tools/                     # Python 离线工具（uv 管理，pytest）
 │   ├── pyproject.toml
-│   ├── whilefresh_tools/      # 包源码：菜谱转换、词表、参考表、合成数据、识别回归
+│   ├── whilefresh_tools/      # 包源码：词表、参考表、合成数据、识别回归
 │   │   ├── synthetic/         # 确定性商品场景、四种购物界面 / 小票 / 文本生成、Chrome 渲染、录制评估
-│   │   └── vocabulary/        # 词表：源数据（vocabulary-source.json、ingredient-map.json，人工维护）与构建 / 校验 / AI 初稿代码
+│   │   └── vocabulary/        # 词表：源数据（vocabulary-source.json，人工维护）与构建 / 校验 / AI 初稿代码
 │   ├── sources/               # 需要存档的第三方原始数据快照及来源说明（如 FoodKeeper）
 │   └── tests/                 # pytest；fixtures/ 放少量第三方原文样例及合成手工录制夹具
 ├── design/                    # HTML 视觉稿与手机尺寸截图
@@ -72,8 +72,8 @@
 - **可复用 QML 组件** 放 `app/qml/components/`，页面放 `app/qml/pages/`，主题常量只在 `app/qml/Theme.qml` 定义；页面只通过 `app/src/ui/app-model.*` 暴露的 `App` 单例取数和调用动作。
 - **离线界面资源工具** 放 `tools/whilefresh_tools/assets/`，由 uv 的 `assets` 依赖组运行；生成字体子集到 `app/assets/fonts/`，纹理到 `app/assets/textures/`，许可与资源同行。QML 组件依 Qt 大写类型名使用 PascalCase。
 - **内置数据** 只能由 `tools/` 生成到 `app/assets/data/`，不手改；生成物与生成脚本同分支提交。
-- **词表源数据**：标准食材词表和菜谱原料映射的人工维护源数据放 `tools/whilefresh_tools/vocabulary/`，`app/assets/data/vocabulary.json` 与 `recipes.json` 的 `canonical` 由它生成。AI 只用于一次性生成初稿，草稿放缓存目录，审阅后才进入源数据；初稿的原始响应不入库。
-- **第三方原始数据**：难以重新获取或需固定版本的放 `tools/sources/<来源>/`，附 `SOURCE.md` 写明网址、版本、获取日期、许可；可按固定 commit 重新下载的（如 HowToCook）不入库，下载到被忽略的缓存目录。
+- **词表源数据**：标准食材词表的人工维护源数据放 `tools/whilefresh_tools/vocabulary/`，`app/assets/data/vocabulary.json` 由它生成。AI 只用于一次性生成初稿，草稿放缓存目录，审阅后才进入源数据；初稿的原始响应不入库。
+- **第三方原始数据**：难以重新获取或需固定版本的放 `tools/sources/<来源>/`，附 `SOURCE.md` 写明网址、版本、获取日期、许可；可按固定 commit 重新下载的不入库，下载到被忽略的缓存目录。
 - **第三方构建依赖**（如 KDAB android_openssl）不入库：由 `scripts/fetch-deps.sh` 按脚本中记录的固定 commit 下载到 `~/.cache/whilefresh/<名称>/`，CMake 通过变量或环境变量引用。
 - **构建时生成的文件**（如含密钥的 `generated/api-config.h`）只写到 `build/<目标>/`；源码目录只放模板（`*.h.in`）。
 - **测试样本**：合成输入及其同名标准答案放 `test-data/synthetic/<screenshots|receipts|texts>/`，小票照片采用 JPEG、截图 PNG，HTML 为可重复生成的排版源；录制回放放 `test-data/recordings/synthetic/`（原始 `recognize-cli` format-1 响应 + 补充的 `elapsed_ms`）。生成/录制/评估工具和固定场景放 `tools/whilefresh_tools/synthetic/`，单测的手工录制夹具放 `tools/tests/fixtures/`。真实样例及其识别录制只放 `private/`（录制放 `private/recordings/`），任何内容都不得复制进仓库。
@@ -103,6 +103,7 @@
 - 2026-10-30 — T14：删除 `recognition/vocabulary.*`，识别统一使用 `core::IngredientCatalog`；新增 `core/vocabulary-resolver.*`、`core/name-mapping.h`、`ai/ingredient-classifier.*`、`data/name-mappings.*`，`test-data/vocabulary/resolve-cases.json`，预留 `test-data/recordings/classifier/`。
 - 2026-10-30 — T13：新增 `app/src/ai/`（ChatClient、录制回放、SystemPromptBuilder、CredentialProvider）与 `app/tests/ai/`；密钥注入从 recognition 移到 ai，`recognition` 改为依赖 `ai`。
 - 2026-10-29 — 第二轮规划（T12）：PRD v5 归档，新增 `docs/prd-v6.md`、`docs/mvp/round-2-plan.md`；预留 `app/src/ai/`、`app/src/recipes/`、`test-data/recipes/xiachufang/`，由 T13、T17 创建。HowToCook 相关目录将在 T18b 移除。
+- 2026-10-30 — T18b：删除 `app/assets/data/recipes.json`、`app/src/core/recipe.*`、`app/tests/core/recipe-matcher-test.cpp`、`RecipeDetailPage.qml`、`RecipeCard.qml`、`tools/whilefresh_tools/recipes/`、`vocabulary/{ingredient-map.json,mapping.py,report.py}`、`tools/tests/fixtures/dishes/` 与两张旧截图；菜谱页只剩下厨房搜索。
 - 2026-10-21 — 文档整理：开发说明移到 docs/development.md，历史版本移到 docs/archive/。
 - 2026-10-21 — T7：增加 `tools/whilefresh_tools/synthetic/`、`test-data/synthetic/` 与 `test-data/recordings/synthetic/`，规定可重复生成的 HTML/PNG/JPEG/TXT、标准答案和合成识别录制的摆放位置。
 - 2026-10-21 — T5：细化应用服务与视图模型的分工，记录 SQLite 迁移位置与 core/data/ui 分层测试。

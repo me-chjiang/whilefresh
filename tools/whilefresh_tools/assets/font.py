@@ -1,6 +1,5 @@
 import hashlib
 import io
-import json
 import re
 import sys
 import urllib.request
@@ -38,9 +37,7 @@ def build(repo_root: Path, source: Path | None, out: Path) -> None:
     if digest != SOURCE_SHA256:
         raise SystemExit(f"source font sha256 mismatch: {digest}")
     qml = "".join(path.read_text(encoding="utf-8") for path in (repo_root / "app/qml").rglob("*.qml"))
-    recipes = json.loads((repo_root / "app/assets/data/recipes.json").read_text(encoding="utf-8"))
-    names = "".join(recipe["name"] for recipe in recipes["recipes"])
-    text = ASCII + EXTRA_TEXT + gb2312_level1() + "".join(CJK_RE.findall(qml)) + names
+    text = ASCII + EXTRA_TEXT + gb2312_level1() + "".join(CJK_RE.findall(qml))
     options = subset.Options()
     options.name_IDs = ["*"]
     options.hinting = False

@@ -39,6 +39,8 @@ public:
     Q_INVOKABLE void requestDetail(const QString &id);
     // Stops whatever is running; the source still cleans up its browser session.
     Q_INVOKABLE void cancel();
+    // Drops results, details and the cache: they belong to the mode and credentials that fetched them.
+    void reset();
 
     static QString errorLabel(recipes::RecipeErrorKind kind);
 

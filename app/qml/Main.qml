@@ -131,13 +131,12 @@ ApplicationWindow {
     Component {
         id: recipesComponent
         RecipesPage {
-            onRecipeRequested: function(recipe) { stack.push(detailComponent, { recipe: App.recipeDetail(recipe.id) }) }
             onWebRecipeRequested: function(id) { App.requestRecipeDetail(id); stack.push(webDetailComponent) }
         }
     }
     Component {
         id: clearComponent
-        ClearFridgePage { onRecipeRequested: function(recipe) { stack.push(detailComponent, { recipe: App.recipeDetail(recipe.id) }) } }
+        ClearFridgePage { onSearchRequested: function(keyword) { App.searchRecipes(keyword); window.showTab(1) } }
     }
     Component {
         id: shoppingComponent
@@ -160,13 +159,6 @@ ApplicationWindow {
     Component {
         id: preferencesComponent
         PreferencesPage { onBackRequested: stack.pop() }
-    }
-    Component {
-        id: detailComponent
-        RecipeDetailPage {
-            onBackRequested: stack.pop()
-            onShoppingRequested: window.showTab(3)
-        }
     }
     Component {
         id: webDetailComponent

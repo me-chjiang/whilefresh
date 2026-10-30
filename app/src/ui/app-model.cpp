@@ -89,6 +89,7 @@ AppModel::AppModel(platform::PlatformServices *platform, std::shared_ptr<const d
             emit recognitionConfiguredChanged();
         }
     });
+    connect(m_settings.get(), &SettingsModel::servicesChanged, this, [this] { m_web->reset(); });
     setRecipeSource(std::make_unique<recipes::LexmountRecipeSource>([this] { return lexmountCredentials(); }));
     m_dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(m_dataDir);
@@ -272,14 +273,13 @@ void AppModel::activate(Session *session)
     setImportState(QStringLiteral("idle"));
     invalidate();
     applyModeCredentials();
+    m_web->reset();
     emit demoModeChanged();
 }
 
 void AppModel::invalidate()
 {
     m_items.reset();
-    m_recipes.reset();
-    m_clearRecipes.reset();
     m_shopping.reset();
     QSet<qint64> existing;
     for (const auto &item : kitchen().fridge())
@@ -321,13 +321,6 @@ QVariantMap AppModel::itemMap(const core::FridgeItem &item) const
     };
 }
 
-QVariantMap AppModel::summaryMap(const core::RecipeMatch &match) const
-{
-    const auto &r = *match.recipe;
-    return { { "id", r.id }, { "name", r.name }, { "difficulty", r.difficulty.value_or(1) },
-             { "haveCount", match.haveCount }, { "missingCount", match.missingCount }, { "sourceUrl", r.sourceUrl } };
-}
-
 QVariantList AppModel::items()
 {
     if (!m_items) {
@@ -364,50 +357,8 @@ void AppModel::toggleSelected(qint64 id)
 {
     if (!m_selected.remove(id))
         m_selected.insert(id);
-    m_clearRecipes.reset();
     emit changed();
 }
-
-QVariantList AppModel::recipes()
-{
-    if (!m_recipes) {
-        QVariantList list;
-        for (const auto &match : kitchen().recipes())
-            list.append(summaryMap(match));
-        m_recipes = list;
-    }
-    return *m_recipes;
-}
-
-QVariantList AppModel::clearRecipes()
-{
-    if (!m_clearRecipes) {
-        QVariantList list;
-        if (!m_selected.isEmpty()) {
-            for (const auto &match : kitchen().clearFridge(m_selected))
-                list.append(summaryMap(match));
-        }
-        m_clearRecipes = list;
-    }
-    return *m_clearRecipes;
-}
-
-QVariantMap AppModel::recipeDetail(const QString &id) const
-{
-    const auto match = kitchen().recipe(id);
-    if (!match || !match->recipe)
-        return {};
-    QVariantMap map = summaryMap(*match);
-    QVariantList ingredients;
-    for (const auto &group : match->groups)
-        ingredients.append(QVariantMap { { "raw", group.ingredientRaw.isEmpty() ? group.group.join(QStringLiteral(" 或 ")) : group.ingredientRaw },
-                                         { "has", group.satisfied() }, { "optional", group.optional } });
-    map.insert(QStringLiteral("ingredients"), ingredients);
-    map.insert(QStringLiteral("steps"), match->recipe->steps);
-    return map;
-}
-
-int AppModel::addMissing(const QString &recipeId) { return kitchen().addMissingToShopping(recipeId); }
 
 QVariantList AppModel::shopping()
 {

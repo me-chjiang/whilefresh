@@ -996,20 +996,12 @@ private slots:
         QVERIFY(kitchen->storageRules().isEmpty());
     }
 
-    void recipesShoppingSettingsAndDeleteAll()
+    void shoppingSettingsAndDeleteAll()
     {
         for (const auto &name : { QStringLiteral("鸡蛋"), QStringLiteral("西红柿"), QStringLiteral("五花肉"), QStringLiteral("土豆") }) {
             auto item = manual(name);
             QVERIFY(kitchen->saveItem(item));
         }
-        const auto matches = kitchen->recipes(QStringLiteral("西红柿炒鸡蛋"));
-        QCOMPARE(matches.size(), 1);
-        QCOMPARE(matches.first().missingCount, 0);
-        QVERIFY(!kitchen->recipeSource().license.isEmpty());
-        const auto egg = kitchen->fridge().first();
-        QVERIFY(kitchen->setUseFirst(egg.id, true));
-        QVERIFY(!kitchen->clearFridge(kitchen->defaultSelection()).isEmpty());
-        QVERIFY(kitchen->clearFridge({}).isEmpty());
         QVERIFY(kitchen->setDemoMode(true));
         QVERIFY(kitchen->demoMode());
         const auto id = kitchen->addShopping({ QStringLiteral("牛奶"), QStringLiteral("淡奶油") });

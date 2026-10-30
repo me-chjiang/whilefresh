@@ -3,7 +3,6 @@
 #include "core/clock.h"
 #include "core/fridge-item.h"
 #include "core/pantry.h"
-#include "core/recipe.h"
 #include "core/shopping-list.h"
 #include "data/builtin-data.h"
 #include "data/store.h"
@@ -53,11 +52,6 @@ public:
     // Explicit user action, not a system inference.
     bool markPantryAbsent(const QString &name);
 
-    QList<core::RecipeMatch> recipes(const QString &search = {}) const;
-    QList<core::RecipeMatch> clearFridge(const QSet<qint64> &selected) const;
-    std::optional<core::RecipeMatch> recipe(const QString &id) const;
-    const core::RecipeSource &recipeSource() const;
-    int addMissingToShopping(const QString &recipeId);
     qint64 addShopping(const QStringList &names);
     QList<core::ShoppingEntry> shopping() const;
     QList<core::ShoppingSection> shoppingSections() const;
@@ -76,7 +70,6 @@ signals:
     void changed();
 
 private:
-    QList<core::StockEntry> stock(const QSet<qint64> &selected = {}) const;
     void classify(core::FridgeItem &item) const;
     bool finish(bool ok);
     data::Store &m_store;

@@ -6,8 +6,6 @@
 
 <p>
   <img src="docs/images/fridge.jpg" width="240" alt="冰箱：按冷藏、冷冻、常温分区，显示新鲜度与保质期来源">
-  <img src="docs/images/clear-fridge.jpg" width="240" alt="清冰箱：默认选中临期食材，按用到最多、缺料最少排序菜谱">
-  <img src="docs/images/recipe-detail.jpg" width="240" alt="菜谱详情：逐项标出有和缺，可把缺料加入待买">
 </p>
 
 <sub>截图来自演示模式，数据为示例。</sub>
@@ -17,7 +15,7 @@
 - **入库**：相册截图（可多张）、系统分享、拍购物小票、粘贴订单文字或手动添加。AI 识别商品、规格和截图上可见的生产日期，分出食材、调料和无关内容（推荐、凑单、配送费等），用户核对后才入冰箱。
 - **冰箱**：按冷藏 / 冷冻 / 常温分区，每件食材显示新鲜 / 临期 / 超出估计期限，随日期自动变化。
 - **保质期有依据**：取值优先级为 包装标注 > 你确认过的规则 > USDA FoodKeeper 参考表 > AI 估计，每项都标出来源；非包装标注的一律标"估计"，不给食品安全结论。
-- **清冰箱做饭**：底栏中间的按钮。默认选中临期和标记先用的食材，从 372 道 [HowToCook](https://github.com/Anduin2017/HowToCook) 菜谱中按"用到所选最多、缺料最少"排序。
+- **清冰箱做饭**：底栏中间的按钮。默认选中临期和标记先用的食材，用所选食材的名字去下厨房搜菜谱。
 - **待买**：缺料按品类整理，可复制或分享。
 - **常备规则**：盐、油、酱油、葱姜蒜等默认算家里有，可增删；系统的任何建议都需你确认。
 - **演示模式**：内置示例数据与预设识别结果，不联网、不影响真实数据。
@@ -30,7 +28,7 @@
 | 客户端 | Qt 6.8.2（Qt Quick / QML + C++17），同一工程构建 Android APK 与 macOS 桌面开发版 |
 | 本地存储 | SQLite（QtSql），带版本迁移 |
 | 识别 | DeepSeek 多模态 API（`deepseek-flash`），长截图切片后识别；App 直连，无后端 |
-| 内置数据 | HowToCook 菜谱、581 项标准食材词表、USDA FoodKeeper 保质期参考，由 Python 离线工具生成 |
+| 内置数据 | 581 项标准食材词表、USDA FoodKeeper 保质期参考，由 Python 离线工具生成 |
 | 网络 | KDAB android_openssl 提供 HTTPS |
 
 ## 快速开始
@@ -89,7 +87,6 @@ docs/      产品定义、MVP 过程文档、开发文档
 
 - Qt 6.8.2 — LGPL v3（动态链接）
 - OpenSSL 3（KDAB android_openssl）— Apache 2.0
-- 菜谱 [HowToCook](https://github.com/Anduin2017/HowToCook) — Unlicense
 - 保质期参考 [USDA FoodKeeper](https://catalog.data.gov/dataset/fsis-foodkeeper-data) — CC0
 - 图标 [Tabler Icons](https://github.com/tabler/tabler-icons) — MIT
 - 标题字体 Noto Serif SC — SIL OFL 1.1
