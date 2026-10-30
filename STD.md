@@ -1,23 +1,25 @@
-# File Hierarchy Standard (FHS)
+# Project Standards (STD)
 
-本项目目录结构与文件放置规则的权威说明。新增顶层目录、新增一类文件，或某类文件改放别处时，同步更新本文件。依据：[MVP 工程规划](docs/mvp/mvp-plan.md) 第 1 节。
+本文件是项目文件树、放置规则与编码规范的权威说明。本文件由 `FHS.md` 于 2026-10-30 改名为 `STD.md`；使用全局 build-project-fhs skill 时，更新本文件 `STD.md`，不再创建 `FHS.md`。新增顶层目录、新增一类文件，或某类文件改放别处时，同步更新本文件。依据：[MVP 工程规划](docs/done/round-1/mvp-plan.md) 第 1 节。
 
 ## Layout
 
 ```
 .
-├── AGENTS.md / CLAUDE.md      # 协作规则（CLAUDE.md 只引入 AGENTS.md）
-├── FHS.md                     # 本文件
-├── README.md                  # 简介、材料索引、运行与验证命令
+├── AGENTS.md / CLAUDE.md      # AI 协作规则：边界、构建测试、开发循环、review 标准（CLAUDE.md 只引入 AGENTS.md）
+├── STD.md                     # 本文件
+├── README.md                  # 面向人的简介：功能、技术栈、构建运行测试
 ├── LICENSE                    # BSD-3-Clause
 ├── .agents/skills/            # 项目级 skill 实体；.claude/skills/ 为同名符号链接
-├── docs/                      # 产品与研究文档（PRD、调研）
-│   ├── archive/               # 历史版本（PRD v3–v5，调研速查）
-│   ├── images/                # README 截图（仅演示模式数据）
-│   ├── development.md         # 开发文档：环境、构建与验证命令、数据工具、调试方法
-│   └── mvp/                   # MVP 循环文档：需求、规划（含第二轮 round-2-plan.md）、cycle-state、交付报告
-│       ├── notes/             # 复杂模块的实现说明（如 android-integration.md）
-│       └── todo.md            # 未完成事项
+├── docs/                      # 产品与过程文档，按完成状态分两类
+│   ├── done/                  # 已完成：描述已合并代码或已结束的工作
+│   │   ├── development.md     # 开发参考：环境、构建与验证命令、数据工具、调试方法
+│   │   ├── review-log.md      # 各分支的审查记录
+│   │   ├── notes/             # 复杂模块的实现说明与复核报告
+│   │   ├── round-1/           # 第一轮需求、规划、试用版说明
+│   │   └── archive/           # 被取代的 PRD（v3–v5）与接入调研
+│   ├── todo/                  # 未完成：当前 PRD（v6）、第二轮计划、cycle-state、待办
+│   └── images/                # README 截图（仅演示模式数据）
 ├── app/                       # Qt 6 CMake 工程（Android APK + macOS 桌面开发版）
 │   ├── CMakeLists.txt
 │   ├── src/
@@ -79,23 +81,67 @@
 - **测试样本**：合成输入及其同名标准答案放 `test-data/synthetic/<screenshots|receipts|texts>/`，小票照片采用 JPEG、截图 PNG，HTML 为可重复生成的排版源；录制回放放 `test-data/recordings/synthetic/`（原始 `recognize-cli` format-1 响应 + 补充的 `elapsed_ms`）。生成/录制/评估工具和固定场景放 `tools/whilefresh_tools/synthetic/`，单测的手工录制夹具放 `tools/tests/fixtures/`。真实样例及其识别录制只放 `private/`（录制放 `private/recordings/`），任何内容都不得复制进仓库。
 - **视觉稿** 放 `design/<版本或主题>/`，截图与 HTML 同目录。
 - **一次性探针或实验脚本** 放 `/tmp`，不进仓库；确需保留的转成 `tools/` 或 `scripts/` 中的正式工具。
-- **文档**：产品文档放 `docs/`，MVP 循环文档放 `docs/mvp/`；复杂模块的 `IMPLEMENTATION_NOTE` 写成 `docs/mvp/notes/<模块>.md`。
+- **文档**：文档按完成状态放置：当前目标、计划、进度和待办放 `docs/todo/`；一份文档描述的工作全部合并后移到 `docs/done/`；被取代的 PRD 版本进 `docs/done/archive/`，历史文件名不改；复杂模块的实现说明在合并时写成 `docs/done/notes/<模块>.md`。
 
-## Stability notes
+## 编码规范
 
-- **命名**：项目约定新文件使用 kebab-case，以下语言约束例外：
+规则从现有代码归纳，新代码与之保持一致。
+
+### 命名
+
+- 项目约定新文件使用 kebab-case，以下语言约束例外：
   - QML 组件文件必须首字母大写（QML 类型名规则），如 `FridgePage.qml`；
   - Java 文件名必须与类名一致（PascalCase）；
   - Python 模块用 snake_case（kebab-case 无法 import）；
   - C++ 源文件用 kebab-case，如 `freshness-rules.cpp`，类名仍用 PascalCase。
+
+### C++
+
+- C++17，4 空格缩进，不用 Tab。参照 `app/src/core/quantity.h`、`app/src/core/quantity.cpp`。
+- 函数体的 `{` 单独一行；`if` / `for` / `while` 的 `{` 与语句同行。
+- 头文件用 `#pragma once`。
+- 代码放在 `namespace whilefresh::<层>`（如 `whilefresh::core`、`whilefresh::ai`）；文件内部实现放匿名命名空间。
+- `#include` 从 `src/` 起写，如 `"core/quantity.h"`，不用相对路径。顺序为：本文件对应的头文件、项目头文件、Qt 头文件、标准库头文件，每组内按字母序（见 `app/src/ui/app-model.cpp` 开头）。
+- 字符串字面量用 `QStringLiteral(...)` 包裹。
+- 注释用英文，只解释“为什么”或给出输入→输出示例（如 `app/src/core/quantity.h` 中的 `"500g" -> 500 g`）；示例中可用中文食材名。
+
+### QML
+
+- 只做展示和交互：数据和动作只经 `app/src/ui/app-model.*` 暴露的 `App` 单例获取或调用（如 `app/qml/pages/ProfilePage.qml`）。
+- 主题常量只在 `app/qml/Theme.qml` 定义，页面与组件通过它取值。
+- 可复用组件放 `app/qml/components/`，页面放 `app/qml/pages/`，文件名 PascalCase。
+- 界面文案只写标签和数值，不加解释性副标题；只显示例外情况（如“缺 酸奶”）。
+- 时间文案统一为“剩余x天”“过期x天”，由 `app/src/ui/app-model.cpp` 生成，QML 不自行拼接。
+
+### Python
+
+- 由 uv 管理依赖；运行方式为 `uv run --project tools python -m whilefresh_tools.<包>`（见 `docs/done/development.md`）。
+- 遵循 PEP 8；仓库未配置 lint 工具（`tools/pyproject.toml` 中无 ruff / flake8 设置）。
+- 模块与包名用 snake_case，如 `whilefresh_tools/vocabulary/schema.py`。
+- pytest 测试放 `tools/tests/`（`tools/pyproject.toml` 的 `testpaths`）。
+
+### Shell
+
+- bash 脚本以 `set -euo pipefail` 开头，随后 `source "$(dirname "$0")/env.sh"`（见 `scripts/build-desktop.sh`；`scripts/check-keys.sh` 因需汇总失败只用 `set -uo pipefail`）。
+- 必须能在 macOS 自带的 bash 3.2 上运行：不用关联数组；可能为空的数组展开要加保护（见 `scripts/run-emulator.sh` 中的 `"${extra_args[@]+"${extra_args[@]}"}"`）。
+- 不使用 `set -x`，不打印密钥；`scripts/env.sh` 只报告密钥是否找到。
+
+### 文档
+
+- 中文，Markdown；文件名 kebab-case（如 `prd-v6.md`、`round-2-plan.md`）。
+- 放置按上文「文档」规则。
+
+## Stability notes
+
 - `app/assets/data/` 中的文件名会被 C++ 加载代码和 qrc 引用，改名需同时改两处。
 - `private/` 整体被 `.gitignore` 排除；`private/pending/` 禁止 AI 工具访问（见 AGENTS.md）。
 - 密钥不得出现在仓库任何位置；构建脚本从 macOS 钥匙串读取，生成文件写到构建目录。
-- 历史版本在 `docs/archive/`，历史文件名保留不改。
+- 历史版本在 `docs/done/archive/`，历史文件名保留不改。
 - `.claude/skills/` 下是指向 `.agents/skills/` 的符号链接，不在其中放实体文件。
 
 ## Change log
 
+- 2026-10-30 — 文档重组：FHS.md 改名为 STD.md 并增加编码规范；docs/ 按完成状态拆为 done/ 与 todo/（原 docs/mvp/ 与 docs/archive/ 并入）。
 - 2026-10-30 — T16：新增 `platform/key-vault.*`（`android/`、`desktop/` 各一个实现）、`app/android/.../KeyVault.java`、`ai/preference-summarizer.*`、`core/preference.h`、`ui/settings-model.*`、`ui/user-keys.*`、`qml/pages/{Services,Preferences}Page.qml`、`qml/components/KeyField.qml`、`test-data/recordings/preferences/`。文件名避开 `.gitignore` 的 `*secret*` / `*credential*`。
 - 2026-10-30 — T17 第二轮：`app/src/recipes/` 增加 LexmountRecipeSource、CdpConnection、WebSocketCodec、契约 YAML 生成；`app/tools/recipe-cli`；`app/src/ui/web-recipe-service.*` 与 `WebRecipeDetailPage.qml`；`recipes` 层改为依赖 core、Qt::Network、yaml-cpp；样例目录换成真实详情。
 - 2026-10-30 — 测试期内置密钥：新增 `scripts/check-keys.sh`（提交前密钥扫描）；`scripts/env.sh` 同时读取 Lexmount 配置并随 DeepSeek 密钥注入。

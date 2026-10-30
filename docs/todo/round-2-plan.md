@@ -1,6 +1,6 @@
 # 趁鲜第二轮工程计划
 
-> 2026-10-29。依据 [PRD v6](../prd-v6.md)。第一轮的计划与需求见 [mvp-plan.md](mvp-plan.md)、[mvp-requirements.md](mvp-requirements.md)。本轮先把功能做对，界面能用即可。进度记在 [cycle-state.md](cycle-state.md)。
+> 2026-10-29。依据 [PRD v6](prd-v6.md)。第一轮的计划与需求见 [mvp-plan.md](../done/round-1/mvp-plan.md)、[mvp-requirements.md](../done/round-1/mvp-requirements.md)。本轮先把功能做对，界面能用即可。进度记在 [cycle-state.md](cycle-state.md)。
 
 ## 1. 架构变化
 

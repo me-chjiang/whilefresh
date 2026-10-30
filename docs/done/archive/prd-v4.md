@@ -1,6 +1,6 @@
 # 厨房食材消耗助手 PRD v4
 
-> AI 辅助整理，2026-10-20 根据[完整接入调研](../domestic-recipe-grocery-integration-research.md)与[独立能力速查](domestic-integration-brief.md)修订。手机端首版与单人使用由本轮产品方向确定；用户行为、接口申请结果和内容授权仍需验证。
+> AI 辅助整理，2026-10-20 根据[完整接入调研](./domestic-recipe-grocery-integration-research.md)与[独立能力速查](domestic-integration-brief.md)修订。手机端首版与单人使用由本轮产品方向确定；用户行为、接口申请结果和内容授权仍需验证。
 
 ## 产品方向
 

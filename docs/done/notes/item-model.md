@@ -1,6 +1,6 @@
 # 食材模型与导入续传（T15）
 
-依据 [PRD v6](../../prd-v6.md) 与 [第二轮计划](../round-2-plan.md) 的 R-ADR-8 / R-ADR-9、迁移 v5。
+依据 [PRD v6](../../todo/prd-v6.md) 与 [第二轮计划](../../todo/round-2-plan.md) 的 R-ADR-8 / R-ADR-9、迁移 v5。
 
 ## 迁移 v5
 

@@ -1,6 +1,6 @@
 # MVP 审查记录
 
-每个功能分支合并前的审查结果。流程见 [cycle-state](cycle-state.md)：主会话先检查范围、署名、密钥并复跑测试，再由 Sonnet 子代理做只读代码审查，修复后合并。
+每个功能分支合并前的审查结果。流程见 [cycle-state](../todo/cycle-state.md)：主会话先检查范围、署名、密钥并复跑测试，再由 Sonnet 子代理做只读代码审查，修复后合并。
 
 处理状态：**已修**（合并前修复）、**延后**（记入后续任务）、**接受**（评估后不改）。
 
@@ -19,7 +19,7 @@
 | `feat/synthetic-data` | T7 合成测试数据 | — | 未审查 | 已合并（未做代码审查，待 Phase 3 补审） |
 | `feat/ui-shell` | T8a 界面外壳 | — | 未审查 | 已合并（未做代码审查，待 Phase 3 补审） |
 | `feat/ui-wiring` | T8b + T10 界面接线 | — | 未审查 | 已合并（未做代码审查，待 Phase 3 补审） |
-| `release/trial-build` | T11 试用发布 | — | 主会话完成，见 trial-release.md | — |
+| `release/trial-build` | T11 试用发布 | — | 主会话完成，见 round-1/trial-release.md | — |
 | `feat/ai-client` | T13 ai 层 | 2026-10-30 | 修改后可合并（无阻断） | 已修 7 项，已合并 `10384ff` |
 | `feat/item-model` | T15 物资模型与导入续传 | 2026-10-30 | 修改后可合并（1 项重要） | 重要项已修，次要 5 项延后，已合并 `e5f7f63` |
 | `feat/vocabulary-hierarchy` | T14 分层词表与名称归类 | 2026-10-30 | 可合并 | 次要 5 项延后，已合并 `29136aa` |

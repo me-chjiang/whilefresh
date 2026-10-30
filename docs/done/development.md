@@ -1,10 +1,10 @@
 # 开发文档
 
-本文说明趁鲜（WhileFresh）的开发环境、构建命令、数据工具与调试方法。产品概览见 [README.md](../README.md)，目录规则见 [FHS.md](../FHS.md)。
+本文说明趁鲜（WhileFresh）的开发环境、构建命令、数据工具与调试方法。产品概览见 [README.md](../../README.md)，目录规则见 [STD.md](../../STD.md)。
 
 ## 开发环境与命令
 
-`app/` 是 Qt 6 CMake 工程，同一套源码构建 macOS 桌面开发版（日常开发与单元测试）和 Android APK（验收）。目录规则见 [FHS.md](../FHS.md)。
+`app/` 是 Qt 6 CMake 工程，同一套源码构建 macOS 桌面开发版（日常开发与单元测试）和 Android APK（验收）。目录规则见 [STD.md](../../STD.md)。
 
 ### 前置条件
 
@@ -23,7 +23,7 @@
 | 运行桌面版 | `build/desktop/whilefresh` |
 | 单元测试 | `ctest --test-dir build/desktop --output-on-failure` |
 | 构建 Android APK（debug 签名；`--no-key` 不注入密钥） | `scripts/build-android.sh x86_64` 或 `scripts/build-android.sh arm64-v8a` |
-| 构建签名 Release APK（签名密钥库与口令见 [mvp/trial-release.md](mvp/trial-release.md)） | `scripts/build-android.sh arm64-v8a --release` |
+| 构建签名 Release APK（签名密钥库与口令见 [round-1/trial-release.md](round-1/trial-release.md)） | `scripts/build-android.sh arm64-v8a --release` |
 | 启动模拟器并等待开机（`--headless` 无窗口） | `scripts/run-emulator.sh --headless` |
 | 安装并启动 APK（ABI 默认取设备主 ABI；多设备时设 `ANDROID_SERIAL`） | `scripts/install-android.sh` |
 | 关闭模拟器 | `~/Library/Android/sdk/platform-tools/adb emu kill` |
@@ -96,8 +96,8 @@ uv run --project tools pytest
 ```
 
 - 词表源数据是 `tools/whilefresh_tools/vocabulary/vocabulary-source.json`（人工维护，每项一行）。名称归一由 App 内的 `IngredientCatalog::resolveFinest` / `VocabularyResolver` 完成，不再有离线的原料映射表。AI 只用于 `draft` 生成初稿：响应缓存在 `~/.cache/whilefresh/vocabulary/`（可用 `WHILEFRESH_CACHE` 改位置），草稿输出到缓存目录下的 `draft/`，由人工审阅后手工复制到源数据位置；之后的重建、校验和测试都不联网、不调用 AI。密钥只在进程内读取，不会被打印或缓存。
-- 词表字段约定：`name`（标准名）、`category`（品类代码）、`aliases[]`（全表唯一）、`parent` 由 App 的 `core::IngredientCatalog` 读取（识别和匹配共用这一份）；`parent` 表示"持有子项即可满足父项"；`pantry_default` 默认算家里常备；`bulk_default` 默认存量多。复核记录见 [词表复核报告](mvp/notes/vocabulary-review.md)。
-- 保质期参考表的数据源是 USDA FoodKeeper v128 快照（`tools/sources/foodkeeper/`，附 `SOURCE.md`，CC0）。映射源数据是 `tools/whilefresh_tools/shelf_life/foodkeeper-map.json`（标准名 → FoodKeeper 条目 ID，每项一行，含依据说明，人工维护）；`draft` 的草稿和响应缓存在 `~/.cache/whilefresh/shelf-life/`，由人工审阅后复制到源数据位置。取值规则与换算（周 × 7、月 × 30、年 × 365）见 `SOURCE.md`。没有对应条目的食材不列入参考表，由上层回退到 AI 判断。复核记录见 [保质期参考表复核报告](mvp/notes/shelf-life-review.md)。
+- 词表字段约定：`name`（标准名）、`category`（品类代码）、`aliases[]`（全表唯一）、`parent` 由 App 的 `core::IngredientCatalog` 读取（识别和匹配共用这一份）；`parent` 表示"持有子项即可满足父项"；`pantry_default` 默认算家里常备；`bulk_default` 默认存量多。复核记录见 [词表复核报告](notes/vocabulary-review.md)。
+- 保质期参考表的数据源是 USDA FoodKeeper v128 快照（`tools/sources/foodkeeper/`，附 `SOURCE.md`，CC0）。映射源数据是 `tools/whilefresh_tools/shelf_life/foodkeeper-map.json`（标准名 → FoodKeeper 条目 ID，每项一行，含依据说明，人工维护）；`draft` 的草稿和响应缓存在 `~/.cache/whilefresh/shelf-life/`，由人工审阅后复制到源数据位置。取值规则与换算（周 × 7、月 × 30、年 × 365）见 `SOURCE.md`。没有对应条目的食材不列入参考表，由上层回退到 AI 判断。复核记录见 [保质期参考表复核报告](notes/shelf-life-review.md)。
 - 下载失败时可设置 `WHILEFRESH_CACHE` 指定缓存目录，或把同版本源码压缩包手动放到 `<缓存目录>/snapshot.tar.gz`。
 
 #### 合成测试数据与识别回归
@@ -112,7 +112,7 @@ uv run --project tools python -m whilefresh_tools.synthetic generate --no-render
 uv run --project tools python -m whilefresh_tools.synthetic generate --id cart-fresh-long-01
 
 # 离线评估已有合成样本录制，不产生网络请求
-uv run --project tools python -m whilefresh_tools.synthetic evaluate --out docs/mvp/notes/recognition-baseline.md
+uv run --project tools python -m whilefresh_tools.synthetic evaluate --out docs/done/notes/recognition-baseline.md
 uv run --project tools pytest
 ```
 
@@ -126,7 +126,7 @@ uv run --project tools python -m whilefresh_tools.synthetic.regress run
 uv run --project tools python -m whilefresh_tools.synthetic.regress status
 # 检查 /tmp/whilefresh-t7-synthetic/*.json 仅包含虚构样本的返回；不要复制私人真实样例
 uv run --project tools python -m whilefresh_tools.synthetic.regress collect
-uv run --project tools python -m whilefresh_tools.synthetic evaluate --out docs/mvp/notes/recognition-baseline.md
+uv run --project tools python -m whilefresh_tools.synthetic evaluate --out docs/done/notes/recognition-baseline.md
 scripts/build-desktop.sh  # 用完密钥后恢复为不带密钥的桌面构建
 ```
 
@@ -243,7 +243,7 @@ build/desktop/tools/recognize-cli --vocab app/assets/data/vocabulary.json \
 
 ### Android 导入调试
 
-Debug 构建的"我的"页有调试区：选图、拍小票、分享测试文字、复制测试文字，并显示最近一次收到的导入摘要。每次导入在日志中打一行，前缀固定为 `WhileFresh import:`（只含类型、来源、数量和日期来源，不含文字内容）。设计与已知限制见 [Android 集成说明](mvp/notes/android-integration.md)。
+Debug 构建的"我的"页有调试区：选图、拍小票、分享测试文字、复制测试文字，并显示最近一次收到的导入摘要。每次导入在日志中打一行，前缀固定为 `WhileFresh import:`（只含类型、来源、数量和日期来源，不含文字内容）。设计与已知限制见 [Android 集成说明](notes/android-integration.md)。
 
 ```sh
 adb=~/Library/Android/sdk/platform-tools/adb
@@ -271,8 +271,8 @@ $adb logcat -d | grep 'WhileFresh import:'
 
 - `app/src/core/` 只依赖 QtCore：分开的购买/入库/生产/包装到期日期、拍摄日基准的日期解析、带来源的保质期、注入时钟的新鲜度、常备/存量建议、需求组匹配与待买文本。
 - `app/src/data/`：SQLite `Database` + `Store`（`PRAGMA user_version` 版本迁移），以及加载一次的 `BuiltinData`。正式词表、FoodKeeper 表嵌入 `:/whilefresh/data`；找不到参考表按无参考值处理。
-- `app/src/ui/{import,kitchen}-service.*` 是普通 C++ 应用服务，不依赖 QML；可替换识别器，用户确认草稿才入库，常备建议/本地记忆需要单独确认。接线、日期语义、迁移和文件删除细节见 [核心领域实现说明](mvp/notes/core-domain.md)。
-- 第二轮（T15）：迁移 v5（食材种类 / 用量 / 忽略到期、导入软删除与跳过记录、导入续传表）；`core/quantity.*` 用量解析、`core/fridge-groups.*` 种类判定与冰箱分组排序、`core/resumable-job.*` 续传状态机。删除导入、清空历史、跳过重复、调料入库与续传的设计见 [食材模型与导入续传说明](mvp/notes/item-model.md)。
+- `app/src/ui/{import,kitchen}-service.*` 是普通 C++ 应用服务，不依赖 QML；可替换识别器，用户确认草稿才入库，常备建议/本地记忆需要单独确认。接线、日期语义、迁移和文件删除细节见 [核心领域实现说明](notes/core-domain.md)。
+- 第二轮（T15）：迁移 v5（食材种类 / 用量 / 忽略到期、导入软删除与跳过记录、导入续传表）；`core/quantity.*` 用量解析、`core/fridge-groups.*` 种类判定与冰箱分组排序、`core/resumable-job.*` 续传状态机。删除导入、清空历史、跳过重复、调料入库与续传的设计见 [食材模型与导入续传说明](notes/item-model.md)。
 - **FoodKeeper 不等于从生产日起的寿命**：参考表只在购买日期已知且用户确认适用条件后计算到期日；否则保留参考天数、显示待确认，不改用较长的 AI 值掩盖未知状态。`basis` 只保留作展示，不据其字符串推断逻辑。
 
 使用已有命令验证，不调用真实 DeepSeek：

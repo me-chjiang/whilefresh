@@ -1,14 +1,14 @@
 # Cycle State
 
-> 本文件即 loop-dev-cycle 的 `CYCLE_STATE.md`；[`mvp-requirements.md`](mvp-requirements.md) 即 `REQUIREMENTS.md`，[`mvp-plan.md`](mvp-plan.md) 即 `PLAN.md`（项目要求文件名使用 kebab-case）。每次会话开始先读本文件和需求稿。
+> 本文件即 loop-dev-cycle 的 `CYCLE_STATE.md`。第二轮的需求与计划以 [PRD v6](prd-v6.md) 和 [第二轮计划](round-2-plan.md) 为准；第一轮的 `REQUIREMENTS.md`/`PLAN.md` 对应 [`../done/round-1/mvp-requirements.md`](../done/round-1/mvp-requirements.md) 和 [`../done/round-1/mvp-plan.md`](../done/round-1/mvp-plan.md)（文件名使用 kebab-case）。每次会话开始先读本文件和第二轮计划。
 
 ## 当前阶段
 
 第一轮 Phase 0–2 已完成（T0–T11 已合并，试用版 0.1.0 已构建），Phase 3 未开始。
 
-**第二轮**（2026-10-29 起）：按 [PRD v6](../prd-v6.md) 和 [第二轮计划](round-2-plan.md) 开发，任务 T12–T21。本轮先把功能做对，界面能用即可。第一轮 Phase 3 的测试并入第二轮各任务的验证。未完成事项见 [todo.md](todo.md)。
+**第二轮**（2026-10-29 起）：按 [PRD v6](prd-v6.md) 和 [第二轮计划](round-2-plan.md) 开发，任务 T12–T21。本轮先把功能做对，界面能用即可。第一轮 Phase 3 的测试并入第二轮各任务的验证。未完成事项见 [todo.md](todo.md)。
 
-2026-10-30 用户确认后，T13、T15、T14 依次以 `--no-ff` 合并到 main 并推送；随后 T16、T17、测试期内置密钥、T18b 依次合并到本地 main（未推送）。T18–T21 未开始。审查结果见 [review-log](review-log.md)。
+2026-10-30 用户确认后，T13、T15、T14 依次以 `--no-ff` 合并到 main 并推送；随后 T16、T17、测试期内置密钥、T18b 依次合并到 main，均已推送（仓库不含密钥，`scripts/check-keys.sh` 已扫描全部提交）。T18–T21 未开始。审查结果见 [review-log](../done/review-log.md)。
 
 ### 第二轮进度
 
@@ -86,17 +86,11 @@
 | 2026-10-30 | T16（`5317513`）、T17（`ad24850`）、内置密钥（`3a57363`）、T18b（`0d3b620`）合并到本地 main | 用户确认"没问题就 merge"；未要求推送 | — |
 | 2026-10-30 | 桌面开发库 `whilefresh.db`、`demo.db` 被 Codex wip 构建升级到 v6，改名为 `*.codex-v6.bak` 备份后重建 | 用户确认 | 删除 |
 | 2026-10-30 | `build-android.sh` 调试构建显式传 `QT_ANDROID_SIGN_APK=OFF` | 修复 bash 3.2 空数组报错，并避免沿用 release 缓存签名 | 所有构建关闭签名（Codex 版本，会破坏 `--release`） |
+| 2026-10-30 | 文档重组：FHS.md 改名为 STD.md 并增加编码规范；docs/ 拆为 done/ 与 todo/；README 只面向人，AI 规则、停止条件与 Review 标准集中到 AGENTS.md | 按完成状态区分文档；规则只有一处来源 | 保留 docs/mvp/ 平铺 |
 
-## Agent 分工
+## 流程与审查
 
-开发由主会话分派子代理完成，过程见决策日志与审查记录。
-
-## 分支与审阅流程
-
-1. main 只接收审阅通过的合并。每个功能一个分支，如 `feat/recipe-data`、`feat/fridge-view`。
-2. 主会话先审查 diff，再由 Sonnet 子代理做代码审查；测试通过后，把摘要交给用户。
-3. **用户确认后才合并**；不推送远端。
-4. 提交信息遵循 Conventional Commits，不添加 AI 署名。
+见 [AGENTS.md](../../AGENTS.md) 的“开发循环与停止条件”和“Review 标准”。
 
 ## 代决记录
 
@@ -129,7 +123,7 @@
 | 2026-10-21 | 首轮模拟器走查修复：物资名为空、参考表起算日被强制要求"确认适用条件"导致全部"未知"（恢复批准规则：生产 > 购买 > 入库日期）、模拟器渲染线程卡在着色器磁盘缓存（Android 关闭该缓存）、缺小票与订单文字演示预设、放弃入库误报"已加入冰箱"、草稿日期框被压扁 | 用户要求开始测试 | `git revert 35187af` |
 | 2026-10-21 | T11：发布签名密钥库放 `~/.config/whilefresh/`，口令存钥匙串；`build-android.sh --release` 构建签名包；只发 arm64 包 | 试用者为真机；密钥不入仓库 | — |
 
-审查结果逐分支记录在 [review-log.md](review-log.md)。每次审查、修复或合并后同步更新。
+审查结果逐分支记录在 [review-log.md](../done/review-log.md)。每次审查、修复或合并后同步更新。
 
 ## 偏差日志
 

@@ -1,5 +1,7 @@
 # 核心领域与应用服务（T5）
 
+> T14 删除了识别层的 `Vocabulary`，识别统一使用 `core::IngredientCatalog`；T18b 删除了内置菜谱（`recipes.json`、`core/recipe.*`、菜谱匹配器）及 KitchenService 的 `recipes()`/`recipe(id)` 等接口，`BuiltinData` 不再加载菜谱；下文涉及它们的内容仅作历史记录。
+
 ## 分层与生命周期
 
 - `core` 只链接 QtCore，不依赖识别、SQL、GUI。`IngredientCatalog` 读取领域需要的 parent/default 字段；识别器的 `Vocabulary` 保持原接口，由应用服务从 catalog 构造。

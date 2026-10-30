@@ -113,7 +113,7 @@ private slots:
 
     // A real DeepSeek answer for synthetic preferences, recorded with recognize-cli --summarize.
     // The recording holds the request digest, so a change to the prompt shows up here and needs a
-    // new recording (docs/development.md).
+    // new recording (docs/done/development.md).
     void liveRecordingReplays()
     {
         const QString path = QStringLiteral(WHILEFRESH_TEST_DATA_DIR "/recordings/preferences/synthetic-preferences.json");
